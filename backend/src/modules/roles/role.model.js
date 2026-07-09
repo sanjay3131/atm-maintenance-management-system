@@ -1,26 +1,17 @@
-const customerSchema = new mongoose.Schema(
+import mongoose from "mongoose";
+
+const roleSchema = new mongoose.Schema(
   {
-    customerName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    customerEmail: {
+    roleName: {
       type: String,
       required: true,
       trim: true,
       unique: true,
     },
-    customerPhone: {
-      type: String,
+    permission: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Permission",
       required: true,
-      trim: true,
-      unique: true,
-    },
-    customerAddress: {
-      type: String,
-      required: true,
-      trim: true,
     },
     isActive: {
       type: Boolean,
@@ -40,3 +31,7 @@ const customerSchema = new mongoose.Schema(
     timestamps: true,
   },
 );
+
+const Role = mongoose.model("Role", roleSchema);
+
+export default Role;

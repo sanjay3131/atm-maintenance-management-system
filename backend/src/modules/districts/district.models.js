@@ -1,26 +1,20 @@
-const customerSchema = new mongoose.Schema(
+const districtSchema = new mongoose.Schema(
   {
-    customerName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    customerEmail: {
+    districtName: {
       type: String,
       required: true,
       trim: true,
       unique: true,
     },
-    customerPhone: {
+    pinCode: {
       type: String,
       required: true,
       trim: true,
       unique: true,
     },
-    customerAddress: {
+    state: {
       type: String,
       required: true,
-      trim: true,
     },
     isActive: {
       type: Boolean,
