@@ -73,3 +73,7 @@ userSchema.index({ phoneNumber: 1 });
 userSchema.index({ roleId: 1 });
 
 userSchema.index({ status: 1 });
+
+const User = mongoose.model("User", userSchema);
+
+export default User;
