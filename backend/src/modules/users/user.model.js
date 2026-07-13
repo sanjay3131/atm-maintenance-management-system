@@ -61,15 +61,15 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    refreshToken: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,
   },
 );
-userSchema.index({ email: 1 });
-
-userSchema.index({ phoneNumber: 1 });
-
 userSchema.index({ roleId: 1 });
 
 userSchema.index({ status: 1 });

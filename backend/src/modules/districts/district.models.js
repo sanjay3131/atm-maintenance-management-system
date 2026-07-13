@@ -34,3 +34,9 @@ const districtSchema = new mongoose.Schema(
     timestamps: true,
   },
 );
+
+userSchema.index({ districtName: 1 });
+
+userSchema.index({ pinCode: 1 });
+
+const District = mongoose.model("District", districtSchema);

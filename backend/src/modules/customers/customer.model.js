@@ -40,3 +40,9 @@ const customerSchema = new mongoose.Schema(
     timestamps: true,
   },
 );
+
+customerSchema.index({ customerEmail: 1 });
+
+customerSchema.index({ customerPhone: 1 });
+
+const Customer = mongoose.model("Customer", customerSchema);

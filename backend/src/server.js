@@ -3,17 +3,29 @@ import dotenv from "dotenv";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import connectDb from "./config/db.js";
+import authRouter from "./modules/auth/auth.routes.js";
+import errorMiddleware from "./middlewares/error.middleware.js";
 
 dotenv.config();
-const app = express();
-app.use(cors());
-app.use(cookieParser());
 
+const app = express();
+
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+  }),
+);
+app.use(cookieParser());
 app.use(express.json());
 
 app.get("/", (req, res) => {
-  res.send("Hello World lets do it day one  with the one!");
+  res.send("Hello World lets do it day one with the one!");
 });
+
+app.use("/api/v1/auth", authRouter);
+
+app.use(errorMiddleware);
 
 const PORT = process.env.PORT || 3000;
 
