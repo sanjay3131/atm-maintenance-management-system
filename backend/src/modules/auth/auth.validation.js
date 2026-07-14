@@ -33,6 +33,7 @@ const refreshSchema = z.object({
 const validateRequest = (schema) => {
   return asyncHandler(async (req, res, next) => {
     const result = schema.safeParse(req.body);
+    console.log(result);
 
     if (!result.success) {
       const errors = result.error.issues.map((issue) => ({

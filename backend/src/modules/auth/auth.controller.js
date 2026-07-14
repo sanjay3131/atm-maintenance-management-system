@@ -10,6 +10,7 @@ import {
   generateAccessToken,
   generateRefreshToken,
   verifyRefreshToken,
+  compareRefreshToken,
 } from "./auth.utils.js";
 import { hash } from "bcryptjs";
 
@@ -202,7 +203,7 @@ const getCurrentUser = asyncHandler(async (req, res) => {
     .json(
       new ApiResponse(
         200,
-        sanitizeUser(req.user),
+        { user: sanitizeUser(req.user) },
         "Current user fetched successfully",
       ),
     );
