@@ -27,7 +27,7 @@ const generateAccessToken = (user) => {
     },
     accessSecret,
     {
-      expiresIn: "15m",
+      expiresIn: "1hr",
     },
   );
 };

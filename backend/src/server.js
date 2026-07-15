@@ -4,6 +4,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import connectDb from "./config/db.js";
 import authRouter from "./modules/auth/auth.routes.js";
+import userRouter from "./modules/users/user.routes.js";
 import errorMiddleware from "./middlewares/error.middleware.js";
 
 dotenv.config();
@@ -24,6 +25,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/v1/auth", authRouter);
+app.use("/api/v1/users", userRouter);
 
 app.use(errorMiddleware);
 

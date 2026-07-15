@@ -13,10 +13,17 @@ import {
   registerSchema,
   validateRequest,
 } from "./auth.validation.js";
+import { authorizeRoles } from "../../middlewares/role.middleware.js";
 
 const router = Router();
 
-router.post("/register", validateRequest(registerSchema), registerUser);
+router.post(
+  "/register",
+  validateRequest(registerSchema),
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  registerUser,
+);
 router.post("/login", validateRequest(loginSchema), loginUser);
 router.post("/refresh", refreshAccessToken);
 router.post("/logout", logoutUser);

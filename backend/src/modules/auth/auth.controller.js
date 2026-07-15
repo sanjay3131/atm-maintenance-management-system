@@ -2,6 +2,7 @@ import User from "../users/user.model.js";
 import ApiError from "../../utils/ApiError.js";
 import ApiResponse from "../../utils/ApiResponse.js";
 import asyncHandler from "../../utils/asyncHandler.js";
+import { sanitizeUser } from "../../utils/sanitizeUser.js";
 
 import {
   hashPassword,
@@ -20,15 +21,6 @@ const cookieOptions = {
   sameSite: "lax",
   path: "/",
   maxAge: 7 * 24 * 60 * 60 * 1000,
-};
-
-const sanitizeUser = (user) => {
-  const safeUser = user.toObject();
-
-  delete safeUser.password;
-  delete safeUser.refreshToken;
-
-  return safeUser;
 };
 
 /**

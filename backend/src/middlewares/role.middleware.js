@@ -6,9 +6,8 @@ const authorizeRoles = (...allowedRoles) => {
       throw new ApiError(401, "Authentication required");
     }
 
-    const userRole = String(
-      req.user.userType || req.user.role || "user",
-    ).toLowerCase();
+    const userRole = String(req.user.userType || req.user.role || "user");
+    console.log("user role", userRole);
 
     if (!allowedRoles.includes(userRole)) {
       throw new ApiError(
