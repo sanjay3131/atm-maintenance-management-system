@@ -41,14 +41,12 @@ const employeeSchema = new mongoose.Schema(
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "District",
-        required: true,
       },
     ],
     assignedAtmIds: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "ATM",
-        required: true,
       },
     ],
     createdBy: {
@@ -59,6 +57,9 @@ const employeeSchema = new mongoose.Schema(
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
+    },
+    salary: {
+      type: Number,
     },
   },
   {
