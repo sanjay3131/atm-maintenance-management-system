@@ -11,6 +11,12 @@ import {
 
 import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
 import { authorizeRoles } from "../../middlewares/role.middleware.js";
+import {
+  assignRoleSchema,
+  changeUserStatusSchema,
+  updateUserSchema,
+  validateRequest,
+} from "./user.validate.js";
 
 const router = express.Router();
 // get all users
@@ -32,6 +38,7 @@ router.get(
 router.put(
   "/:id",
   verifyAccessToken,
+  validateRequest(updateUserSchema),
   authorizeRoles("admin", "superAdmin", "employee"),
   updateUserById,
 );
@@ -40,6 +47,7 @@ router.put(
 router.put(
   "/:id/assign-role",
   verifyAccessToken,
+  validateRequest(assignRoleSchema),
   authorizeRoles("admin", "superAdmin"),
   assignRoleToUser,
 );
@@ -48,6 +56,7 @@ router.put(
 router.put(
   "/:id/change-status",
   verifyAccessToken,
+  validateRequest(changeUserStatusSchema),
   authorizeRoles("admin", "superAdmin"),
   changeUserStatus,
 );
