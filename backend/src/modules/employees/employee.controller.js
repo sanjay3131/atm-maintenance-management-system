@@ -5,6 +5,7 @@ import ApiResponse from "../../utils/ApiResponse.js";
 import User from "../users/user.model.js";
 import Employee from "./employee.model.js";
 import { generateEmployeeCode } from "./employee.utils.js";
+import ApiError from "../../utils/ApiError.js";
 
 export const createEmployee = asyncHandler(async (req, res) => {
   const isAdmin =
@@ -89,13 +90,10 @@ export const createEmployee = asyncHandler(async (req, res) => {
 export const updateEmployee = asyncHandler(async (req, res) => {
   const { employeeId } = req.params;
 
-  const employee = await Employee.findOneAndUpdate(
-    { _id: employeeId },
-    {
-      new: true,
-      runValidators: true,
-    },
-  ).populate("userId", "name email userType");
+  const employee = await Employee.findByIdAndUpdate(employeeId, req.body, {
+    new: true,
+    runValidators: true,
+  }).populate("userId", "name email userType");
 
   if (!employee) {
     return res
@@ -140,4 +138,65 @@ export const viewAllEmployees = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, employees, "Employees retrieved successfully"));
+});
+
+// assign atm to employee (admin and superAdmin)
+
+export const assignAtms = asyncHandler(async (req, res) => {
+  const { employeeId } = req.params;
+  const { assignedAtmIds } = req.body;
+
+  const employee = await Employee.findById(employeeId);
+  console.log("Employee:", employee, employeeId);
+
+  if (!employee) {
+    const assignAtms = asyncHandler(async (req, res) => {
+      const { employeeId } = req.params;
+      const { assignedAtmIds } = req.body;
+
+      const employee = await Employee.findById(employeeId);
+
+      if (!employee) {
+        throw new ApiError(404, "Employee not found ...");
+      }
+
+      employee.assignedAtmIds = assignedAtmIds;
+
+      await employee.save();
+
+      return res
+        .status(200)
+        .json(new ApiResponse(200, "ATMs assigned successfully", employee));
+    });
+    throw new ApiError(404, "Employee not found");
+  }
+
+  employee.assignedAtmIds = assignedAtmIds;
+
+  await employee.save();
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, employee, "ATMs assigned successfully"));
+});
+
+// assign district to employee (admin and superAdmin)
+
+export const assignDistricts = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { districtIds } = req.body;
+
+  const employee = await Employee.findById(id);
+
+  if (!employee) {
+    throw new ApiError(404, "Employee not found");
+  }
+
+  employee.districtIds = districtIds;
+
+  await employee.save();
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, employee, "Districts assigned successfully"));
 });

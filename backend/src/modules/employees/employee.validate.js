@@ -73,8 +73,8 @@ const updateEmployeeSchema = z.object({
       }),
     })
     .optional(),
-  districtIds: z.array(objectIdSchema).optional(),
-  assignedAtmIds: z.array(objectIdSchema).optional(),
+  // districtIds: z.array(objectIdSchema).optional(),
+  // assignedAtmIds: z.array(objectIdSchema).optional(),
   status: z
     .enum(["active", "inactive", "on_leave", "resigned"], {
       errorMap: () => ({
@@ -89,4 +89,22 @@ const updateEmployeeSchema = z.object({
     .optional(),
 });
 
-export { createEmployeeSchema, updateEmployeeSchema, validateRequest };
+const assignATMsSchema = z.object({
+  assignedAtmIds: z
+    .array(objectIdSchema)
+    .min(1, "At least one ATM ID must be provided"),
+});
+
+const assignDistrictsSchema = z.object({
+  districtIds: z
+    .array(objectIdSchema)
+    .min(1, "At least one district ID must be provided"),
+});
+
+export {
+  createEmployeeSchema,
+  updateEmployeeSchema,
+  validateRequest,
+  assignATMsSchema,
+  assignDistrictsSchema,
+};

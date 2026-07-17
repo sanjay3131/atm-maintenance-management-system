@@ -1,11 +1,15 @@
 import express from "express";
 import {
+  assignAtms,
+  assignDistricts,
   createEmployee,
   updateEmployee,
   viewAllEmployees,
   viewEmployeeById,
 } from "./employee.controller.js";
 import {
+  assignATMsSchema,
+  assignDistrictsSchema,
   createEmployeeSchema,
   updateEmployeeSchema,
   validateRequest,
@@ -47,6 +51,25 @@ router.get(
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin"),
   viewAllEmployees,
+);
+
+// assign ATMs to employee
+router.post(
+  "/assign-atms/:employeeId",
+  verifyAccessToken,
+  validateRequest(assignATMsSchema),
+
+  authorizeRoles("admin", "superAdmin"),
+  assignAtms,
+);
+
+// assign districts to employee
+router.post(
+  "/assign-districts/:employeeId",
+  verifyAccessToken,
+  validateRequest(assignDistrictsSchema),
+  authorizeRoles("admin", "superAdmin"),
+  assignDistricts,
 );
 
 export default router;

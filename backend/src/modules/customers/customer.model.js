@@ -17,11 +17,17 @@ const customerSchema = new mongoose.Schema(
       trim: true,
       unique: true,
     },
-    customerAddress: {
+    customerRegion: {
       type: String,
       required: true,
       trim: true,
     },
+    district: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "District",
+      required: true,
+    },
+
     isActive: {
       type: Boolean,
       default: true,
