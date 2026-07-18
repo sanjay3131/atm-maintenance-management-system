@@ -147,31 +147,19 @@ export const assignAtms = asyncHandler(async (req, res) => {
   const { assignedAtmIds } = req.body;
 
   const employee = await Employee.findById(employeeId);
-  console.log("Employee:", employee, employeeId);
-
   if (!employee) {
-    const assignAtms = asyncHandler(async (req, res) => {
-      const { employeeId } = req.params;
-      const { assignedAtmIds } = req.body;
-
-      const employee = await Employee.findById(employeeId);
-
-      if (!employee) {
-        throw new ApiError(404, "Employee not found ...");
-      }
-
-      employee.assignedAtmIds = assignedAtmIds;
-
-      await employee.save();
-
-      return res
-        .status(200)
-        .json(new ApiResponse(200, "ATMs assigned successfully", employee));
-    });
     throw new ApiError(404, "Employee not found");
   }
 
-  employee.assignedAtmIds = assignedAtmIds;
+  const existingAtmIds = (employee.assignedAtmIds || []).map((id) =>
+    id.toString(),
+  );
+  const incomingAtmIds = (assignedAtmIds || []).map((id) => id.toString());
+  const mergedAtmIds = Array.from(
+    new Set([...existingAtmIds, ...incomingAtmIds]),
+  );
+
+  employee.assignedAtmIds = mergedAtmIds;
 
   await employee.save();
 
@@ -183,16 +171,24 @@ export const assignAtms = asyncHandler(async (req, res) => {
 // assign district to employee (admin and superAdmin)
 
 export const assignDistricts = asyncHandler(async (req, res) => {
-  const { id } = req.params;
+  const { employeeId } = req.params;
   const { districtIds } = req.body;
 
-  const employee = await Employee.findById(id);
+  const employee = await Employee.findById(employeeId);
 
   if (!employee) {
     throw new ApiError(404, "Employee not found");
   }
 
-  employee.districtIds = districtIds;
+  const existingDistrictIds = (employee.districtIds || []).map((id) =>
+    id.toString(),
+  );
+  const incomingDistrictIds = (districtIds || []).map((id) => id.toString());
+  const mergedDistrictIds = Array.from(
+    new Set([...existingDistrictIds, ...incomingDistrictIds]),
+  );
+
+  employee.districtIds = mergedDistrictIds;
 
   await employee.save();
 
