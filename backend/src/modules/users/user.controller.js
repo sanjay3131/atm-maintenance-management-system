@@ -54,7 +54,7 @@ export const getUserById = asyncHandler(async (req, res) => {
     );
 });
 
-// update user by id (user and )
+// update user by id (user and admins)
 
 export const updateUserById = asyncHandler(async (req, res) => {
   const { id } = req.params;

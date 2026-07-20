@@ -63,11 +63,13 @@ const atmSchema = new mongoose.Schema(
       default: "ACTIVE",
     },
 
-    assignedEmployeeId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Employee",
-      default: null,
-    },
+    assignedEmployeeId: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Employee",
+        default: null,
+      },
+    ],
 
     isDeleted: {
       type: Boolean,

@@ -67,7 +67,7 @@ const employeeSchema = new mongoose.Schema(
   },
 );
 
-employeeSchema.index({ employeeCode: 1 });
+// employeeSchema.index({ employeeCode: 1 });
 
 employeeSchema.index({ userId: 1 });
 
