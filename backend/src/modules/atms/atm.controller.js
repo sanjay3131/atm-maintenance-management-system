@@ -122,16 +122,33 @@ export const assignEmployeeToATM = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Employee not found");
   }
 
-  // Check if the employee is already assigned to the ATM
-  if (atm.assignedEmployeeId.includes(employeeId)) {
+  const atmEmployeeIds = (atm.assignedEmployeeId || []).map((id) =>
+    id.toString(),
+  );
+  const employeeAtmIds = (employee.assignedAtmIds || []).map((id) =>
+    id.toString(),
+  );
+
+  if (
+    atmEmployeeIds.includes(employeeId.toString()) ||
+    employeeAtmIds.includes(atmId.toString())
+  ) {
     throw new ApiError(400, "Employee is already assigned to this ATM");
   }
 
-  atm.assignedEmployeeId.push(employeeId);
+  atm.assignedEmployeeId = Array.from(
+    new Set([...atmEmployeeIds, employeeId.toString()]),
+  );
   atm.updatedBy = req.user._id;
   await atm.save();
 
+  employee.assignedAtmIds = Array.from(
+    new Set([...employeeAtmIds, atmId.toString()]),
+  );
+  employee.updatedBy = req.user._id;
+  await employee.save();
+
   return res
     .status(200)
-    .json(new ApiResponse(200, atm, "atm assiged to employee"));
+    .json(new ApiResponse(200, atm, "ATM assigned to employee successfully"));
 });

@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  assignEmployeeToATM,
   createATM,
   deleteATM,
   getAllATMs,
@@ -54,5 +55,14 @@ router.delete(
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin"),
   deleteATM,
+);
+
+// assign atm to employee
+
+router.patch(
+  "/assignEmployee/:id",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  assignEmployeeToATM,
 );
 export default router;
