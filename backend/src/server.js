@@ -8,6 +8,7 @@ import userRouter from "./modules/users/user.routes.js";
 import ATM_routes from "./modules/atms/atm.routes.js";
 import employeeRouter from "./modules/employees/employee.routes.js";
 import districtRouter from "./modules/districts/district.route.js";
+import regionRouter from "./modules/region/region.routes.js";
 import errorMiddleware from "./middlewares/error.middleware.js";
 
 dotenv.config();
@@ -32,6 +33,7 @@ app.use("/api/v1/users", userRouter);
 app.use("/api/v1/employees", employeeRouter);
 app.use("/api/v1/atm", ATM_routes);
 app.use("/api/v1/districts", districtRouter);
+app.use("/api/v1/regions", regionRouter);
 
 app.use(errorMiddleware);
 

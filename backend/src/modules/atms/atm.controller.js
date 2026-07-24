@@ -1,7 +1,9 @@
 import ApiError from "../../utils/ApiError.js";
 import ApiResponse from "../../utils/ApiResponse.js";
 import asyncHandler from "../../utils/asyncHandler.js";
+import District from "../districts/district.models.js";
 import Employee from "../employees/employee.model.js";
+import Region from "../region/region.model.js";
 import ATM from "./atm.model.js";
 import { generateATMId } from "./atm.utils.js";
 
@@ -16,6 +18,12 @@ export const createATM = asyncHandler(async (req, res) => {
     location,
   } = req.body;
 
+  const isValidDistrictId = await District.findById(districtId);
+  const isValidRegionId = await Region.findById(regionId);
+
+  if (!isValidDistrictId || !isValidRegionId) {
+    throw new ApiError(404, "district or region is not valid");
+  }
   const atmId = await generateATMId();
 
   const atm = await ATM.create({
@@ -39,8 +47,8 @@ export const createATM = asyncHandler(async (req, res) => {
 export const getAllATMs = asyncHandler(async (req, res) => {
   const atms = await ATM.find({ isDeleted: false })
     // .populate("bankId", "name")
-    // .populate("districtId", "name")
-    // .populate("regionId", "name")
+    .populate("districtId", "districtName")
+    .populate("regionId", "name")
     .populate("assignedEmployeeId", "employeeCode firstName lastName");
 
   return res
@@ -53,8 +61,8 @@ export const getAllATMs = asyncHandler(async (req, res) => {
 export const getATMById = asyncHandler(async (req, res) => {
   const atm = await ATM.findById(req.params.id)
     // .populate("bankId", "name")
-    // .populate("districtId", "name")
-    // .populate("regionId", "name")
+    .populate("districtId", "districtName")
+    .populate("regionId", "name")
     .populate("assignedEmployeeId", "employeeCode firstName lastName");
 
   if (!atm || atm.isDeleted) {

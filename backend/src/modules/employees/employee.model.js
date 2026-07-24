@@ -49,6 +49,12 @@ const employeeSchema = new mongoose.Schema(
         ref: "ATM",
       },
     ],
+    regionIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Region",
+      },
+    ],
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

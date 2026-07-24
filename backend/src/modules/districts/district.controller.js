@@ -32,6 +32,7 @@ export const createDistrict = asyncHandler(async (req, res) => {
 
 export const getAllDistricts = asyncHandler(async (req, res) => {
   const districts = await District.find().sort({ districtName: 1 });
+  console.log(districts.length);
 
   return res
     .status(200)

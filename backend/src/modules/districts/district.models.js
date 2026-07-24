@@ -22,6 +22,12 @@ const districtSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    regions: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Region",
+      },
+    ],
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
