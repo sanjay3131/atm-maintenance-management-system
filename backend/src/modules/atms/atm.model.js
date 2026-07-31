@@ -9,6 +9,11 @@ const atmSchema = new mongoose.Schema(
       trim: true,
     },
 
+    customer: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Customer",
+      required: true,
+    },
     bankId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Bank",
