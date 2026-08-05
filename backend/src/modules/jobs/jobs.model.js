@@ -1,61 +1,12 @@
 import mongoose from "mongoose";
+import { JOB_STATUS } from "../../utils/jobStatus.js";
 
-const jobsSchema = new mongoose.Schema(
+const jobSchema = new mongoose.Schema(
   {
-    jobNumber: {
+    jobId: {
       type: String,
-      required: true,
       unique: true,
-      trim: true,
-    },
-    complaintId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Complaint",
-    },
-    atmId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "ATM",
       required: true,
-    },
-    assignedEmployeeId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Employee",
-    },
-    assignedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-    },
-    jobType: {
-      type: String,
-      enum: [
-        "COMPLAINT",
-        "PREVENTIVE_MAINTENANCE",
-        "CASH_LOADING_SUPPORT",
-        "INSPECTION",
-        "INSTALLATION",
-        "OTHER",
-      ],
-      required: true,
-    },
-    priority: {
-      type: String,
-      enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
-      default: "MEDIUM",
-    },
-    status: {
-      type: String,
-      enum: [
-        "CREATED",
-        "ASSIGNED",
-        "ACCEPTED",
-        "IN_PROGRESS",
-        "ON_HOLD",
-        "COMPLETED",
-        "VERIFIED",
-        "REJECTED",
-        "CANCELLED",
-      ],
-      default: "CREATED",
     },
     title: {
       type: String,
@@ -66,10 +17,69 @@ const jobsSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
-    scheduledDate: {
+
+    // Relationships
+    atmId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ATM",
+      required: true,
+      index: true,
+    },
+    complaintId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Complaint",
+      index: true,
+    },
+    assignedEmployeeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
+    },
+    assignedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    customerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
+    },
+
+    // Status
+    status: {
+      type: String,
+      enum: Object.values(JOB_STATUS),
+      default: JOB_STATUS.PENDING,
+      index: true,
+    },
+
+    // Work Details
+    workType: {
+      type: String,
+      enum: [
+        "repair",
+        "maintenance",
+        "installation",
+        "inspection",
+        "emergency",
+      ],
+      default: "repair",
+    },
+    priority: {
+      type: String,
+      enum: ["low", "medium", "high", "critical"],
+      default: "medium",
+    },
+
+    // Timestamps
+    createdAt: {
       type: Date,
+      default: Date.now,
     },
     assignedAt: {
+      type: Date,
+    },
+    acceptedAt: {
       type: Date,
     },
     startedAt: {
@@ -81,17 +91,114 @@ const jobsSchema = new mongoose.Schema(
     verifiedAt: {
       type: Date,
     },
-    adminRemarks: {
-      type: String,
-      trim: true,
+    approvedAt: {
+      type: Date,
     },
+    closedAt: {
+      type: Date,
+    },
+    rejectedAt: {
+      type: Date,
+    },
+
+    // GPS at completion
+    employeeGpsAtCompletion: {
+      latitude: Number,
+      longitude: Number,
+      accuracy: Number,
+      timestamp: Date,
+    },
+    gpsDistance: {
+      type: Number, // Distance in meters
+    },
+    gpsValidated: {
+      type: Boolean,
+      default: false,
+    },
+
+    // Remarks
     employeeRemarks: {
       type: String,
       trim: true,
     },
-    isGpsVerified: {
+    adminRemarks: {
+      type: String,
+      trim: true,
+    },
+    rejectionReason: {
+      type: String,
+      trim: true,
+    },
+
+    // Photos
+    beforePhotos: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "JobPhoto",
+      },
+    ],
+    afterPhotos: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "JobPhoto",
+      },
+    ],
+
+    // Reassignment
+    isReassigned: {
       type: Boolean,
       default: false,
+    },
+    previousJobId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Job",
+    },
+    reassignmentReason: {
+      type: String,
+      trim: true,
+    },
+    reassignmentHistory: [
+      {
+        fromEmployee: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        toEmployee: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        reason: String,
+        reassignedAt: {
+          type: Date,
+          default: Date.now,
+        },
+        reassignedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+      },
+    ],
+
+    // Audit
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+    deletedAt: {
+      type: Date,
+    },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
     },
   },
   {
@@ -99,10 +206,13 @@ const jobsSchema = new mongoose.Schema(
   },
 );
 
-jobsSchema.index({ jobNumber: 1 });
+// Indexes
+jobSchema.index({ status: 1, createdAt: -1 });
+jobSchema.index({ assignedEmployeeId: 1, status: 1 });
+jobSchema.index({ atmId: 1, createdAt: -1 });
+jobSchema.index({ customerId: 1, status: 1 });
+jobSchema.index({ isDeleted: 1 });
 
-jobsSchema.index({ status: 1 });
-
-const Job = mongoose.model("Job", jobsSchema);
+const Job = mongoose.model("Job", jobSchema);
 
 export default Job;

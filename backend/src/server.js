@@ -10,6 +10,7 @@ import employeeRouter from "./modules/employees/employee.routes.js";
 import districtRouter from "./modules/districts/district.route.js";
 import regionRouter from "./modules/region/region.routes.js";
 import customerRouter from "./modules/customers/customer.routes.js";
+import jobRouter from "./modules/jobs/jobs.routes.js";
 import errorMiddleware from "./middlewares/error.middleware.js";
 import jobPhotoRouter from "./modules/jobPhotos/jobPhotos.route.js";
 import { initCronJobs } from "./config/cronJobs.js";
@@ -38,6 +39,7 @@ app.use("/api/v1/districts", districtRouter);
 app.use("/api/v1/regions", regionRouter);
 app.use("/api/v1/customers", customerRouter);
 app.use("/api/v1/photos", jobPhotoRouter);
+app.use("/api/v1/jobs", jobRouter);
 
 app.use(errorMiddleware);
 

@@ -1,0 +1,67 @@
+export const JOB_STATUS = {
+  PENDING: "PENDING",
+  ASSIGNED: "ASSIGNED",
+  ACCEPTED: "ACCEPTED",
+  IN_PROGRESS: "IN_PROGRESS",
+  ON_HOLD: "ON_HOLD",
+  COMPLETED: "COMPLETED",
+  VERIFIED: "VERIFIED",
+  APPROVED: "APPROVED",
+  CLOSED: "CLOSED",
+  REJECTED: "REJECTED",
+};
+
+// Valid status transitions
+// Key = current status, Value = array of allowed next statuses
+export const VALID_STATUS_TRANSITIONS = {
+  [JOB_STATUS.PENDING]: [JOB_STATUS.ASSIGNED, JOB_STATUS.CLOSED],
+  [JOB_STATUS.ASSIGNED]: [
+    JOB_STATUS.ACCEPTED,
+    JOB_STATUS.REASSIGNED,
+    JOB_STATUS.CLOSED,
+  ],
+  [JOB_STATUS.ACCEPTED]: [
+    JOB_STATUS.IN_PROGRESS,
+    JOB_STATUS.ON_HOLD,
+    JOB_STATUS.REASSIGNED,
+  ],
+  [JOB_STATUS.IN_PROGRESS]: [
+    JOB_STATUS.COMPLETED,
+    JOB_STATUS.ON_HOLD,
+    JOB_STATUS.REASSIGNED,
+  ],
+  [JOB_STATUS.ON_HOLD]: [JOB_STATUS.IN_PROGRESS, JOB_STATUS.REASSIGNED],
+  [JOB_STATUS.COMPLETED]: [JOB_STATUS.VERIFIED, JOB_STATUS.REJECTED],
+  [JOB_STATUS.VERIFIED]: [JOB_STATUS.APPROVED, JOB_STATUS.REJECTED],
+  [JOB_STATUS.APPROVED]: [JOB_STATUS.CLOSED],
+  [JOB_STATUS.REJECTED]: [JOB_STATUS.REASSIGNED, JOB_STATUS.CLOSED],
+  [JOB_STATUS.CLOSED]: [], // Terminal state
+};
+
+// Status labels for UI
+export const STATUS_LABELS = {
+  [JOB_STATUS.PENDING]: "Pending",
+  [JOB_STATUS.ASSIGNED]: "Assigned",
+  [JOB_STATUS.ACCEPTED]: "Accepted",
+  [JOB_STATUS.IN_PROGRESS]: "In Progress",
+  [JOB_STATUS.ON_HOLD]: "On Hold",
+  [JOB_STATUS.COMPLETED]: "Completed",
+  [JOB_STATUS.VERIFIED]: "Verified",
+  [JOB_STATUS.APPROVED]: "Approved",
+  [JOB_STATUS.CLOSED]: "Closed",
+  [JOB_STATUS.REJECTED]: "Rejected",
+};
+
+// Status colors for UI
+export const STATUS_COLORS = {
+  [JOB_STATUS.PENDING]: "bg-slate-100 text-slate-600",
+  [JOB_STATUS.ASSIGNED]: "bg-blue-50 text-blue-700",
+  [JOB_STATUS.ACCEPTED]: "bg-indigo-50 text-indigo-700",
+  [JOB_STATUS.IN_PROGRESS]: "bg-amber-50 text-amber-700",
+  [JOB_STATUS.ON_HOLD]: "bg-orange-50 text-orange-700",
+  [JOB_STATUS.COMPLETED]: "bg-cyan-50 text-cyan-700",
+  [JOB_STATUS.VERIFIED]: "bg-violet-50 text-violet-700",
+  [JOB_STATUS.APPROVED]: "bg-emerald-50 text-emerald-700",
+  [JOB_STATUS.CLOSED]: "bg-gray-100 text-gray-600",
+  [JOB_STATUS.REJECTED]: "bg-red-50 text-red-700",
+};
