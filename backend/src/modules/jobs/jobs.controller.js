@@ -64,7 +64,6 @@ export const createJob = asyncHandler(async (req, res) => {
 
   const atm = await ATM.findById(atmId);
   if (!atm || atm.isDeleted) throw new ApiError(404, "ATM not found");
-
   if (customerId) {
     const customer = await User.findOne({
       _id: customerId,
@@ -77,6 +76,7 @@ export const createJob = asyncHandler(async (req, res) => {
 
   const job = await Job.create({
     jobId,
+    jobNumber: jobId,
     title,
     description,
     atmId,
@@ -99,7 +99,7 @@ export const createJob = asyncHandler(async (req, res) => {
 
   const populatedJob = await Job.findById(job._id)
     .populate("atmId", "atmId locationName bank address districtId regionId")
-    .populate("complaintId", "complaintNumber title")
+    // .populate("complaintId", "complaintNumber title")
     .populate("createdBy", "firstName lastName");
 
   return res

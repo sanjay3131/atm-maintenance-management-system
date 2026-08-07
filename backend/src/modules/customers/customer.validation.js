@@ -6,9 +6,9 @@ export const createCustomerSchema = z.object({
   email: z.string().email("Invalid email").toLowerCase(),
   password: z.string().min(8, "Password must be at least 8 characters"),
   phoneNumber: z.string().min(10, "Phone number is required"),
-  customerName: z.string().min(1, "Customer name is required"),
+  customerName: z.string().min(1, "Customer name is required").optional(),
   customerPhone: z.string().optional(),
-  bankName: z.string().optional(),
+  bankName: z.string().min(1, "Bank name is required"),
   atmIds: z.array(z.string()).optional(),
   districtIds: z.array(z.string()).optional(),
 });

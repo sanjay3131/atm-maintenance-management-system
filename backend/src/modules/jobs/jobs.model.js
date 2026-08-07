@@ -8,6 +8,12 @@ const jobSchema = new mongoose.Schema(
       unique: true,
       required: true,
     },
+    jobNumber: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+    },
     title: {
       type: String,
       required: true,
