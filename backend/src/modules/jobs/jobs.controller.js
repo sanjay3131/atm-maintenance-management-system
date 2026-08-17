@@ -606,7 +606,7 @@ export const getAllJobs = asyncHandler(async (req, res) => {
   const jobs = await Job.find(query)
     .populate("atmId", "atmId locationName bank address districtId regionId")
     .populate("assignedEmployeeId", "firstName lastName employeeCode")
-    .populate("complaintId", "complaintNumber title")
+    // .populate("complaintId", "complaintNumber title")
     .populate("customerId", "firstName lastName")
     .populate("createdBy", "firstName lastName")
     .sort({ createdAt: -1 })
