@@ -7,8 +7,8 @@ import rateLimit from "express-rate-limit";
 import { fileURLToPath } from "url";
 import path from "path";
 
-import { connectDb } from "./config/database.js";
-import { initCronJobs } from "./utils/cronJobs.js";
+import connectDb from "./config/db.js";
+import { initCronJobs } from "./config/cronJobs.js";
 
 // Import all routers
 import userRouter from "./modules/users/user.routes.js";
@@ -16,14 +16,13 @@ import authRouter from "./modules/auth/auth.routes.js";
 import employeeRouter from "./modules/employees/employee.routes.js";
 import customerRouter from "./modules/customers/customer.routes.js";
 import atmRouter from "./modules/atms/atm.routes.js";
-import districtRouter from "./modules/districts/district.routes.js";
+import districtRouter from "./modules/districts/district.route.js";
 import regionRouter from "./modules/region/region.routes.js";
 import jobRouter from "./modules/jobs/jobs.routes.js";
 import jobPhotoRouter from "./modules/jobPhotos/jobPhotos.route.js";
 import complaintRouter from "./modules/complaints/complaints.route.js";
 
-import { errorMiddleware } from "./middlewares/error.middleware.js";
-import { sanitizeInput } from "./middlewares/sanitize.middleware.js";
+import errorMiddleware from "./middlewares/error.middleware.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -103,7 +102,6 @@ app.use("/api/v1/auth/forgot-password", authLimiter);
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
-app.use(sanitizeInput);
 
 // ============================================
 // ROUTES
@@ -121,23 +119,19 @@ app.use("/api/v1/complaints", complaintRouter);
 
 // Health check
 app.get("/health", (req, res) => {
-  res
-    .status(200)
-    .json({
-      success: true,
-      message: "Server is running",
-      timestamp: new Date().toISOString(),
-    });
+  res.status(200).json({
+    success: true,
+    message: "Server is running",
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // 404 handler
 app.use((req, res, next) => {
-  res
-    .status(404)
-    .json({
-      success: false,
-      message: `Route ${req.method} ${req.originalUrl} not found`,
-    });
+  res.status(404).json({
+    success: false,
+    message: `Route ${req.method} ${req.originalUrl} not found`,
+  });
 });
 
 // Error middleware
