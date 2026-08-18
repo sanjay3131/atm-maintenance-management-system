@@ -94,7 +94,7 @@ export const getAllCustomers = asyncHandler(async (req, res) => {
   }
 
   const customers = await Customer.find({ isDeleted: false })
-    .populate("userId", "firstName lastName email phoneNumber status")
+    .populate("userId", "firstName lastName email phoneNumber status userType")
     .populate("atmIds", "atmId locationName bank")
     .populate("districtIds", "districtName")
     .sort({ createdAt: -1 });
