@@ -21,6 +21,8 @@ import regionRouter from "./modules/region/region.routes.js";
 import jobRouter from "./modules/jobs/jobs.routes.js";
 import jobPhotoRouter from "./modules/jobPhotos/jobPhotos.route.js";
 import complaintRouter from "./modules/complaints/complaints.route.js";
+import dashboardRouter from "./modules/dashboard/dashboard.routes.js";
+import bankRouter from "./modules/banks/bank.routes.js";
 
 import errorMiddleware from "./middlewares/error.middleware.js";
 
@@ -116,6 +118,8 @@ app.use("/api/v1/regions", regionRouter);
 app.use("/api/v1/jobs", jobRouter);
 app.use("/api/v1/photos", jobPhotoRouter);
 app.use("/api/v1/complaints", complaintRouter);
+app.use("/api/v1/dashboard", dashboardRouter);
+app.use("/api/v1/banks", bankRouter);
 
 // Health check
 app.get("/health", (req, res) => {
