@@ -2,30 +2,16 @@ import mongoose from "mongoose";
 
 const notificationSchema = new mongoose.Schema(
   {
-    //     userId ObjectId
-    // jobId ObjectId (nullable)
-    // complaintId ObjectId (nullable)
-    // title String
-    // message String
-    // type [JOB_ASSIGNED,JOB_COMPLETED,JOB_VERIFIED,JOB_REJECTED,COMPLAINT_CREATED,SYSTEM]
-    // isRead Boolean
-    // readAt Date
-    // createdAt Date
-
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      index: true,
     },
-    jobId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Job",
-      default: null,
-    },
-    complaintId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Complaint",
-      default: null,
+    type: {
+      type: String,
+      enum: ["amc_overdue", "amc_completed", "amc_generated", "system"],
+      required: true,
     },
     title: {
       type: String,
@@ -37,17 +23,9 @@ const notificationSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    type: {
-      type: String,
-      enum: [
-        "JOB_ASSIGNED",
-        "JOB_COMPLETED",
-        "JOB_VERIFIED",
-        "JOB_REJECTED",
-        "COMPLAINT_CREATED",
-        "SYSTEM",
-      ],
-      required: true,
+    data: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
     },
     isRead: {
       type: Boolean,
@@ -58,7 +36,16 @@ const notificationSchema = new mongoose.Schema(
       default: null,
     },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+  },
 );
 
+// Indexes
+notificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 });
+notificationSchema.index({ type: 1, createdAt: -1 });
+notificationSchema.index({ "data.amcId": 1, type: 1 }, { sparse: true });
+
 const Notification = mongoose.model("Notification", notificationSchema);
+
+export default Notification;

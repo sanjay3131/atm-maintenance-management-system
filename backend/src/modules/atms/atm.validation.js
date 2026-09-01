@@ -13,15 +13,17 @@ export const createAtmSchema = z.object({
       message: "Installation type must be either ONSITE or OFFSITE",
     }),
   }),
-  location: z.object({
-    type: z.literal("Point"),
-    coordinates: z
-      .array(z.number())
-      .length(
-        2,
-        "Coordinates must be an array of two numbers [longitude, latitude]",
-      ),
-  }),
+  location: z
+    .object({
+      type: z.literal("Point"),
+      coordinates: z
+        .array(z.number())
+        .length(
+          2,
+          "Coordinates must be an array of two numbers [longitude, latitude]",
+        ),
+    })
+    .optional(),
   status: z
     .enum(["ACTIVE", "INACTIVE", "UNDER_MAINTENANCE", "REMOVED"], {
       errorMap: () => ({ message: "Status must be either ACTIVE or INACTIVE" }),

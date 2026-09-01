@@ -23,6 +23,10 @@ import jobPhotoRouter from "./modules/jobPhotos/jobPhotos.route.js";
 import complaintRouter from "./modules/complaints/complaints.route.js";
 import dashboardRouter from "./modules/dashboard/dashboard.routes.js";
 import bankRouter from "./modules/banks/bank.routes.js";
+import amcRouter from "./modules/amc/amc.routes.js";
+import amcPhotoRouter from "./modules/amcPhotos/amcPhoto.routes.js";
+import notificationRouter from "./modules/notifications/notification.routes.js";
+import supervisorRouter from "./modules/supervisor/supervisor.routes.js";
 
 import errorMiddleware from "./middlewares/error.middleware.js";
 
@@ -120,6 +124,10 @@ app.use("/api/v1/photos", jobPhotoRouter);
 app.use("/api/v1/complaints", complaintRouter);
 app.use("/api/v1/dashboard", dashboardRouter);
 app.use("/api/v1/banks", bankRouter);
+app.use("/api/v1/amc", amcRouter);
+app.use("/api/v1/amc-photos", amcPhotoRouter);
+app.use("/api/v1/notifications", notificationRouter);
+app.use("/api/v1/supervisor", supervisorRouter);
 
 // Health check
 app.get("/health", (req, res) => {
