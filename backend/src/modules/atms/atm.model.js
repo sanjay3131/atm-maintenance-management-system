@@ -58,8 +58,29 @@ const atmSchema = new mongoose.Schema(
       },
       coordinates: {
         type: [Number], // [longitude, latitude]
-        required: true,
+        required: false,
+        default: null,
       },
+    },
+
+    // GPS capture metadata
+    locationConfigured: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    locationCapturedAt: {
+      type: Date,
+      default: null,
+    },
+    locationCapturedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    locationAccuracy: {
+      type: Number,
+      default: null,
     },
 
     status: {
@@ -105,6 +126,7 @@ atmSchema.index({ districtId: 1 });
 atmSchema.index({ regionId: 1 });
 atmSchema.index({ assignedEmployeeId: 1 });
 atmSchema.index({ location: "2dsphere" });
+atmSchema.index({ locationConfigured: 1 });
 
 const ATM = mongoose.model("ATM", atmSchema);
 

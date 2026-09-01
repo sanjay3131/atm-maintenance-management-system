@@ -55,6 +55,12 @@ const employeeSchema = new mongoose.Schema(
         ref: "Region",
       },
     ],
+    supervisorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -78,6 +84,8 @@ const employeeSchema = new mongoose.Schema(
 employeeSchema.index({ userId: 1 });
 
 employeeSchema.index({ status: 1 });
+
+employeeSchema.index({ supervisorId: 1 });
 
 const Employee = mongoose.model("Employee", employeeSchema);
 
