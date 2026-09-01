@@ -3,10 +3,10 @@ import Employee from "../employees/employee.model.js";
 import ATM from "../atms/atm.model.js";
 import User from "../users/user.model.js";
 import { AMC_CONFIG, AMC_STATUS } from "./amc.config.js";
-import { validateChecklist } from "../../utils/amcChecklist.js";
+import { validateChecklist } from "./amcChecklist.js";
 import { validateGpsProximity } from "../../utils/haversine.js";
 import ApiError from "../../utils/ApiError.js";
-
+import Notification from "../notification/notification.model.js";
 /**
  * Generate AMC ID: AMC-YYYY-MM-NNN
  */

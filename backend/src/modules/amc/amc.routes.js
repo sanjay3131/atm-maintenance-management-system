@@ -11,6 +11,9 @@ import {
   getAllAMC,
   getAMCDashboard,
   getEmployeeAMCSummary,
+  downloadAMCReport,
+  downloadAMCPhotoZip,
+  downloadBulkAMCZip,
 } from "./amc.controller.js";
 
 const router = Router();
@@ -67,4 +70,17 @@ router.put(
   completeAMC,
 );
 
+router.get("/:id/report", verifyAccessToken, downloadAMCReport);
+router.get(
+  "/:id/download-photos",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  downloadAMCPhotoZip,
+);
+router.get(
+  "/bulk-download",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  downloadBulkAMCZip,
+);
 export default router;

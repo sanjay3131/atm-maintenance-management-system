@@ -1,17 +1,47 @@
 import cron from "node-cron";
 import { cleanupOldPhotos } from "./cloudinaryCleanup.js";
+import {
+  generateMonthlyAMC,
+  markOverdueAMCs,
+} from "../modules/amc/amc.service.js";
+import { AMC_CONFIG } from "../modules/amc/amc.config.js";
 
-/**
- * Initialize all cron jobs
- * Call this in server.js after DB connection
- */
 export const initCronJobs = () => {
-  // Run Cloudinary cleanup every day at 2:00 AM
+  // Cloudinary cleanup — daily at 2:00 AM
   cron.schedule("0 2 * * *", async () => {
     console.log("[Cron] Starting Cloudinary FIFO cleanup...");
     const result = await cleanupOldPhotos();
     console.log("[Cron] Cloudinary cleanup completed:", result);
   });
 
-  console.log("[Cron] Scheduled daily Cloudinary FIFO cleanup at 2:00 AM");
+  // AMC generation — 1st of every month at 1:00 AM
+  cron.schedule(AMC_CONFIG.CRON.GENERATE, async () => {
+    console.log("[Cron] Starting monthly AMC generation...");
+    const now = new Date();
+    try {
+      const result = await generateMonthlyAMC(
+        now.getMonth() + 1,
+        now.getFullYear(),
+        null,
+      );
+      console.log("[Cron] AMC generation completed:", result);
+    } catch (err) {
+      console.error("[Cron] AMC generation failed:", err);
+    }
+  });
+
+  // AMC overdue check — daily at 8:00 AM
+  cron.schedule(AMC_CONFIG.CRON.OVERDUE_CHECK, async () => {
+    console.log("[Cron] Starting AMC overdue check...");
+    try {
+      const result = await markOverdueAMCs();
+      console.log("[Cron] AMC overdue check completed:", result);
+    } catch (err) {
+      console.error("[Cron] AMC overdue check failed:", err);
+    }
+  });
+
+  console.log(
+    "[Cron] Scheduled jobs: Cloudinary cleanup (2AM), AMC generation (1st @ 1AM), AMC overdue check (8AM)",
+  );
 };

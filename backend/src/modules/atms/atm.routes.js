@@ -6,6 +6,8 @@ import {
   getAllATMs,
   getATMById,
   updateATM,
+  setATMLocation,
+  getATMLocationStatus,
 } from "./atm.controller.js";
 import {
   createAtmSchema,
@@ -64,5 +66,20 @@ router.patch(
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin"),
   assignEmployeeToATM,
+);
+// Employee sets ATM location
+router.post(
+  "/:id/set-location",
+  verifyAccessToken,
+  authorizeRoles("employee"),
+  setATMLocation,
+);
+
+// Admin views location status
+router.get(
+  "/location-status",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  getATMLocationStatus,
 );
 export default router;

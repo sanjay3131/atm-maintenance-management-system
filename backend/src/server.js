@@ -25,7 +25,7 @@ import dashboardRouter from "./modules/dashboard/dashboard.routes.js";
 import bankRouter from "./modules/banks/bank.routes.js";
 import amcRouter from "./modules/amc/amc.routes.js";
 import amcPhotoRouter from "./modules/amcPhotos/amcPhoto.routes.js";
-import notificationRouter from "./modules/notifications/notification.routes.js";
+import notificationRouter from "./modules/notification/notification.routes.js";
 import supervisorRouter from "./modules/supervisor/supervisor.routes.js";
 
 import errorMiddleware from "./middlewares/error.middleware.js";

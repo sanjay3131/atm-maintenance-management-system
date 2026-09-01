@@ -12,7 +12,7 @@ import {
   getAmcDashboardStats,
 } from "./amc.service.js";
 import { AMC_STATUS, AMC_CONFIG } from "./amc.config.js";
-import { validateChecklist } from "../../utils/amcChecklist.js";
+import { validateChecklist } from "./amcChecklist.js";
 
 // ============================================
 // 1. MANUAL GENERATE AMC
@@ -501,4 +501,80 @@ export const getEmployeeAMCSummary = asyncHandler(async (req, res) => {
         "Employee AMC summary",
       ),
     );
+});
+
+// ============================================
+// 10. DOWNLOAD AMC PDF REPORT
+// ============================================
+export const downloadAMCReport = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const amc = await AMC.findById(id);
+  if (!amc || amc.isDeleted) throw new ApiError(404, "AMC not found");
+
+  // Authorization
+  const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
+  const isSupervisor = req.user.userType === "supervisor";
+  const isCustomer = req.user.userType === "customer";
+
+  if (isCustomer && amc.customerId?.toString() !== req.user._id.toString()) {
+    throw new ApiError(403, "Access denied");
+  }
+
+  if (isSupervisor) {
+    const Employee = (await import("../employees/employee.model.js")).default;
+    const supervised = await Employee.findOne({
+      supervisorId: req.user._id,
+      userId: amc.employeeId,
+    });
+    if (!supervised) throw new ApiError(403, "Access denied");
+  }
+
+  const { generateAMCPDF } = await import("../reports/amcReport.service.js");
+  const { buffer, filename } = await generateAMCPDF(id);
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(buffer);
+});
+
+// ============================================
+// 11. DOWNLOAD AMC PHOTO ZIP
+// ============================================
+export const downloadAMCPhotoZip = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const amc = await AMC.findById(id);
+  if (!amc || amc.isDeleted) throw new ApiError(404, "AMC not found");
+
+  const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
+  if (!isAdmin) throw new ApiError(403, "Admin only");
+
+  const { generateAMCPhotoZip } =
+    await import("../reports/amcReport.service.js");
+  const { buffer, filename } = await generateAMCPhotoZip(id);
+
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(buffer);
+});
+
+// ============================================
+// 12. BULK DOWNLOAD AMC ZIP
+// ============================================
+export const downloadBulkAMCZip = asyncHandler(async (req, res) => {
+  const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
+  if (!isAdmin) throw new ApiError(403, "Admin only");
+
+  const { month, year } = req.query;
+  if (!month || !year) throw new ApiError(400, "Month and year required");
+
+  const { generateBulkAMCZip } =
+    await import("../reports/amcReport.service.js");
+  const { buffer, filename } = await generateBulkAMCZip(
+    parseInt(month),
+    parseInt(year),
+  );
+
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(buffer);
 });

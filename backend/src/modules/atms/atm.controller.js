@@ -46,7 +46,7 @@ export const createATM = asyncHandler(async (req, res) => {
 // view all atm
 export const getAllATMs = asyncHandler(async (req, res) => {
   const atms = await ATM.find({ isDeleted: false })
-    // .populate("bankId", "name")
+    .populate("bankId", "name")
     .populate("districtId", "districtName")
     .populate("regionId", "name")
     .populate("assignedEmployeeId", "employeeCode firstName lastName");
@@ -60,7 +60,7 @@ export const getAllATMs = asyncHandler(async (req, res) => {
 
 export const getATMById = asyncHandler(async (req, res) => {
   const atm = await ATM.findById(req.params.id)
-    // .populate("bankId", "name")
+    .populate("bankId", "name")
     .populate("districtId", "districtName")
     .populate("regionId", "name")
     .populate("assignedEmployeeId", "employeeCode firstName lastName");
@@ -159,4 +159,121 @@ export const assignEmployeeToATM = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, atm, "ATM assigned to employee successfully"));
+});
+
+// ============================================
+// SET ATM LOCATION (Employee)
+// ============================================
+export const setATMLocation = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { latitude, longitude, accuracy } = req.body;
+
+  if (req.user.userType !== "employee") {
+    throw new ApiError(403, "Only employees can set ATM location");
+  }
+
+  const atm = await ATM.findById(id);
+  if (!atm || atm.isDeleted) throw new ApiError(404, "ATM not found");
+
+  // Verify employee is assigned to this ATM
+  const employee = await Employee.findOne({ userId: req.user._id });
+  if (!employee) throw new ApiError(404, "Employee not found");
+
+  const assignedAtmIds = (employee.assignedAtmIds || []).map((id) =>
+    id.toString(),
+  );
+  if (!assignedAtmIds.includes(id)) {
+    throw new ApiError(403, "You are not assigned to this ATM");
+  }
+
+  // If already configured, block (admin can override via updateATM)
+  if (atm.locationConfigured) {
+    throw new ApiError(
+      400,
+      "ATM location already configured. Contact admin to reset.",
+    );
+  }
+
+  // Validate coordinates
+  if (typeof latitude !== "number" || typeof longitude !== "number") {
+    throw new ApiError(400, "Invalid coordinates");
+  }
+
+  if (accuracy && accuracy > 50) {
+    throw new ApiError(
+      400,
+      "GPS accuracy is too low. Please move to an open area and try again.",
+    );
+  }
+
+  atm.location = {
+    type: "Point",
+    coordinates: [longitude, latitude],
+  };
+  atm.locationConfigured = true;
+  atm.locationCapturedAt = new Date();
+  atm.locationCapturedBy = req.user._id;
+  atm.locationAccuracy = accuracy || null;
+  atm.updatedBy = req.user._id;
+
+  await atm.save();
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, atm, "ATM location configured successfully"));
+});
+
+// ============================================
+// GET ATM LOCATION STATUS (Admin)
+// ============================================
+export const getATMLocationStatus = asyncHandler(async (req, res) => {
+  const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
+  if (!isAdmin) throw new ApiError(403, "Access denied");
+
+  const { configured, page = 1, limit = 20 } = req.query;
+
+  const query = { isDeleted: false };
+  if (configured !== undefined) {
+    query.locationConfigured = configured === "true";
+  }
+
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+
+  const [atms, total] = await Promise.all([
+    ATM.find(query)
+      .populate("districtId", "districtName")
+      .populate("bankId", "bankName")
+      .populate("locationCapturedBy", "firstName lastName")
+      .populate("assignedEmployeeId", "employeeCode firstName lastName")
+      .sort({ locationConfigured: 1, createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit)),
+    ATM.countDocuments(query),
+  ]);
+
+  const stats = {
+    total: await ATM.countDocuments({ isDeleted: false }),
+    configured: await ATM.countDocuments({
+      isDeleted: false,
+      locationConfigured: true,
+    }),
+    notConfigured: await ATM.countDocuments({
+      isDeleted: false,
+      locationConfigured: false,
+    }),
+  };
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        {
+          atms,
+          stats,
+          pagination: { page: parseInt(page), limit: parseInt(limit), total },
+        },
+        "ATM location status fetched",
+      ),
+    );
 });

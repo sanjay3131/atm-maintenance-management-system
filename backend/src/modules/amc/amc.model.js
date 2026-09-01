@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { AMC_STATUS } from "../../utils/amcChecklist.js";
+import { AMC_STATUS } from "./amc.config.js";
 
 const amcSchema = new mongoose.Schema(
   {
