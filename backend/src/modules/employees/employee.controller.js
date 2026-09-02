@@ -6,6 +6,7 @@ import User from "../users/user.model.js";
 import Employee from "./employee.model.js";
 import { generateEmployeeCode } from "./employee.utils.js";
 import ApiError from "../../utils/ApiError.js";
+import ATM from "../atms/atm.model.js";
 
 export const createEmployee = asyncHandler(async (req, res) => {
   const isAdmin =
@@ -146,22 +147,48 @@ export const assignAtms = asyncHandler(async (req, res) => {
   const { employeeId } = req.params;
   const { assignedAtmIds } = req.body;
 
+  if (!Array.isArray(assignedAtmIds) || assignedAtmIds.length === 0) {
+    throw new ApiError(400, "assignedAtmIds must be a non-empty array");
+  }
+
+  const uniqueAtmIds = [...new Set(assignedAtmIds.map(String))];
+
   const employee = await Employee.findById(employeeId);
+
   if (!employee) {
     throw new ApiError(404, "Employee not found");
   }
 
-  const existingAtmIds = (employee.assignedAtmIds || []).map((id) =>
-    id.toString(),
-  );
-  const incomingAtmIds = (assignedAtmIds || []).map((id) => id.toString());
-  const mergedAtmIds = Array.from(
-    new Set([...existingAtmIds, ...incomingAtmIds]),
-  );
+  // Verify all ATMs exist
+  const atms = await ATM.find({
+    _id: { $in: uniqueAtmIds },
+  }).select("_id");
 
-  employee.assignedAtmIds = mergedAtmIds;
+  if (atms.length !== uniqueAtmIds.length) {
+    throw new ApiError(404, "One or more ATMs not found");
+  }
+
+  // Add ATMs to employee
+  employee.assignedAtmIds = [
+    ...new Set([
+      ...(employee.assignedAtmIds || []).map(String),
+      ...uniqueAtmIds,
+    ]),
+  ];
 
   await employee.save();
+
+  // Add employee to all ATMs
+  await ATM.updateMany(
+    {
+      _id: { $in: uniqueAtmIds },
+    },
+    {
+      $addToSet: {
+        assignedEmployeeIds: employee._id,
+      },
+    },
+  );
 
   return res
     .status(200)

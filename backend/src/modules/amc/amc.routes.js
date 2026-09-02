@@ -46,11 +46,19 @@ router.get(
   getAMCDashboard,
 );
 
+router.get("/my-amc", verifyAccessToken, authorizeRoles("employee"), getMyAMC);
+
+router.get(
+  "/bulk-download",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  downloadBulkAMCZip,
+);
+
 // Shared (role enforcement in controller)
 router.get("/:id", verifyAccessToken, getAMCById);
 
 // Employee only
-router.get("/my-amc", verifyAccessToken, authorizeRoles("employee"), getMyAMC);
 router.put(
   "/:id/start",
   verifyAccessToken,
@@ -77,10 +85,5 @@ router.get(
   authorizeRoles("admin", "superAdmin"),
   downloadAMCPhotoZip,
 );
-router.get(
-  "/bulk-download",
-  verifyAccessToken,
-  authorizeRoles("admin", "superAdmin"),
-  downloadBulkAMCZip,
-);
+
 export default router;

@@ -4,7 +4,7 @@ import ApiError from "../../utils/ApiError.js";
 import cloudinary from "../../config/cloudinary.js";
 import AMCPhoto from "./amcPhoto.model.js";
 import AMC from "../amc/amc.model.js";
-import { AMC_CONFIG } from "../amc/amc.config.js";
+import { AMC_CONFIG, AMC_STATUS } from "../amc/amc.config.js";
 
 export const uploadAMCPhotos = asyncHandler(async (req, res) => {
   const { amcId } = req.params;

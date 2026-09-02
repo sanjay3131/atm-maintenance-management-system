@@ -29,8 +29,7 @@ const amcSchema = new mongoose.Schema(
     },
     customerId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
+      ref: "Customer",
     },
     bankId: {
       type: mongoose.Schema.Types.ObjectId,

@@ -63,8 +63,14 @@ export const getATMById = asyncHandler(async (req, res) => {
     .populate("bankId", "name")
     .populate("districtId", "districtName")
     .populate("regionId", "name")
-    .populate("assignedEmployeeId", "employeeCode firstName lastName");
-
+    .populate({
+      path: "assignedEmployeeId",
+      select: "employeeCode userId",
+      populate: {
+        path: "userId",
+        select: "firstName lastName phoneNumber email",
+      },
+    });
   if (!atm || atm.isDeleted) {
     throw new ApiError(404, "ATM not found");
   }
@@ -263,17 +269,15 @@ export const getATMLocationStatus = asyncHandler(async (req, res) => {
     }),
   };
 
-  return res
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        {
-          atms,
-          stats,
-          pagination: { page: parseInt(page), limit: parseInt(limit), total },
-        },
-        "ATM location status fetched",
-      ),
-    );
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        atms,
+        stats,
+        pagination: { page: parseInt(page), limit: parseInt(limit), total },
+      },
+      "ATM location status fetched",
+    ),
+  );
 });
