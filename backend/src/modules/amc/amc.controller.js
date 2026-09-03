@@ -13,6 +13,8 @@ import {
 } from "./amc.service.js";
 import { AMC_STATUS, AMC_CONFIG } from "./amc.config.js";
 import { validateChecklist } from "./amcChecklist.js";
+import Notification from "../notification/notification.model.js";
+import User from "../users/user.model.js";
 
 // ============================================
 // 1. MANUAL GENERATE AMC
@@ -274,8 +276,7 @@ export const completeAMC = asyncHandler(async (req, res) => {
   await amc.save();
 
   // Notify admin
-  const Notification = (await import("../notifications/notification.model.js"))
-    .default;
+
   const admins = await User.find({
     userType: { $in: ["admin", "superAdmin"] },
     status: "active",
