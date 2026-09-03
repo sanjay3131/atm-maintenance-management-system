@@ -8,6 +8,7 @@ import Job from "../jobs/jobs.model.js";
 import AMC from "../amc/amc.model.js";
 import { AMC_STATUS } from "../amc/amc.config.js";
 import { JOB_STATUS } from "../../utils/jobStatus.js";
+import mongoose from "mongoose";
 
 // ============================================
 // GET SUPERVISED EMPLOYEES
