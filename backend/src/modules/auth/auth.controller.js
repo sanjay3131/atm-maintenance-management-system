@@ -170,22 +170,39 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 const logoutUser = asyncHandler(async (req, res) => {
   const refreshToken = req.cookies?.refreshToken;
 
-  if (refreshToken) {
-    await User.findOneAndUpdate(
-      { refreshToken },
+  if (!refreshToken) {
+    return res
+      .status(200)
+      .clearCookie("accessToken")
+      .clearCookie("refreshToken")
+      .json(new ApiResponse(200, {}, "User logged out successfully"));
+  }
+
+  try {
+    const decodedToken = verifyRefreshToken(refreshToken);
+
+    await User.findByIdAndUpdate(
+      decodedToken.id,
       {
         $set: {
           refreshToken: null,
         },
       },
+      {
+        new: true,
+      },
     );
+  } catch (error) {
+    // Invalid/expired refresh token.
+    // Still clear the client's cookies.
   }
 
-  res.clearCookie("refreshToken", cookieOptions);
-
-  return res.status(200).json(new ApiResponse(200, {}, "Logout successful"));
+  return res
+    .status(200)
+    .clearCookie("accessToken")
+    .clearCookie("refreshToken")
+    .json(new ApiResponse(200, {}, "User logged out successfully"));
 });
-
 /**
  * Current User
  */

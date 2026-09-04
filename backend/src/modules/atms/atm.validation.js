@@ -5,7 +5,7 @@ import ApiError from "../../utils/ApiError.js";
 export const createAtmSchema = z.object({
   bankId: z.string().trim().min(1, "Bank ID is required"),
   districtId: z.string().trim().min(1, "District ID is required"),
-  regionId: z.string().trim().optional(),
+  regionId: z.string().trim().min(1, "Region ID is required"),
   locationName: z.string().trim().min(1, "Location name is required"),
   address: z.string().trim().min(1, "Address is required"),
   installationType: z.enum(["ONSITE", "OFFSITE"], {

@@ -5,6 +5,7 @@ import Job from "./jobs.model.js";
 import JobHistory from "./jobHistory.model.js";
 import ATM from "../atms/atm.model.js";
 import User from "../users/user.model.js";
+import Bank from "../banks/bank.model.js";
 import { validateGpsProximity } from "../../utils/haversine.js";
 import { JOB_STATUS, VALID_STATUS_TRANSITIONS } from "../../utils/jobStatus.js";
 import { deleteJobPhotos } from "../../config/cloudinaryCleanup.js";
@@ -246,6 +247,12 @@ export const completeJob = asyncHandler(async (req, res) => {
   const atm = await ATM.findById(job.atmId);
   if (!atm) throw new ApiError(404, "ATM not found");
 
+  if (!atm.locationConfigured || !atm.location?.coordinates) {
+    throw new ApiError(
+      400,
+      "ATM location is not configured. Please configure the ATM location before completing this job.",
+    );
+  }
   const { latitude, longitude, accuracy } = gps;
   const { isValid, distance } = validateGpsProximity(
     latitude,
@@ -594,11 +601,30 @@ export const getAllJobs = asyncHandler(async (req, res) => {
   }
 
   if (bank && isAdmin) {
-    const atms = await ATM.find({
-      bank: { $regex: bank, $options: "i" },
+    // Find banks matching the search term
+    const matchingBanks = await Bank.find({
+      $or: [
+        { bankName: { $regex: bank, $options: "i" } },
+        { bankCode: { $regex: bank, $options: "i" } },
+      ],
     }).select("_id");
+
+    const bankIds = matchingBanks.map((b) => b._id.toString());
+
+    // Find ATMs linked to those banks
+    const atms = await ATM.find({
+      bankId: { $in: bankIds },
+      isDeleted: false,
+    }).select("_id");
+
     const atmIds = atms.map((a) => a._id.toString());
-    query.atmId = { $in: atmIds };
+
+    if (atmIds.length > 0) {
+      query.atmId = { $in: atmIds };
+    } else {
+      // No matching ATMs — return empty result
+      query.atmId = { $in: [] };
+    }
   }
 
   const skip = (parseInt(page) - 1) * parseInt(limit);

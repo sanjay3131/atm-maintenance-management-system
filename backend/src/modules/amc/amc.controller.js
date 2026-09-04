@@ -15,6 +15,7 @@ import { AMC_STATUS, AMC_CONFIG } from "./amc.config.js";
 import { validateChecklist } from "./amcChecklist.js";
 import Notification from "../notification/notification.model.js";
 import User from "../users/user.model.js";
+import mongoose from "mongoose";
 
 // ============================================
 // 1. MANUAL GENERATE AMC
