@@ -46,7 +46,7 @@ export const createATM = asyncHandler(async (req, res) => {
 // view all atm
 export const getAllATMs = asyncHandler(async (req, res) => {
   const atms = await ATM.find({ isDeleted: false })
-    .populate("bankId", "name")
+    .populate("bankId", "bankName")
     .populate("districtId", "districtName")
     .populate("regionId", "name")
     .populate("assignedEmployeeId", "employeeCode firstName lastName");
@@ -60,7 +60,7 @@ export const getAllATMs = asyncHandler(async (req, res) => {
 
 export const getATMById = asyncHandler(async (req, res) => {
   const atm = await ATM.findById(req.params.id)
-    .populate("bankId", "name")
+    .populate("bankId", "bankName")
     .populate("districtId", "districtName")
     .populate("regionId", "name")
     .populate({
