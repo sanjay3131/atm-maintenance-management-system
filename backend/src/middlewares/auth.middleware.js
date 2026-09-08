@@ -13,10 +13,7 @@ const verifyAccessToken = asyncHandler(async (req, res, next) => {
     throw new ApiError(401, "Access token is required");
   }
 
-  const decodedToken = jwt.verify(
-    token,
-    process.env.JWT_ACCESS_SECRET || "dev-access-secret",
-  );
+  const decodedToken = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
 
   const user = await User.findById(decodedToken.id).select("-password");
 

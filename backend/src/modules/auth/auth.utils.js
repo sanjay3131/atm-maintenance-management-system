@@ -1,8 +1,8 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-const accessSecret = process.env.JWT_ACCESS_SECRET || "dev-access-secret";
-const refreshSecret = process.env.JWT_REFRESH_SECRET || "dev-refresh-secret";
+const accessSecret = process.env.JWT_ACCESS_SECRET;
+const refreshSecret = process.env.JWT_REFRESH_SECRET;
 
 const hashPassword = async (password) => {
   return bcrypt.hash(password, 10);

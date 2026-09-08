@@ -185,7 +185,7 @@ export const assignAtms = asyncHandler(async (req, res) => {
     },
     {
       $addToSet: {
-        assignedEmployeeIds: employee._id,
+        assignedEmployeeId: employee._id,
       },
     },
   );
