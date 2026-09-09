@@ -94,7 +94,7 @@ export const updateEmployee = asyncHandler(async (req, res) => {
   const employee = await Employee.findByIdAndUpdate(employeeId, req.body, {
     new: true,
     runValidators: true,
-  }).populate("userId", "name email userType");
+  }).populate("userId", "firstName lastName email userType");
 
   if (!employee) {
     return res
@@ -114,7 +114,7 @@ export const viewEmployeeById = asyncHandler(async (req, res) => {
 
   const employee = await Employee.findById(employeeId).populate(
     "userId",
-    "name email userType",
+    "firstName lastName email userType",
   );
 
   if (!employee) {
