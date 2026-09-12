@@ -4,6 +4,7 @@ import ApiError from "../../utils/ApiError.js";
 import cloudinary from "../../config/cloudinary.js";
 import AMCPhoto from "./amcPhoto.model.js";
 import AMC from "../amc/amc.model.js";
+import Customer from "../customers/customer.model.js";
 import { AMC_CONFIG, AMC_STATUS } from "../amc/amc.config.js";
 
 export const uploadAMCPhotos = asyncHandler(async (req, res) => {
@@ -120,22 +121,33 @@ export const getAMCPhotos = asyncHandler(async (req, res) => {
   const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
   const isSupervisor = req.user.userType === "supervisor";
   const isEmployee = amc.employeeId?.toString() === req.user._id.toString();
-  const isCustomer =
-    req.user.userType === "customer" &&
-    amc.customerId?.toString() === req.user._id.toString();
 
-  if (!isAdmin && !isEmployee && !isCustomer) {
-    // Supervisor check
-    if (isSupervisor) {
-      const Employee = (await import("../employees/employee.model.js")).default;
-      const supervised = await Employee.findOne({
-        supervisorId: req.user._id,
-        userId: amc.employeeId,
-      });
-      if (!supervised) throw new ApiError(403, "Access denied");
-    } else {
+  if (req.user.userType === "customer") {
+    const customer = await Customer.findOne({
+      userId: req.user._id,
+      isDeleted: false,
+    });
+    if (!customer || amc.customerId?.toString() !== customer._id.toString()) {
       throw new ApiError(403, "Access denied");
     }
+  }
+
+  if (
+    !isAdmin &&
+    !isEmployee &&
+    !isSupervisor &&
+    req.user.userType !== "customer"
+  ) {
+    throw new ApiError(403, "Access denied");
+  }
+
+  if (isSupervisor) {
+    const Employee = (await import("../employees/employee.model.js")).default;
+    const supervised = await Employee.findOne({
+      supervisorId: req.user._id,
+      userId: amc.employeeId,
+    });
+    if (!supervised) throw new ApiError(403, "Access denied");
   }
 
   const photos = await AMCPhoto.find({ amcId, isExpired: false })
@@ -156,12 +168,15 @@ export const deleteAMCPhoto = asyncHandler(async (req, res) => {
   const amc = await AMC.findById(photo.amcId);
   if (!amc) throw new ApiError(404, "AMC not found");
 
-  // Only admin or uploader can delete
   const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
   const isUploader = photo.uploadedBy.toString() === req.user._id.toString();
 
   if (!isAdmin && !isUploader) {
     throw new ApiError(403, "You can only delete photos you uploaded");
+  }
+
+  if (amc.status === AMC_STATUS.COMPLETED && !isAdmin) {
+    throw new ApiError(400, "AMC is completed. Photos cannot be deleted.");
   }
 
   // Delete from Cloudinary

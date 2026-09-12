@@ -18,8 +18,18 @@ router.post(
   uploadAMCPhotos,
 );
 
-router.get("/:amcId", verifyAccessToken, getAMCPhotos);
+router.get(
+  "/:amcId",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin", "supervisor", "employee", "customer"),
+  getAMCPhotos,
+);
 
-router.delete("/:photoId", verifyAccessToken, deleteAMCPhoto);
+router.delete(
+  "/:photoId",
+  verifyAccessToken,
+  authorizeRoles("employee", "admin", "superAdmin"),
+  deleteAMCPhoto,
+);
 
 export default router;

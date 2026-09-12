@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
 import { authorizeRoles } from "../../middlewares/role.middleware.js";
+import { validateRequest } from "../../middlewares/validate.middleware.js";
+import { completeAMCSchema } from "./amc.validation.js";
 import {
   generateAMC,
   getMyAMC,
@@ -56,7 +58,12 @@ router.get(
 );
 
 // Shared (role enforcement in controller)
-router.get("/:id", verifyAccessToken, getAMCById);
+router.get(
+  "/:id",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin", "supervisor", "employee", "customer"),
+  getAMCById,
+);
 
 // Employee only
 router.put(
@@ -75,10 +82,17 @@ router.put(
   "/:id/complete",
   verifyAccessToken,
   authorizeRoles("employee"),
+  validateRequest(completeAMCSchema),
   completeAMC,
 );
 
-router.get("/:id/report", verifyAccessToken, downloadAMCReport);
+router.get(
+  "/:id/report",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin", "supervisor", "employee", "customer"),
+  downloadAMCReport,
+);
+
 router.get(
   "/:id/download-photos",
   verifyAccessToken,

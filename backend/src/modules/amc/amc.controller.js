@@ -16,6 +16,7 @@ import { validateChecklist } from "./amcChecklist.js";
 import Notification from "../notification/notification.model.js";
 import User from "../users/user.model.js";
 import mongoose from "mongoose";
+import Customer from "../customers/customer.model.js";
 
 // ============================================
 // 1. MANUAL GENERATE AMC
@@ -139,6 +140,10 @@ export const getAMCById = asyncHandler(async (req, res) => {
   const isEmployee = req.user.userType === "employee";
   const isCustomer = req.user.userType === "customer";
 
+  if (!isAdmin && !isSupervisor && !isEmployee && !isCustomer) {
+    throw new ApiError(403, "Access denied");
+  }
+
   if (
     isEmployee &&
     amc.employeeId?._id?.toString() !== req.user._id.toString()
@@ -158,15 +163,24 @@ export const getAMCById = asyncHandler(async (req, res) => {
   }
 
   if (isCustomer) {
-    if (amc.customerId?._id?.toString() !== req.user._id.toString()) {
+    const customer = await Customer.findOne({
+      userId: req.user._id,
+      isDeleted: false,
+    });
+    if (
+      !customer ||
+      amc.customerId?._id?.toString() !== customer._id.toString()
+    ) {
       throw new ApiError(403, "Access denied");
     }
-    // Customer only sees completed AMCs
     if (amc.status !== AMC_STATUS.COMPLETED) {
       throw new ApiError(403, "AMC not yet completed");
     }
   }
 
+  if (!isAdmin && !isSupervisor && !isEmployee && !isCustomer) {
+    throw new ApiError(403, "Access denied");
+  }
   return res.status(200).json(new ApiResponse(200, amc, "AMC fetched"));
 });
 
@@ -242,6 +256,10 @@ export const completeAMC = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { gps, remarks } = req.body;
 
+  if (!gps || typeof gps !== "object") {
+    throw new ApiError(400, "GPS coordinates are required");
+  }
+
   const amc = await AMC.findById(id);
   if (!amc || amc.isDeleted) throw new ApiError(404, "AMC not found");
 
@@ -287,7 +305,7 @@ export const completeAMC = asyncHandler(async (req, res) => {
       userId: admin._id,
       type: "amc_completed",
       title: "AMC Completed",
-      message: `Employee ${req.user.firstName} ${req.user.lastName} completed AMC for ATM ${amc.amcId}.`,
+      message: `Employee ${req.user.firstName} ${req.user.lastName} completed AMC for ATM ${amc.atmId}.`,
       data: { amcId: amc._id, atmId: amc.atmId },
     });
   }
@@ -517,8 +535,23 @@ export const downloadAMCReport = asyncHandler(async (req, res) => {
   const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
   const isSupervisor = req.user.userType === "supervisor";
   const isCustomer = req.user.userType === "customer";
+  const isEmployee = req.user.userType === "employee";
 
-  if (isCustomer && amc.customerId?.toString() !== req.user._id.toString()) {
+  if (isEmployee && amc.employeeId.toString() !== req.user._id.toString()) {
+    throw new ApiError(403, "Access denied");
+  }
+
+  if (isCustomer) {
+    const customer = await Customer.findOne({
+      userId: req.user._id,
+      isDeleted: false,
+    });
+    if (!customer || amc.customerId?.toString() !== customer._id.toString()) {
+      throw new ApiError(403, "Access denied");
+    }
+  }
+
+  if (!isAdmin && !isSupervisor && !isEmployee && !isCustomer) {
     throw new ApiError(403, "Access denied");
   }
 

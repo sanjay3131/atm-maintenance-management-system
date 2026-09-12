@@ -177,12 +177,16 @@ export const getJobPhotos = asyncHandler(async (req, res) => {
   const isAssigned =
     job.assignedEmployeeId?.toString() === req.user._id.toString();
   const isCustomer = req.user.userType === "customer";
+  const isSupervisor = req.user.userType === "supervisor";
 
   if (isCustomer) {
+    if (job.customerId?.toString() !== req.user._id.toString()) {
+      throw new ApiError(403, "Access denied");
+    }
     if (!["VERIFIED", "APPROVED", "CLOSED"].includes(job.status)) {
       throw new ApiError(403, "This job is not yet approved for viewing");
     }
-  } else if (!isAdmin && !isAssigned) {
+  } else if (!isAdmin && !isAssigned && !isSupervisor) {
     throw new ApiError(403, "Access denied");
   }
 
@@ -220,6 +224,16 @@ export const deletePhoto = asyncHandler(async (req, res) => {
 
   if (!isAdmin && !isUploader) {
     throw new ApiError(403, "You can only delete photos you uploaded");
+  }
+
+  if (
+    ["COMPLETED", "VERIFIED", "APPROVED", "CLOSED"].includes(job.status) &&
+    !isAdmin
+  ) {
+    throw new ApiError(
+      400,
+      "Job is already completed. Photos cannot be deleted.",
+    );
   }
 
   // Delete from Cloudinary

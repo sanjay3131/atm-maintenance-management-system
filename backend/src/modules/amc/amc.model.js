@@ -104,6 +104,11 @@ const amcSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    employeeRemarks: {
+      type: String,
+      trim: true,
+      default: "",
+    },
 
     // Photos
     photos: [

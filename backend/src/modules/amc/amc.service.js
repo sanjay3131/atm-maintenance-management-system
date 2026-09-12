@@ -104,6 +104,11 @@ export const markOverdueAMCs = async () => {
     .populate("employeeId", "firstName lastName")
     .populate("atmId", "atmId locationName");
 
+  const admins = await User.find({
+    userType: { $in: ["admin", "superAdmin"] },
+    status: "active",
+  });
+
   const results = { marked: 0, notified: 0 };
 
   for (const amc of overdueAmcs) {
@@ -111,25 +116,18 @@ export const markOverdueAMCs = async () => {
     await amc.save();
     results.marked++;
 
-    // Create admin notification (idempotent check)
     const existingNotification = await Notification.findOne({
-      "data.amcId": amc._id.toString(),
+      "data.amcId": amc._id,
       type: "amc_overdue",
     });
 
     if (!existingNotification) {
       await Notification.create({
-        userId: amc.employeeId._id, // Also notify employee
+        userId: amc.employeeId._id,
         type: "amc_overdue",
         title: "AMC Overdue",
         message: `AMC for ${amc.atmId.locationName} (${amc.atmId.atmId}) is overdue. Deadline was ${amc.deadlineDate.toDateString()}.`,
         data: { amcId: amc._id, month: amc.month, year: amc.year },
-      });
-
-      // Notify admin/superAdmin (find all)
-      const admins = await User.find({
-        userType: { $in: ["admin", "superAdmin"] },
-        status: "active",
       });
 
       for (const admin of admins) {

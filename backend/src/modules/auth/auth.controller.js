@@ -13,7 +13,6 @@ import {
   verifyRefreshToken,
   compareRefreshToken,
 } from "./auth.utils.js";
-import { hash } from "bcryptjs";
 
 const cookieOptions = {
   httpOnly: true,
@@ -131,6 +130,10 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 
   if (!user) {
     throw new ApiError(401, "Unauthorized");
+  }
+
+  if (!user.refreshToken) {
+    throw new ApiError(401, "Invalid refresh token");
   }
 
   const isValid = await compareRefreshToken(

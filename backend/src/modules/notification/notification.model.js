@@ -45,6 +45,10 @@ const notificationSchema = new mongoose.Schema(
 notificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 });
 notificationSchema.index({ type: 1, createdAt: -1 });
 notificationSchema.index({ "data.amcId": 1, type: 1 }, { sparse: true });
+notificationSchema.index(
+  { userId: 1, type: 1, "data.amcId": 1 },
+  { unique: true, partialFilterExpression: { type: "amc_overdue" } },
+);
 
 const Notification = mongoose.model("Notification", notificationSchema);
 

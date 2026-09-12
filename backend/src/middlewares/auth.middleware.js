@@ -21,6 +21,14 @@ const verifyAccessToken = asyncHandler(async (req, res, next) => {
     throw new ApiError(401, "Unauthorized user");
   }
 
+  if (user.status === "blocked") {
+    throw new ApiError(403, "Your account has been blocked");
+  }
+
+  if (user.status === "inactive") {
+    throw new ApiError(403, "Your account has been deactivated");
+  }
+
   req.user = user;
   next();
 });
