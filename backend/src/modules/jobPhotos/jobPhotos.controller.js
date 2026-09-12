@@ -4,6 +4,7 @@ import ApiError from "../../utils/ApiError.js";
 import cloudinary from "../../config/cloudinary.js";
 import JobPhoto from "./jobPhotos.model.js";
 import Job from "../jobs/jobs.model.js";
+import Customer from "../customers/customer.model.js";
 import { deleteSinglePhoto } from "../../config/cloudinaryCleanup.js";
 
 // ============================================
@@ -180,9 +181,15 @@ export const getJobPhotos = asyncHandler(async (req, res) => {
   const isSupervisor = req.user.userType === "supervisor";
 
   if (isCustomer) {
-    if (job.customerId?.toString() !== req.user._id.toString()) {
+    const customer = await Customer.findOne({
+      userId: req.user._id,
+      isDeleted: false,
+    });
+
+    if (!customer || job.customerId?.toString() !== customer._id.toString()) {
       throw new ApiError(403, "Access denied");
     }
+
     if (!["VERIFIED", "APPROVED", "CLOSED"].includes(job.status)) {
       throw new ApiError(403, "This job is not yet approved for viewing");
     }

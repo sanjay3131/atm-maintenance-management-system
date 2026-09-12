@@ -23,6 +23,16 @@ const generateAmcId = async (month, year) => {
  * Idempotent: skips if {atmId, month, year} already exists (enforced by unique index).
  */
 export const generateMonthlyAMC = async (month, year, createdBy) => {
+  const creatorId =
+    createdBy ||
+    (
+      await User.findOne({
+        userType: { $in: ["admin", "superAdmin"] },
+        status: "active",
+      }).select("_id")
+    )?._id ||
+    null;
+
   // Find all active employees with assigned ATMs
   const employees = await Employee.find({
     status: "active",
@@ -67,7 +77,7 @@ export const generateMonthlyAMC = async (month, year, createdBy) => {
           year,
           status: AMC_STATUS.PENDING,
           deadlineDate,
-          createdBy,
+          createdBy: creatorId,
         });
 
         results.created++;

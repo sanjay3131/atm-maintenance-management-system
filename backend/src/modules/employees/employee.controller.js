@@ -133,7 +133,7 @@ export const viewEmployeeById = asyncHandler(async (req, res) => {
 export const viewAllEmployees = asyncHandler(async (req, res) => {
   const employees = await Employee.find().populate(
     "userId",
-    "name email userType",
+    "firstName lastName email userType",
   );
 
   return res

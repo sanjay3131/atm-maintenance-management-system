@@ -23,12 +23,15 @@ const updateUserSchema = z.object({
 });
 
 const assignRoleSchema = z.object({
-  role: z.enum(["user", "admin", "superAdmin", "employee", "customer"], {
-    errorMap: () => ({
-      message:
-        "Invalid user type. Must be 'user', 'admin', 'superAdmin', 'employee' or 'customer'",
-    }),
-  }),
+  role: z.enum(
+    ["user", "admin", "superAdmin", "employee", "customer", "supervisor"],
+    {
+      errorMap: () => ({
+        message:
+          "Invalid user type. Must be 'user', 'admin', 'superAdmin', 'employee', 'customer' or 'supervisor'",
+      }),
+    },
+  ),
 });
 
 const changeUserStatusSchema = z.object({

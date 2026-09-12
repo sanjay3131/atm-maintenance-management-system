@@ -1,6 +1,7 @@
 import ApiError from "../../utils/ApiError.js";
 import ApiResponse from "../../utils/ApiResponse.js";
 import asyncHandler from "../../utils/asyncHandler.js";
+import Customer from "../customers/customer.model.js";
 import District from "../districts/district.models.js";
 import Employee from "../employees/employee.model.js";
 import Region from "../region/region.model.js";
@@ -16,10 +17,20 @@ export const createATM = asyncHandler(async (req, res) => {
     address,
     installationType,
     location,
+    customerId,
   } = req.body;
 
   const isValidDistrictId = await District.findById(districtId);
   const isValidRegionId = await Region.findById(regionId);
+
+  const resolvedCustomerId = customerId || req.body.customer;
+  if (resolvedCustomerId) {
+    const cust = await Customer.findOne({
+      _id: resolvedCustomerId,
+      isDeleted: false,
+    });
+    if (!cust) throw new ApiError(404, "Customer not found");
+  }
 
   if (!isValidDistrictId || !isValidRegionId) {
     throw new ApiError(404, "district or region is not valid");
@@ -29,6 +40,7 @@ export const createATM = asyncHandler(async (req, res) => {
   const atm = await ATM.create({
     atmId,
     bankId,
+    customer: resolvedCustomerId,
     districtId,
     regionId,
     locationName,
@@ -82,10 +94,29 @@ export const getATMById = asyncHandler(async (req, res) => {
 
 // update atm
 export const updateATM = asyncHandler(async (req, res) => {
+  const updatePayload = { ...req.body };
+
+  if (Object.prototype.hasOwnProperty.call(updatePayload, "customerId")) {
+    const customerId = updatePayload.customerId || updatePayload.customer;
+
+    if (customerId) {
+      const cust = await Customer.findOne({
+        _id: customerId,
+        isDeleted: false,
+      });
+      if (!cust) throw new ApiError(404, "Customer not found");
+    }
+
+    if (customerId) {
+      updatePayload.customer = customerId;
+    }
+    delete updatePayload.customerId;
+  }
+
   const updatedATM = await ATM.findByIdAndUpdate(
     req.params.id,
     {
-      ...req.body,
+      ...updatePayload,
       updatedBy: req.user._id,
     },
     {

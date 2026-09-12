@@ -79,6 +79,10 @@ const loginUser = asyncHandler(async (req, res) => {
     throw new ApiError(403, "Your account has been blocked");
   }
 
+  if (user.status === "inactive") {
+    throw new ApiError(403, "Your account has been deactivated");
+  }
+
   const isPasswordCorrect = await comparePassword(password, user.password);
 
   if (!isPasswordCorrect) {

@@ -9,8 +9,11 @@ import ApiError from "../../utils/ApiError.js";
  */
 export const generateAMCPDF = async (amcId) => {
   const amc = await AMC.findById(amcId)
-    .populate("atmId", "atmId locationName bank address location")
-    .populate("employeeId", "firstName lastName employeeCode")
+    .populate(
+      "atmId",
+      "atmId locationName bankId address location locationConfigured",
+    )
+    .populate("employeeId", "firstName lastName email phoneNumber")
     .populate("bankId", "bankName")
     .populate("districtId", "districtName");
 

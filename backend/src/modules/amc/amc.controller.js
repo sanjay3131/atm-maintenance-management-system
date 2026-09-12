@@ -123,11 +123,11 @@ export const getAMCById = asyncHandler(async (req, res) => {
   const amc = await AMC.findById(id)
     .populate(
       "atmId",
-      "atmId locationName bank address location locationConfigured locationCapturedBy locationCapturedAt",
+      "atmId locationName bankId address location locationConfigured locationCapturedBy locationCapturedAt",
     )
-    .populate("employeeId", "firstName lastName employeeCode phoneNumber")
+    .populate("employeeId", "firstName lastName email phoneNumber")
     .populate("supervisorId", "firstName lastName")
-    .populate("customerId", "firstName lastName")
+    .populate("customerId", "customerName customerEmail customerPhone bankName")
     .populate("bankId", "bankName bankCode")
     .populate("districtId", "districtName")
     .populate("photos", "url thumbnailUrl uploadedAt gpsData");
@@ -178,9 +178,6 @@ export const getAMCById = asyncHandler(async (req, res) => {
     }
   }
 
-  if (!isAdmin && !isSupervisor && !isEmployee && !isCustomer) {
-    throw new ApiError(403, "Access denied");
-  }
   return res.status(200).json(new ApiResponse(200, amc, "AMC fetched"));
 });
 
@@ -371,8 +368,8 @@ export const getAllAMC = asyncHandler(async (req, res) => {
 
   const [amcs, total] = await Promise.all([
     AMC.find(query)
-      .populate("atmId", "atmId locationName bank address")
-      .populate("employeeId", "firstName lastName employeeCode")
+      .populate("atmId", "atmId locationName bankId address")
+      .populate("employeeId", "firstName lastName email phoneNumber")
       .populate("bankId", "bankName")
       .populate("districtId", "districtName")
       .sort({ year: -1, month: -1, createdAt: -1 })

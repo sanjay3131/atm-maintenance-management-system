@@ -1,5 +1,6 @@
 import cron from "node-cron";
 import { cleanupOldPhotos } from "./cloudinaryCleanup.js";
+import User from "../modules/users/user.model.js";
 import {
   generateMonthlyAMC,
   markOverdueAMCs,
@@ -19,10 +20,15 @@ export const initCronJobs = () => {
     console.log("[Cron] Starting monthly AMC generation...");
     const now = new Date();
     try {
+      const fallbackAdmin = await User.findOne({
+        userType: { $in: ["admin", "superAdmin"] },
+        status: "active",
+      }).select("_id");
+
       const result = await generateMonthlyAMC(
         now.getMonth() + 1,
         now.getFullYear(),
-        null,
+        fallbackAdmin?._id || null,
       );
       console.log("[Cron] AMC generation completed:", result);
     } catch (err) {
