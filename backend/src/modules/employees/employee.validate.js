@@ -25,7 +25,8 @@ const createEmployeeSchema = z.object({
     }),
   }),
   districtIds: z.array(objectIdSchema),
-  assignedAtmIds: z.array(objectIdSchema),
+  assignedAtmIds: z.array(objectIdSchema).optional(),
+  regionIds: z.array(objectIdSchema).optional(),
   salary: z
     .number({ invalid_type_error: "Salary must be a number" })
     .nonnegative("Salary must be zero or greater")
@@ -73,8 +74,9 @@ const updateEmployeeSchema = z.object({
       }),
     })
     .optional(),
-  // districtIds: z.array(objectIdSchema).optional(),
-  // assignedAtmIds: z.array(objectIdSchema).optional(),
+  districtIds: z.array(objectIdSchema).optional(),
+  assignedAtmIds: z.array(objectIdSchema).optional(),
+  regionIds: z.array(objectIdSchema).optional(),
   status: z
     .enum(["active", "inactive", "on_leave", "resigned"], {
       errorMap: () => ({
