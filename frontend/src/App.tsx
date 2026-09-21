@@ -5,6 +5,12 @@ import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
 import SupervisorDashboardPage from "@/pages/supervisor/SupervisorDashboardPage";
 import EmployeeDashboardPage from "@/pages/employee/EmployeeDashboardPage";
 import ProtectedRoute from "@/routes/ProtectedRoute";
+import AdminLayout from "@/layouts/AdminLayout";
+import EmployeesPage from "@/pages/admin/EmployeesPage";
+import AtmsPage from "@/pages/admin/AtmsPage";
+import JobsPage from "@/pages/admin/JobsPage";
+import AmcPage from "@/pages/admin/AmcPage";
+import ComplaintsPage from "@/pages/admin/ComplaintsPage";
 
 export default function App() {
   return (
@@ -15,7 +21,14 @@ export default function App() {
         <Route
           element={<ProtectedRoute allowedRoles={["admin", "superAdmin"]} />}
         >
-          <Route path="/admin" element={<AdminDashboardPage />} />
+          <Route element={<AdminLayout />}>
+            <Route path="/admin" element={<AdminDashboardPage />} />
+            <Route path="/admin/employees" element={<EmployeesPage />} />
+            <Route path="/admin/atms" element={<AtmsPage />} />
+            <Route path="/admin/jobs" element={<JobsPage />} />
+            <Route path="/admin/amc" element={<AmcPage />} />
+            <Route path="/admin/complaints" element={<ComplaintsPage />} />
+          </Route>
         </Route>
 
         <Route element={<ProtectedRoute allowedRoles={["supervisor"]} />}>
