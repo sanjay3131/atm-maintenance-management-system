@@ -3,6 +3,8 @@ import { BriefcaseBusiness, Monitor, Users, AlertTriangle } from "lucide-react";
 import { useDashboardStats } from "@/features/dashboard/hooks/useDashboardStats";
 import { useRecentActivity } from "@/features/dashboard/hooks/useRecentActivity";
 import JobTrendsChart from "@/features/dashboard/components/JobTrendsChart";
+import EmployeePerformance from "@/features/dashboard/components/EmployeePerformance";
+import OperationsSummary from "@/features/dashboard/components/OperationsSummary";
 export default function AdminDashboardPage() {
   const { data, isLoading, error } = useDashboardStats();
 
@@ -162,6 +164,15 @@ export default function AdminDashboardPage() {
         </div>
         {/* Job Trends */}
         <JobTrendsChart />
+
+        {/* Employee Performance */}
+
+        <EmployeePerformance />
+
+        {/* Operations Summary */}
+        <OperationsSummary />
+
+        {/* Recent Activity */}
 
         <div className="rounded-xl border bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
