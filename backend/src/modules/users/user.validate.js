@@ -43,6 +43,28 @@ const changeUserStatusSchema = z.object({
     })
     .optional(),
 });
+const createEmployeeUserSchema = z.object({
+  firstName: z
+    .string()
+    .trim()
+    .min(2, "First name must be at least 2 characters"),
+
+  lastName: z
+    .string()
+    .trim()
+    .min(1, "Last name is required")
+    .optional()
+    .or(z.literal("")),
+
+  email: z.string().trim().email("Please enter a valid email"),
+
+  password: z.string().min(8, "Password must be at least 8 characters"),
+
+  phoneNumber: z
+    .string()
+    .trim()
+    .regex(/^[0-9+\-()\s]{8,20}$/, "Please enter a valid phone number"),
+});
 
 const validateRequest = (schema) => {
   return asyncHandler(async (req, res, next) => {
@@ -66,5 +88,6 @@ export {
   updateUserSchema,
   assignRoleSchema,
   changeUserStatusSchema,
+  createEmployeeUserSchema,
   validateRequest,
 };

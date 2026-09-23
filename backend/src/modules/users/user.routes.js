@@ -7,6 +7,7 @@ import {
   //   deleteUserById,
   assignRoleToUser,
   changeUserStatus,
+  createEmployeeUser,
 } from "./user.controller.js";
 
 import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
@@ -16,6 +17,7 @@ import {
   changeUserStatusSchema,
   updateUserSchema,
   validateRequest,
+  createEmployeeUserSchema,
 } from "./user.validate.js";
 
 const router = express.Router();
@@ -25,6 +27,14 @@ router.get(
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin"),
   getAllUsers,
+);
+// create employee user
+router.post(
+  "/create-employee",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(createEmployeeUserSchema),
+  createEmployeeUser,
 );
 // get user by id
 router.get(

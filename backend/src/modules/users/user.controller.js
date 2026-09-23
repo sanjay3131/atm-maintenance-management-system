@@ -2,6 +2,8 @@ import asyncHandler from "../../utils/asyncHandler.js";
 import ApiResponse from "../../utils/ApiResponse.js";
 import User from "./user.model.js";
 import { sanitizeUser } from "../../utils/sanitizeUser.js";
+import { hashPassword } from "../auth/auth.utils.js";
+import ApiError from "../../utils/ApiError.js";
 
 export const getAllUsers = asyncHandler(async (req, res) => {
   const isAdmin =
@@ -182,6 +184,53 @@ export const changeUserStatus = asyncHandler(async (req, res) => {
         200,
         { user: sanitizeUser(user) },
         "User status updated successfully",
+      ),
+    );
+});
+
+export const createEmployeeUser = asyncHandler(async (req, res) => {
+  const { firstName, lastName, email, password, phoneNumber } = req.body;
+
+  const normalizedEmail = email.toLowerCase().trim();
+
+  // Check duplicate email
+  const existingEmail = await User.findOne({
+    email: normalizedEmail,
+  });
+
+  if (existingEmail) {
+    throw new ApiError(409, "Email already exists");
+  }
+
+  // Check duplicate phone
+  const existingPhone = await User.findOne({
+    phoneNumber,
+  });
+
+  if (existingPhone) {
+    throw new ApiError(409, "Phone number already exists");
+  }
+
+  const hashedPassword = await hashPassword(password);
+
+  const user = await User.create({
+    firstName: firstName.trim(),
+    lastName: lastName?.trim() || "",
+    email: normalizedEmail,
+    password: hashedPassword,
+    phoneNumber: phoneNumber.trim(),
+    userType: "employee",
+  });
+
+  const sanitizedUser = sanitizeUser(user);
+
+  return res
+    .status(201)
+    .json(
+      new ApiResponse(
+        201,
+        { user: sanitizedUser },
+        "Employee user created successfully",
       ),
     );
 });
