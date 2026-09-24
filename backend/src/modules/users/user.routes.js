@@ -8,10 +8,12 @@ import {
   assignRoleToUser,
   changeUserStatus,
   createEmployeeUser,
+  createUserWizard,
 } from "./user.controller.js";
 
 import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
 import { authorizeRoles } from "../../middlewares/role.middleware.js";
+import { createUserWizardSchema } from "./user-wizard.validate.js";
 import {
   assignRoleSchema,
   changeUserStatusSchema,
@@ -35,6 +37,14 @@ router.post(
   authorizeRoles("admin", "superAdmin"),
   validateRequest(createEmployeeUserSchema),
   createEmployeeUser,
+);
+
+router.post(
+  "/wizard",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(createUserWizardSchema),
+  createUserWizard,
 );
 // get user by id
 router.get(

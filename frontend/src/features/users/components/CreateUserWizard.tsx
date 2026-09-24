@@ -3,6 +3,8 @@ import UserDetailsStep from "./UserDetailsStep";
 import RoleSelectionStep from "./RoleSelectionStep";
 import EmployeeDetailsStep from "./EmployeeDetailsStep";
 import CustomerDetailsStep from "./CustomerDetailsStep";
+import { useCreateUserWizard } from "../hooks/user.hooks";
+import { useQueryClient } from "@tanstack/react-query";
 
 import type {
   UserRole,
@@ -20,7 +22,6 @@ const initialUserDetails: UserDetailsForm = {
 };
 
 const initialEmployeeDetails: EmployeeDetailsForm = {
-  employeeCode: "",
   designation: "",
   department: "",
   joiningDate: "",
@@ -40,7 +41,28 @@ const initialCustomerDetails: CustomerDetailsForm = {
   districtIds: [],
 };
 
-export default function CreateUserWizard() {
+export default function CreateUserWizard({
+  onClose,
+}: {
+  onClose?: () => void;
+}) {
+  const createUserMutation = useCreateUserWizard();
+  const queryClient = useQueryClient();
+  const handleCreateSuccess = () => {
+    alert("User created successfully!");
+    queryClient.invalidateQueries({ queryKey: ["employees"] });
+    setStep(1);
+    setUserDetails(initialUserDetails);
+    setRole("");
+    setEmployeeDetails(initialEmployeeDetails);
+    setCustomerDetails(initialCustomerDetails);
+
+    onClose?.();
+  };
+
+  const handleCreateError = (error: Error) => {
+    alert(error.message || "Failed to create user");
+  };
   const [step, setStep] = useState(1);
 
   const [userDetails, setUserDetails] =
@@ -69,25 +91,50 @@ export default function CreateUserWizard() {
   const handleEmployeeSubmit = (data: EmployeeDetailsForm) => {
     setEmployeeDetails(data);
 
-    console.log("USER:", userDetails);
-    console.log("ROLE:", role);
-    console.log("EMPLOYEE:", data);
+    createUserMutation.mutate(
+      {
+        user: userDetails,
+        role: "employee",
+        employee: data,
+      },
+      {
+        onSuccess: handleCreateSuccess,
+        onError: handleCreateError,
+      },
+    );
   };
 
   const handleCustomerSubmit = (data: CustomerDetailsForm) => {
     setCustomerDetails(data);
 
-    console.log("USER:", userDetails);
-    console.log("ROLE:", role);
-    console.log("CUSTOMER:", data);
+    createUserMutation.mutate(
+      {
+        user: userDetails,
+        role: "customer",
+        customer: data,
+      },
+      {
+        onSuccess: handleCreateSuccess,
+        onError: handleCreateError,
+      },
+    );
   };
 
   return (
-    <div className="mx-auto max-w-4xl rounded-xl border bg-white p-6 shadow-sm">
+    <div className="relative mx-auto w-fit rounded-xl border bg-white p-6 shadow-sm">
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-2 top-0 rounded-md px-2 py-1 text-sm font-bold text-gray-500  hover:bg-gray-100 hover:text-gray-900"
+        >
+          ✕
+        </button>
+      )}
       {/* Step indicator */}
-      <div className="mb-8 flex items-center justify-between">
+      <div className="mb-8 flex items-center justify-between ">
         {[1, 2, 3].map((item) => (
-          <div key={item} className="flex items-center">
+          <div key={item} className="flex items-center ">
             <div
               className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold ${
                 step >= item
@@ -100,7 +147,7 @@ export default function CreateUserWizard() {
 
             {item !== 3 && (
               <div
-                className={`mx-2 h-1 w-16 ${
+                className={`mx-2 h-1 w-24 ${
                   step > item ? "bg-black" : "bg-gray-200"
                 }`}
               />
@@ -167,8 +214,16 @@ export default function CreateUserWizard() {
             <button
               type="button"
               onClick={() => {
-                console.log("USER:", userDetails);
-                console.log("ROLE:", role);
+                createUserMutation.mutate(
+                  {
+                    user: userDetails,
+                    role: "supervisor",
+                  },
+                  {
+                    onSuccess: handleCreateSuccess,
+                    onError: handleCreateError,
+                  },
+                );
               }}
               className="rounded-md bg-black px-5 py-2 text-sm font-medium text-white hover:bg-gray-800"
             >

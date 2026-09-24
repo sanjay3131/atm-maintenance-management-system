@@ -31,27 +31,6 @@ export default function EmployeeDetailsStep({
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {/* Employee Code */}
-        <div>
-          <label className="mb-1 block text-sm font-medium">
-            Employee Code
-          </label>
-
-          <input
-            {...register("employeeCode", {
-              required: "Employee code is required",
-            })}
-            className="w-full rounded-md border px-3 py-2"
-            placeholder="EMP001"
-          />
-
-          {errors.employeeCode && (
-            <p className="mt-1 text-sm text-red-500">
-              {errors.employeeCode.message}
-            </p>
-          )}
-        </div>
-
         {/* Designation */}
         <div>
           <label className="mb-1 block text-sm font-medium">Designation</label>

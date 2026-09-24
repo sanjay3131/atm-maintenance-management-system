@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useEmployees } from "@/features/employees/hooks/useEmployees";
+import { UserPlus } from "lucide-react";
 import CreateUserWizard from "@/features/users/components/CreateUserWizard";
 export default function EmployeesPage() {
+  const [showCreateUser, setShowCreateUser] = useState(false);
   const { data: employees, isLoading, isError } = useEmployees();
 
   const [search, setSearch] = useState("");
@@ -35,6 +37,13 @@ export default function EmployeesPage() {
 
   return (
     <div className="p-6">
+      {showCreateUser && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-sm p-4">
+          <div className="min-h-full py-8">
+            <CreateUserWizard onClose={() => setShowCreateUser(false)} />
+          </div>
+        </div>
+      )}
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Employees</h1>
@@ -42,7 +51,15 @@ export default function EmployeesPage() {
             Manage ATM maintenance employees
           </p>
         </div>
-        <CreateUserWizard />
+
+        <button
+          type="button"
+          onClick={() => setShowCreateUser(true)}
+          className="inline-flex items-center gap-2 rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+        >
+          <UserPlus className="h-4 w-4" />
+          Create User
+        </button>
 
         <div className="flex w-full gap-2 sm:w-auto">
           <input

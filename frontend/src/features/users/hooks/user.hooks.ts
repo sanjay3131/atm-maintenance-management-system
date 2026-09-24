@@ -1,19 +1,12 @@
 import { useMutation } from "@tanstack/react-query";
 import {
-  assignUserRole,
-  createUser,
-  type CreateUserPayload,
+  createUserWizard,
+  type CreateUserWizardResponse,
 } from "../services/user.service";
+import type { CreateUserFormData } from "../types/user.types";
 
-export const useCreateUser = () => {
-  return useMutation({
-    mutationFn: (payload: CreateUserPayload) => createUser(payload),
-  });
-};
-
-export const useAssignUserRole = () => {
-  return useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
-      assignUserRole(userId, role),
+export const useCreateUserWizard = () => {
+  return useMutation<CreateUserWizardResponse, Error, CreateUserFormData>({
+    mutationFn: createUserWizard,
   });
 };

@@ -11,7 +11,6 @@ export interface UserDetailsForm {
 }
 
 export interface EmployeeDetailsForm {
-  employeeCode: string;
   designation: string;
   department: string;
   joiningDate: string;

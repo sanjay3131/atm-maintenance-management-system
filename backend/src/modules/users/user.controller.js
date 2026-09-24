@@ -4,6 +4,9 @@ import User from "./user.model.js";
 import { sanitizeUser } from "../../utils/sanitizeUser.js";
 import { hashPassword } from "../auth/auth.utils.js";
 import ApiError from "../../utils/ApiError.js";
+import Employee from "../employees/employee.model.js";
+import Customer from "../customers/customer.model.js";
+import { generateEmployeeCode } from "../employees/employee.utils.js";
 
 export const getAllUsers = asyncHandler(async (req, res) => {
   const isAdmin =
@@ -233,4 +236,81 @@ export const createEmployeeUser = asyncHandler(async (req, res) => {
         "Employee user created successfully",
       ),
     );
+});
+
+export const createUserWizard = asyncHandler(async (req, res) => {
+  const { user: userData, role, employee, customer } = req.body;
+
+  const existingUser = await User.findOne({
+    $or: [
+      { email: userData.email.toLowerCase() },
+      { phoneNumber: userData.phoneNumber },
+    ],
+  });
+
+  if (existingUser) {
+    throw new ApiError(
+      409,
+      "User already exists with this email or phone number",
+    );
+  }
+
+  const hashedPassword = await hashPassword(userData.password);
+
+  const user = await User.create({
+    firstName: userData.firstName,
+    lastName: userData.lastName,
+    email: userData.email.toLowerCase(),
+    password: hashedPassword,
+    phoneNumber: userData.phoneNumber,
+    userType: role,
+  });
+
+  try {
+    if (role === "employee") {
+      const employeeCode = await generateEmployeeCode();
+
+      await Employee.create({
+        userId: user._id,
+        employeeCode,
+        designation: employee.designation,
+        department: employee.department,
+        joiningDate: employee.joiningDate,
+        employmentType: employee.employmentType,
+        districtIds: employee.districtIds,
+        assignedAtmIds: employee.assignedAtmIds,
+        regionIds: employee.regionIds,
+        salary: employee.salary,
+        createdBy: req.user._id,
+      });
+    }
+
+    if (role === "customer") {
+      await Customer.create({
+        userId: user._id,
+        customerName: customer.customerName,
+        customerEmail: customer.customerEmail,
+        customerPhone: customer.customerPhone,
+        bankName: customer.bankName,
+        atmIds: customer.atmIds,
+        districtIds: customer.districtIds,
+        createdBy: req.user._id,
+      });
+    }
+  } catch (error) {
+    await User.findByIdAndDelete(user._id);
+
+    throw error;
+  }
+
+  return res.status(201).json(
+    new ApiResponse(
+      201,
+      {
+        user: sanitizeUser(user),
+        role,
+      },
+      "User created successfully",
+    ),
+  );
 });
