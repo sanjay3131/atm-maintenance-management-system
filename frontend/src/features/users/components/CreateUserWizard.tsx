@@ -89,6 +89,7 @@ export default function CreateUserWizard({
   };
 
   const handleEmployeeSubmit = (data: EmployeeDetailsForm) => {
+    console.log("EMPLOYEE FORM DATA:", data);
     setEmployeeDetails(data);
 
     createUserMutation.mutate(
