@@ -5,6 +5,7 @@ import Customer from "../customers/customer.model.js";
 import District from "../districts/district.models.js";
 import Employee from "../employees/employee.model.js";
 import Region from "../region/region.model.js";
+import User from "../users/user.model.js";
 import ATM from "./atm.model.js";
 import { generateATMId } from "./atm.utils.js";
 
@@ -19,17 +20,21 @@ export const createATM = asyncHandler(async (req, res) => {
     location,
     customerId,
   } = req.body;
+  console.log(customerId);
 
   const isValidDistrictId = await District.findById(districtId);
   const isValidRegionId = await Region.findById(regionId);
 
-  const resolvedCustomerId = customerId || req.body.customer;
+  const resolvedCustomerId = customerId;
   if (resolvedCustomerId) {
-    const cust = await Customer.findOne({
+    const cust = await User.findOne({
       _id: resolvedCustomerId,
-      isDeleted: false,
+      userType: "customer",
+      status: "active",
     });
-    if (!cust) throw new ApiError(404, "Customer not found");
+    console.log(cust);
+
+    if (!cust) throw new ApiError(404, "Customer not found...");
   }
 
   if (!isValidDistrictId || !isValidRegionId) {
@@ -100,9 +105,10 @@ export const updateATM = asyncHandler(async (req, res) => {
     const customerId = updatePayload.customerId || updatePayload.customer;
 
     if (customerId) {
-      const cust = await Customer.findOne({
+      const cust = await User.findOne({
         _id: customerId,
-        isDeleted: false,
+        userType: "customer",
+        status: "active",
       });
       if (!cust) throw new ApiError(404, "Customer not found");
     }
