@@ -22,13 +22,15 @@ export default function EmployeeDetailsStep({
     handleSubmit,
     watch,
     setValue,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<EmployeeDetailsForm>({
     defaultValues,
   });
   const { data: districts = [], isLoading: isDistrictsLoading } =
     useDistricts();
   const selectedDistrictIds = watch("districtIds");
+  const selectedRegionIds = watch("regionIds");
+  const selectedAtmIds = watch("assignedAtmIds");
 
   const { data: atms = [], isLoading: isATMsLoading } = useATMs();
   const regionQueries = useQueries({
@@ -53,7 +55,6 @@ export default function EmployeeDetailsStep({
       selectedDistrictIds.length > 0 &&
       !!atm.districtId &&
       selectedDistrictIds.includes(atm.districtId._id);
-    const selectedRegionIds = watch("regionIds");
 
     const regionMatch =
       selectedRegionIds.length === 0 ||
@@ -61,7 +62,6 @@ export default function EmployeeDetailsStep({
 
     return districtMatch && regionMatch;
   });
-  const selectedAtmIds = watch("assignedAtmIds");
 
   const visibleAtmIds = new Set(filteredATMs.map((atm) => atm._id));
 
@@ -92,6 +92,10 @@ export default function EmployeeDetailsStep({
           <input
             {...register("designation", {
               required: "Designation is required",
+              minLength: {
+                value: 2,
+                message: "Designation must be at least 2 characters",
+              },
             })}
             className="w-full rounded-md border px-3 py-2"
             placeholder="ATM Service Technician"
@@ -111,6 +115,10 @@ export default function EmployeeDetailsStep({
           <input
             {...register("department", {
               required: "Department is required",
+              minLength: {
+                value: 2,
+                message: "Department must be at least 2 characters",
+              },
             })}
             className="w-full rounded-md border px-3 py-2"
             placeholder="Field Operations"
@@ -310,6 +318,14 @@ export default function EmployeeDetailsStep({
                   <p className="px-2 py-2 text-sm text-gray-500">
                     No ATMs found
                   </p>
+                ) : selectedDistrictIds.length === 0 ? (
+                  <p className="px-3 py-2 text-sm text-gray-500">
+                    Select a district first
+                  </p>
+                ) : filteredATMs.length === 0 ? (
+                  <p className="px-3 py-2 text-sm text-gray-500">
+                    No ATMs found for the selected district/region
+                  </p>
                 ) : (
                   filteredATMs.map((atm) => {
                     const selected = watch("assignedAtmIds").includes(atm._id);
@@ -421,16 +437,18 @@ export default function EmployeeDetailsStep({
         <button
           type="button"
           onClick={onBack}
-          className="rounded-md border px-5 py-2 text-sm font-medium hover:bg-gray-50"
+          disabled={isSubmitting}
+          className="rounded-md border px-5 py-2 text-sm font-medium hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Back
         </button>
 
         <button
           type="submit"
+          disabled={isSubmitting}
           className="rounded-md bg-black px-5 py-2 text-sm font-medium text-white hover:bg-gray-800"
         >
-          Create Employee
+          {isSubmitting ? "Creating..." : "Create Employee"}
         </button>
       </div>
     </form>
