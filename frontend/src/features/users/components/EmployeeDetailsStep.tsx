@@ -374,6 +374,8 @@ export default function EmployeeDetailsStep({
             type="date"
             {...register("joiningDate", {
               required: "Joining date is required",
+              validate: (value) =>
+                value ? true : "Please select a joining date",
             })}
             className="w-full rounded-md border px-3 py-2"
           />

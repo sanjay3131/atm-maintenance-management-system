@@ -51,6 +51,8 @@ export default function CreateUserWizard({
   const handleCreateSuccess = () => {
     alert("User created successfully!");
     queryClient.invalidateQueries({ queryKey: ["employees"] });
+    queryClient.invalidateQueries({ queryKey: ["customers"] });
+    queryClient.invalidateQueries({ queryKey: ["users"] });
     setStep(1);
     setUserDetails(initialUserDetails);
     setRole("");

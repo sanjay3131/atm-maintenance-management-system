@@ -15,7 +15,7 @@ export default function CustomerDetailsStep({
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<CustomerDetailsForm>({
     defaultValues,
   });
@@ -40,9 +40,13 @@ export default function CustomerDetailsStep({
           <input
             {...register("customerName", {
               required: "Customer name is required",
+              minLength: {
+                value: 2,
+                message: "Customer name must be at least 2 characters",
+              },
             })}
             className="w-full rounded-md border px-3 py-2"
-            placeholder="KVB"
+            placeholder="Customer name"
           />
 
           {errors.customerName && (
@@ -62,6 +66,10 @@ export default function CustomerDetailsStep({
             type="email"
             {...register("customerEmail", {
               required: "Customer email is required",
+              pattern: {
+                value: /^\S+@\S+\.\S+$/,
+                message: "Please enter a valid email address",
+              },
             })}
             className="w-full rounded-md border px-3 py-2"
             placeholder="customer@example.com"
@@ -84,6 +92,10 @@ export default function CustomerDetailsStep({
             type="tel"
             {...register("customerPhone", {
               required: "Customer phone is required",
+              minLength: {
+                value: 10,
+                message: "Phone number must be at least 10 digits",
+              },
             })}
             className="w-full rounded-md border px-3 py-2"
             placeholder="9876543210"
@@ -101,10 +113,17 @@ export default function CustomerDetailsStep({
           <label className="mb-1 block text-sm font-medium">Bank Name</label>
 
           <input
-            {...register("bankName")}
+            {...register("bankName", {
+              required: "Bank name is required",
+            })}
             className="w-full rounded-md border px-3 py-2"
-            placeholder="Karur Vysya Bank"
+            placeholder=" Eg : Karur Vysya Bank"
           />
+          {errors.bankName && (
+            <p className="mt-1 text-sm text-red-500">
+              {errors.bankName.message}
+            </p>
+          )}
         </div>
       </div>
 
@@ -112,6 +131,7 @@ export default function CustomerDetailsStep({
         <button
           type="button"
           onClick={onBack}
+          disabled={isSubmitting}
           className="rounded-md border px-5 py-2 text-sm font-medium hover:bg-gray-50"
         >
           Back
@@ -119,9 +139,10 @@ export default function CustomerDetailsStep({
 
         <button
           type="submit"
-          className="rounded-md bg-black px-5 py-2 text-sm font-medium text-white hover:bg-gray-800"
+          disabled={isSubmitting}
+          className="rounded-md bg-black px-5 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Create Customer
+          {isSubmitting ? "Creating..." : "Create Customer"}
         </button>
       </div>
     </form>

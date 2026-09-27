@@ -20,7 +20,6 @@ export const createATM = asyncHandler(async (req, res) => {
     location,
     customerId,
   } = req.body;
-  console.log(customerId);
 
   const isValidDistrictId = await District.findById(districtId);
   const isValidRegionId = await Region.findById(regionId);
@@ -32,7 +31,6 @@ export const createATM = asyncHandler(async (req, res) => {
       userType: "customer",
       status: "active",
     });
-    console.log(cust);
 
     if (!cust) throw new ApiError(404, "Customer not found...");
   }
