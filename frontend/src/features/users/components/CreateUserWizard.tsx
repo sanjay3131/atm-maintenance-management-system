@@ -5,6 +5,7 @@ import EmployeeDetailsStep from "./EmployeeDetailsStep";
 import CustomerDetailsStep from "./CustomerDetailsStep";
 import { useCreateUserWizard } from "../hooks/user.hooks";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import type {
   UserRole,
@@ -49,7 +50,7 @@ export default function CreateUserWizard({
   const createUserMutation = useCreateUserWizard();
   const queryClient = useQueryClient();
   const handleCreateSuccess = () => {
-    alert("User created successfully!");
+    toast.success("User created successfully!");
     queryClient.invalidateQueries({ queryKey: ["employees"] });
     queryClient.invalidateQueries({ queryKey: ["customers"] });
     queryClient.invalidateQueries({ queryKey: ["users"] });
@@ -63,7 +64,7 @@ export default function CreateUserWizard({
   };
 
   const handleCreateError = (error: Error) => {
-    alert(error.message || "Failed to create user");
+    toast.error(error.message || "Failed to create user");
   };
   const [step, setStep] = useState(1);
 
@@ -91,7 +92,6 @@ export default function CreateUserWizard({
   };
 
   const handleEmployeeSubmit = (data: EmployeeDetailsForm) => {
-    console.log("EMPLOYEE FORM DATA:", data);
     setEmployeeDetails(data);
 
     createUserMutation.mutate(
