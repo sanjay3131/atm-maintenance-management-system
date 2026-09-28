@@ -26,15 +26,14 @@ export const createATM = asyncHandler(async (req, res) => {
 
   const resolvedCustomerId = customerId;
   if (resolvedCustomerId) {
-    const cust = await User.findOne({
+    const cust = await Customer.findOne({
       _id: resolvedCustomerId,
-      userType: "customer",
-      status: "active",
+      isActive: true,
+      isDeleted: false,
     });
 
     if (!cust) throw new ApiError(404, "Customer not found...");
   }
-
   if (!isValidDistrictId || !isValidRegionId) {
     throw new ApiError(404, "district or region is not valid");
   }

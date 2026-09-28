@@ -3,7 +3,7 @@ import type { EmployeeDetailsForm } from "../types/user.types";
 import { useDistricts } from "../hooks/useDistricts";
 import { useQueries } from "@tanstack/react-query";
 import { getRegionsByDistrict } from "../services/region.service";
-import { useATMs } from "../hooks/useATMs";
+import { useATMs } from "../../atms/hooks/useATMs";
 import { useEffect } from "react";
 
 interface EmployeeDetailsStepProps {

@@ -54,15 +54,11 @@ const atmSchema = new mongoose.Schema(
       type: {
         type: String,
         enum: ["Point"],
-        default: "Point",
       },
       coordinates: {
-        type: [Number], // [longitude, latitude]
-        required: false,
-        default: null,
+        type: [Number],
       },
     },
-
     // GPS capture metadata
     locationConfigured: {
       type: Boolean,

@@ -1,12 +1,14 @@
-import api from "@/lib/axios";
+export type ATMStatus = "ACTIVE" | "INACTIVE" | "UNDER_MAINTENANCE" | "REMOVED";
+
+export type InstallationType = "ONSITE" | "OFFSITE";
 
 export interface ATM {
   _id: string;
   atmId: string;
   locationName: string;
   address: string;
-  installationType: "ONSITE" | "OFFSITE";
-  status: "ACTIVE" | "INACTIVE" | "UNDER_MAINTENANCE" | "REMOVED";
+  installationType: InstallationType;
+  status: ATMStatus;
 
   bankId: {
     _id: string;
@@ -25,9 +27,3 @@ export interface ATM {
 
   assignedEmployeeId: string[];
 }
-
-export const getATMs = async (): Promise<ATM[]> => {
-  const response = await api.get("/atm/getAllATMs");
-
-  return response.data.data;
-};
