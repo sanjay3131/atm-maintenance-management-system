@@ -10,12 +10,21 @@ import { useRegionsByDistrict } from "@/features/users/hooks/useRegionsByDistric
 import { useCreateATM } from "../hooks/useCreateATM";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useMemo, useState } from "react";
 
 interface CreateATMFormProps {
   onClose: () => void;
 }
 
 export default function CreateATMForm({ onClose }: CreateATMFormProps) {
+  const [employeeSearch, setEmployeeSearch] = useState("");
   const queryClient = useQueryClient();
   const createATM = useCreateATM();
   const { data: banks = [], isLoading: banksLoading } = useQuery({
@@ -50,6 +59,7 @@ export default function CreateATMForm({ onClose }: CreateATMFormProps) {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<CreateATMFormData>({
     resolver: zodResolver(createATMFormSchema),
@@ -82,91 +92,171 @@ export default function CreateATMForm({ onClose }: CreateATMFormProps) {
     });
   };
 
+  const filteredEmployees = useMemo(() => {
+    const search = employeeSearch.toLowerCase().trim();
+
+    if (!search) return employees;
+
+    return employees.filter(
+      (employee: {
+        employeeCode: string;
+        userId: {
+          firstName: string;
+          lastName?: string;
+        };
+      }) => {
+        const name = `${employee.userId?.firstName || ""} ${
+          employee.userId?.lastName || ""
+        }`.toLowerCase();
+
+        return (
+          name.includes(search) ||
+          employee.employeeCode.toLowerCase().includes(search)
+        );
+      },
+    );
+  }, [employees, employeeSearch]);
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
       {/* select bank */}
       <div>
-        <label className="mb-1 block text-sm font-medium">Bank</label>
+        <label className="mb-2 block text-sm font-medium">Bank</label>
 
-        <select
-          {...register("bankId")}
-          className="w-full rounded-md border px-3 py-2"
+        <Select
+          value={watch("bankId")}
+          onValueChange={(value) => {
+            if (value) setValue("bankId", value);
+          }}
           disabled={banksLoading}
         >
-          <option value="">
-            {banksLoading ? "Loading banks..." : "Select bank"}
-          </option>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select bank">
+              {
+                banks.find(
+                  (bank: { _id: string; bankName: string }) =>
+                    bank._id === watch("bankId"),
+                )?.bankName
+              }
+            </SelectValue>
+          </SelectTrigger>
 
-          {banks.map((bank: { _id: string; bankName: string }) => (
-            <option key={bank._id} value={bank._id}>
-              {bank.bankName}
-            </option>
-          ))}
-        </select>
+          <SelectContent>
+            {banks.map((bank: { _id: string; bankName: string }) => (
+              <SelectItem key={bank._id} value={bank._id}>
+                {bank.bankName}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       {/* select customer */}
       <div>
         <label className="mb-1 block text-sm font-medium">Customer</label>
 
-        <select
-          {...register("customerId")}
-          className="w-full rounded-md border px-3 py-2"
+        <Select
+          value={watch("customerId")}
+          onValueChange={(value) => {
+            if (value) setValue("customerId", value);
+          }}
           disabled={customersLoading}
         >
-          <option value="">
-            {customersLoading ? "Loading customers..." : "Select customer"}
-          </option>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select customer">
+              {
+                customers.find(
+                  (customer: { _id: string; customerName: string }) =>
+                    customer._id === watch("customerId"),
+                )?.customerName
+              }
+            </SelectValue>
+          </SelectTrigger>
 
-          {customers.map((customer: { _id: string; customerName: string }) => (
-            <option key={customer._id} value={customer._id}>
-              {customer.customerName}
-            </option>
-          ))}
-        </select>
+          <SelectContent>
+            {customers.map(
+              (customer: { _id: string; customerName: string }) => (
+                <SelectItem key={customer._id} value={customer._id}>
+                  {customer.customerName}
+                </SelectItem>
+              ),
+            )}
+          </SelectContent>
+        </Select>
       </div>
       {/* select district */}
       <div>
         <label className="mb-1 block text-sm font-medium">District</label>
 
-        <select
-          {...register("districtId")}
-          className="w-full rounded-md border px-3 py-2"
+        <Select
+          value={watch("districtId")}
+          onValueChange={(value) => {
+            if (value) {
+              setValue("districtId", value);
+              setValue("regionId", "");
+            }
+          }}
           disabled={districtsLoading}
         >
-          <option value="">
-            {districtsLoading ? "Loading districts..." : "Select district"}
-          </option>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select district">
+              {
+                districts.find(
+                  (district: { _id: string; districtName: string }) =>
+                    district._id === watch("districtId"),
+                )?.districtName
+              }
+            </SelectValue>
+          </SelectTrigger>
 
-          {districts.map((district: { _id: string; districtName: string }) => (
-            <option key={district._id} value={district._id}>
-              {district.districtName}
-            </option>
-          ))}
-        </select>
+          <SelectContent>
+            {districts.map(
+              (district: { _id: string; districtName: string }) => (
+                <SelectItem key={district._id} value={district._id}>
+                  {district.districtName}
+                </SelectItem>
+              ),
+            )}
+          </SelectContent>
+        </Select>
       </div>
       {/* select region */}
       <div>
         <label className="mb-1 block text-sm font-medium">Region</label>
 
-        <select
-          {...register("regionId")}
-          className="w-full rounded-md border px-3 py-2"
+        <Select
+          value={watch("regionId")}
+          onValueChange={(value) => {
+            if (value) setValue("regionId", value);
+          }}
           disabled={!selectedDistrictId || regionsLoading}
         >
-          <option value="">
-            {!selectedDistrictId
-              ? "Select district first"
-              : regionsLoading
-                ? "Loading regions..."
-                : "Select region"}
-          </option>
+          <SelectTrigger className="w-full">
+            <SelectValue
+              placeholder={
+                !selectedDistrictId
+                  ? "Select district first"
+                  : regionsLoading
+                    ? "Loading regions..."
+                    : "Select region"
+              }
+            >
+              {
+                regions.find(
+                  (region: { _id: string; name: string }) =>
+                    region._id === watch("regionId"),
+                )?.name
+              }
+            </SelectValue>
+          </SelectTrigger>
 
-          {regions.map((region: { _id: string; name: string }) => (
-            <option key={region._id} value={region._id}>
-              {region.name}
-            </option>
-          ))}
-        </select>
+          <SelectContent>
+            {regions.map((region: { _id: string; name: string }) => (
+              <SelectItem key={region._id} value={region._id}>
+                {region.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       {/* select location name */}
       <div>
@@ -202,13 +292,21 @@ export default function CreateATMForm({ onClose }: CreateATMFormProps) {
           Installation Type
         </label>
 
-        <select
-          {...register("installationType")}
-          className="w-full rounded-md border px-3 py-2"
+        <Select
+          value={watch("installationType")}
+          onValueChange={(value) =>
+            setValue("installationType", value as "ONSITE" | "OFFSITE")
+          }
         >
-          <option value="ONSITE">ONSITE</option>
-          <option value="OFFSITE">OFFSITE</option>
-        </select>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select installation type" />
+          </SelectTrigger>
+
+          <SelectContent>
+            <SelectItem value="ONSITE">ONSITE</SelectItem>
+            <SelectItem value="OFFSITE">OFFSITE</SelectItem>
+          </SelectContent>
+        </Select>
 
         {errors.installationType && (
           <p className="mt-1 text-sm text-red-500">
@@ -220,15 +318,26 @@ export default function CreateATMForm({ onClose }: CreateATMFormProps) {
       <div>
         <label className="mb-1 block text-sm font-medium">Status</label>
 
-        <select
-          {...register("status")}
-          className="w-full rounded-md border px-3 py-2"
+        <Select
+          value={watch("status")}
+          onValueChange={(value) =>
+            setValue(
+              "status",
+              value as "ACTIVE" | "INACTIVE" | "UNDER_MAINTENANCE" | "REMOVED",
+            )
+          }
         >
-          <option value="ACTIVE">ACTIVE</option>
-          <option value="INACTIVE">INACTIVE</option>
-          <option value="UNDER_MAINTENANCE">UNDER MAINTENANCE</option>
-          <option value="REMOVED">REMOVED</option>
-        </select>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select status" />
+          </SelectTrigger>
+
+          <SelectContent>
+            <SelectItem value="ACTIVE">ACTIVE</SelectItem>
+            <SelectItem value="INACTIVE">INACTIVE</SelectItem>
+            <SelectItem value="UNDER_MAINTENANCE">UNDER MAINTENANCE</SelectItem>
+            <SelectItem value="REMOVED">REMOVED</SelectItem>
+          </SelectContent>
+        </Select>
 
         {errors.status && (
           <p className="mt-1 text-sm text-red-500">{errors.status.message}</p>
@@ -236,25 +345,83 @@ export default function CreateATMForm({ onClose }: CreateATMFormProps) {
       </div>
       {/* assign employee */}
       <div>
-        <label className="mb-1 block text-sm font-medium">
+        <label className="mb-2 block text-sm font-medium">
           Assign Employees
         </label>
+        <p className="mb-2 text-xs text-muted-foreground">
+          {watch("assignedEmployeeId")?.length || 0} employee(s) selected
+        </p>
+        <input
+          type="text"
+          placeholder="Search employee..."
+          value={employeeSearch}
+          onChange={(e) => setEmployeeSearch(e.target.value)}
+          className="mb-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+        />
 
-        <select
-          multiple
-          {...register("assignedEmployeeId")}
-          className="w-full rounded-md border px-3 py-2"
-          disabled={employeesLoading}
-        >
-          {employees.map((employee: { _id: string; employeeCode: string }) => (
-            <option key={employee._id} value={employee._id}>
-              {employee.employeeCode}
-            </option>
-          ))}
-        </select>
+        <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border p-3">
+          {employeesLoading ? (
+            <p className="text-sm text-muted-foreground">
+              Loading employees...
+            </p>
+          ) : filteredEmployees.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">
+              No employees found
+            </p>
+          ) : (
+            filteredEmployees.map(
+              (employee: {
+                _id: string;
+                employeeCode: string;
+                userId: {
+                  firstName: string;
+                  lastName?: string;
+                };
+              }) => {
+                const firstName = employee.userId?.firstName || "";
+                const lastName = employee.userId?.lastName || "";
+
+                const fullName = `${firstName} ${lastName}`.trim();
+
+                const initials = lastName
+                  ? `${firstName.charAt(0)}${lastName.charAt(0)}`
+                  : firstName.charAt(0);
+
+                const displayInitials = initials.toUpperCase() || "E";
+                return (
+                  <label
+                    key={employee._id}
+                    className="flex cursor-pointer items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:bg-muted"
+                  >
+                    <input
+                      type="checkbox"
+                      value={employee._id}
+                      {...register("assignedEmployeeId")}
+                      className="h-4 w-4"
+                    />
+
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                      {displayInitials}{" "}
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
+                        {fullName || "Unknown Employee"}
+                      </p>
+
+                      <p className="text-xs text-muted-foreground">
+                        {employee.employeeCode}
+                      </p>
+                    </div>
+                  </label>
+                );
+              },
+            )
+          )}
+        </div>
 
         <p className="mt-1 text-xs text-muted-foreground">
-          Hold Ctrl (Windows/Linux) or Cmd (Mac) to select multiple employees.
+          Select one or more employees to assign this ATM.
         </p>
       </div>
 

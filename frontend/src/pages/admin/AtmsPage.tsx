@@ -2,11 +2,9 @@ import { useATMs } from "@/features/atms/hooks/useATMs";
 import ATMTable from "@/features/atms/components/ATMTable";
 import CreateATMForm from "@/features/atms/components/CreateATMForm";
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 export default function AtmsPage() {
   const { data: atms = [], isLoading, isError } = useATMs();
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const queryClient = useQueryClient();
 
   if (isLoading) {
     return <div className="p-6">Loading ATMs...</div>;
@@ -28,8 +26,25 @@ export default function AtmsPage() {
         Create ATM
       </button>
       {showCreateForm && (
-        <CreateATMForm onClose={() => setShowCreateForm(false)} />
-      )}{" "}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-background p-6 shadow-xl scrollbar-width:none [&::-webkit-scrollbar]:hidden">
+            {" "}
+            <div className="sticky top-0 z-20 -mx-6 -mt-6 mb-6 flex items-center justify-between border-b bg-background px-6 py-4">
+              {" "}
+              <h2 className="text-xl font-semibold">Create ATM</h2>
+              <button
+                type="button"
+                onClick={() => setShowCreateForm(false)}
+                className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <CreateATMForm onClose={() => setShowCreateForm(false)} />
+          </div>
+        </div>
+      )}
       <div className="mt-6">
         <ATMTable atms={atms} />
       </div>
