@@ -2,6 +2,36 @@ export type ATMStatus = "ACTIVE" | "INACTIVE" | "UNDER_MAINTENANCE" | "REMOVED";
 
 export type InstallationType = "ONSITE" | "OFFSITE";
 
+export interface ATMEmployee {
+  _id: string;
+  employeeCode?: string;
+  userId?: {
+    firstName?: string;
+    lastName?: string;
+  };
+}
+
+export interface ATMCustomer {
+  _id: string;
+  customerName: string;
+}
+
+export interface ATMLocation {
+  type?: "Point";
+  coordinates?: [number, number];
+}
+
+export interface UpdateATMData {
+  bankId: string;
+  customerId?: string;
+  districtId: string;
+  regionId: string;
+  locationName: string;
+  address: string;
+  installationType: InstallationType;
+  status: ATMStatus;
+}
+
 export interface ATM {
   _id: string;
   atmId: string;
@@ -25,5 +55,10 @@ export interface ATM {
     name: string;
   } | null;
 
-  assignedEmployeeId: string[];
+  assignedEmployeeId: Array<string | ATMEmployee>;
+  customer?: string | ATMCustomer | null;
+  location?: ATMLocation | null;
+  locationConfigured?: boolean;
+  locationCapturedAt?: string | null;
+  locationAccuracy?: number | null;
 }

@@ -19,8 +19,8 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <Toaster position="top-right" richColors />
       <AuthProvider>
+        <Toaster position="top-right" richColors />
         <App />
       </AuthProvider>
     </QueryClientProvider>

@@ -2,6 +2,11 @@ import { z } from "zod";
 import asyncHandler from "../../utils/asyncHandler.js";
 import ApiError from "../../utils/ApiError.js";
 
+const objectIdSchema = z
+  .string()
+  .trim()
+  .regex(/^[a-fA-F0-9]{24}$/, "Invalid MongoDB ObjectId");
+
 export const createAtmSchema = z.object({
   bankId: z.string().trim().min(1, "Bank ID is required"),
   customerId: z.string().trim().min(1, "Customer ID is required"),
@@ -32,9 +37,7 @@ export const createAtmSchema = z.object({
     })
     .optional(),
 
-  assignedEmployeeId: z
-    .array(z.string().trim().min(1, "Employee ID is required"))
-    .optional(),
+  assignedEmployeeId: z.array(objectIdSchema).optional(),
 });
 // update atm schema
 export const updateAtmSchema = z.object({
@@ -71,6 +74,7 @@ export const updateAtmSchema = z.object({
       errorMap: () => ({ message: "Status must be either ACTIVE or INACTIVE" }),
     })
     .optional(),
+  assignedEmployeeId: z.array(objectIdSchema).optional(),
 });
 export const validateRequest = (schema) => {
   return asyncHandler(async (req, res, next) => {

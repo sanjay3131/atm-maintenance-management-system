@@ -19,6 +19,8 @@ export const createATM = asyncHandler(async (req, res) => {
     installationType,
     location,
     customerId,
+    status,
+    assignedEmployeeId,
   } = req.body;
 
   const isValidDistrictId = await District.findById(districtId);
@@ -49,6 +51,8 @@ export const createATM = asyncHandler(async (req, res) => {
     address,
     installationType,
     location,
+    status,
+    assignedEmployeeId,
     createdBy: req.user._id,
   });
 
@@ -63,7 +67,8 @@ export const getAllATMs = asyncHandler(async (req, res) => {
     .populate("bankId", "bankName")
     .populate("districtId", "districtName")
     .populate("regionId", "name")
-    .populate("assignedEmployeeId", "employeeCode firstName lastName");
+    .populate("assignedEmployeeId", "employeeCode firstName lastName")
+    .populate("customer", "customerName");
 
   return res
     .status(200)
@@ -77,6 +82,7 @@ export const getATMById = asyncHandler(async (req, res) => {
     .populate("bankId", "bankName")
     .populate("districtId", "districtName")
     .populate("regionId", "name")
+    .populate("customer", "customerName")
     .populate({
       path: "assignedEmployeeId",
       select: "employeeCode userId",
@@ -102,10 +108,10 @@ export const updateATM = asyncHandler(async (req, res) => {
     const customerId = updatePayload.customerId || updatePayload.customer;
 
     if (customerId) {
-      const cust = await User.findOne({
+      const cust = await Customer.findOne({
         _id: customerId,
-        userType: "customer",
-        status: "active",
+        isActive: true,
+        isDeleted: false,
       });
       if (!cust) throw new ApiError(404, "Customer not found");
     }
