@@ -225,12 +225,15 @@ export const deletePhoto = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Associated job not found");
   }
 
-  // Only admin or uploader can delete
   const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
-  const isUploader = photo.uploadedBy.toString() === req.user._id.toString();
+  const isAssigned =
+    job.assignedEmployeeId?.toString() === req.user._id.toString();
 
-  if (!isAdmin && !isUploader) {
-    throw new ApiError(403, "You can only delete photos you uploaded");
+  if (!isAdmin && !isAssigned) {
+    throw new ApiError(
+      403,
+      "You can only delete photos for your assigned jobs",
+    );
   }
 
   if (
