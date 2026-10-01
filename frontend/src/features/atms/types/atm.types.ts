@@ -36,6 +36,7 @@ export interface UpdateATMData {
   address: string;
   installationType: InstallationType;
   status: ATMStatus;
+  assignedEmployeeId?: string[];
 }
 
 export interface ATM {

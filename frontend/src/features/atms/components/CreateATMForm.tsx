@@ -99,7 +99,13 @@ export default function CreateATMForm({
       address: initialATM.address,
       installationType: initialATM.installationType,
       status: initialATM.status,
-      assignedEmployeeId: [],
+      assignedEmployeeId: [
+        ...new Set(
+          initialATM.assignedEmployeeId.map((employee) =>
+            typeof employee === "string" ? employee : employee._id,
+          ),
+        ),
+      ],
     });
   }, [initialATM, reset]);
 
@@ -119,6 +125,7 @@ export default function CreateATMForm({
         address: data.address,
         installationType: data.installationType,
         status: data.status,
+        assignedEmployeeId: data.assignedEmployeeId,
       };
 
       updateATM.mutate(
@@ -426,88 +433,86 @@ export default function CreateATMForm({
         )}
       </div>
       {/* assign employee */}
-      {!initialATM && (
-        <div>
-          <label className="mb-2 block text-sm font-medium">
-            Assign Employees
-          </label>
-          <p className="mb-2 text-xs text-muted-foreground">
-            {watch("assignedEmployeeId")?.length || 0} employee(s) selected
-          </p>
-          <input
-            type="text"
-            placeholder="Search employee..."
-            value={employeeSearch}
-            onChange={(e) => setEmployeeSearch(e.target.value)}
-            className="mb-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
+      <div>
+        <label className="mb-2 block text-sm font-medium">
+          Assign Employees
+        </label>
+        <p className="mb-2 text-xs text-muted-foreground">
+          {watch("assignedEmployeeId")?.length || 0} employee(s) selected
+        </p>
+        <input
+          type="text"
+          placeholder="Search employee..."
+          value={employeeSearch}
+          onChange={(e) => setEmployeeSearch(e.target.value)}
+          className="mb-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+        />
 
-          <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border p-3">
-            {employeesLoading ? (
-              <p className="text-sm text-muted-foreground">
-                Loading employees...
-              </p>
-            ) : filteredEmployees.length === 0 ? (
-              <p className="py-4 text-center text-sm text-muted-foreground">
-                No employees found
-              </p>
-            ) : (
-              filteredEmployees.map(
-                (employee: {
-                  _id: string;
-                  employeeCode: string;
-                  userId: {
-                    firstName: string;
-                    lastName?: string;
-                  };
-                }) => {
-                  const firstName = employee.userId?.firstName || "";
-                  const lastName = employee.userId?.lastName || "";
+        <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border p-3">
+          {employeesLoading ? (
+            <p className="text-sm text-muted-foreground">
+              Loading employees...
+            </p>
+          ) : filteredEmployees.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">
+              No employees found
+            </p>
+          ) : (
+            filteredEmployees.map(
+              (employee: {
+                _id: string;
+                employeeCode: string;
+                userId: {
+                  firstName: string;
+                  lastName?: string;
+                };
+              }) => {
+                const firstName = employee.userId?.firstName || "";
+                const lastName = employee.userId?.lastName || "";
 
-                  const fullName = `${firstName} ${lastName}`.trim();
+                const fullName = `${firstName} ${lastName}`.trim();
 
-                  const initials = lastName
-                    ? `${firstName.charAt(0)}${lastName.charAt(0)}`
-                    : firstName.charAt(0);
+                const initials = lastName
+                  ? `${firstName.charAt(0)}${lastName.charAt(0)}`
+                  : firstName.charAt(0);
 
-                  const displayInitials = initials.toUpperCase() || "E";
-                  return (
-                    <label
-                      key={employee._id}
-                      className="flex cursor-pointer items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:bg-muted"
-                    >
-                      <input
-                        type="checkbox"
-                        value={employee._id}
-                        {...register("assignedEmployeeId")}
-                        className="h-4 w-4"
-                      />
+                const displayInitials = initials.toUpperCase() || "E";
+                return (
+                  <label
+                    key={employee._id}
+                    className="flex cursor-pointer items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:bg-muted"
+                  >
+                    <input
+                      type="checkbox"
+                      value={employee._id}
+                      {...register("assignedEmployeeId")}
+                      className="h-4 w-4"
+                    />
 
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                        {displayInitials}{" "}
-                      </div>
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                      {displayInitials}{" "}
+                    </div>
 
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">
-                          {fullName || "Unknown Employee"}
-                        </p>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
+                        {fullName || "Unknown Employee"}
+                      </p>
 
-                        <p className="text-xs text-muted-foreground">
-                          {employee.employeeCode}
-                        </p>
-                      </div>
-                    </label>
-                  );
-                },
-              )
-            )}
-          </div>
-
-          <p className="mt-1 text-xs text-muted-foreground">
-            Select one or more employees to assign this ATM.
-          </p>
+                      <p className="text-xs text-muted-foreground">
+                        {employee.employeeCode}
+                      </p>
+                    </div>
+                  </label>
+                );
+              },
+            )
+          )}
         </div>
-      )}
+
+        <p className="mt-1 text-xs text-muted-foreground">
+          Select one or more employees to assign this ATM.
+        </p>
+      </div>
 
       {/* submit button */}
       <button
