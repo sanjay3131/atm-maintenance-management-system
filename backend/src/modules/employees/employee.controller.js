@@ -66,6 +66,16 @@ export const createEmployee = asyncHandler(async (req, res) => {
     assignedAtmIds,
     salary,
   } = req.body;
+  const uniqueAssignedAtmIds = [...new Set((assignedAtmIds || []).map(String))];
+
+  if (uniqueAssignedAtmIds.length > 0) {
+    const atms = await ATM.find({
+      _id: { $in: uniqueAssignedAtmIds },
+    }).select("_id");
+    if (atms.length !== uniqueAssignedAtmIds.length) {
+      throw new ApiError(404, "One or more ATMs not found");
+    }
+  }
 
   const employeeCode = await generateEmployeeCode();
 
@@ -77,10 +87,18 @@ export const createEmployee = asyncHandler(async (req, res) => {
     joiningDate,
     employmentType,
     districtIds,
-    assignedAtmIds,
+    assignedAtmIds: uniqueAssignedAtmIds,
     salary,
     createdBy: req.user._id,
   });
+
+  if (uniqueAssignedAtmIds.length > 0) {
+    await ATM.updateMany(
+      { _id: { $in: uniqueAssignedAtmIds } },
+      { $addToSet: { assignedEmployeeId: newEmployee._id } },
+    );
+  }
+
   return res
     .status(201)
     .json(new ApiResponse(201, newEmployee, "Employee created successfully"));
@@ -90,11 +108,7 @@ export const createEmployee = asyncHandler(async (req, res) => {
 
 export const updateEmployee = asyncHandler(async (req, res) => {
   const { employeeId } = req.params;
-
-  const employee = await Employee.findByIdAndUpdate(employeeId, req.body, {
-    new: true,
-    runValidators: true,
-  }).populate("userId", "firstName lastName email userType");
+  const employee = await Employee.findById(employeeId);
 
   if (!employee) {
     return res
@@ -102,6 +116,50 @@ export const updateEmployee = asyncHandler(async (req, res) => {
       .json(new ApiResponse(404, "Employee not found", null));
   }
 
+  const updatePayload = { ...req.body };
+  let assignedAtmIds;
+  let previousAtmIds;
+  if (Object.prototype.hasOwnProperty.call(updatePayload, "assignedAtmIds")) {
+    assignedAtmIds = [
+      ...new Set((updatePayload.assignedAtmIds || []).map(String)),
+    ];
+    previousAtmIds = (employee.assignedAtmIds || []).map((id) => id.toString());
+
+    if (assignedAtmIds.length > 0) {
+      const atms = await ATM.find({ _id: { $in: assignedAtmIds } }).select(
+        "_id",
+      );
+      if (atms.length !== assignedAtmIds.length) {
+        throw new ApiError(404, "One or more ATMs not found");
+      }
+    }
+
+    employee.assignedAtmIds = assignedAtmIds;
+    delete updatePayload.assignedAtmIds;
+  }
+
+  Object.assign(employee, updatePayload);
+  await employee.save();
+
+  if (assignedAtmIds) {
+    const removedAtmIds = previousAtmIds.filter(
+      (atmId) => !assignedAtmIds.includes(atmId),
+    );
+    if (removedAtmIds.length > 0) {
+      await ATM.updateMany(
+        { _id: { $in: removedAtmIds } },
+        { $pull: { assignedEmployeeId: employee._id } },
+      );
+    }
+    if (assignedAtmIds.length > 0) {
+      await ATM.updateMany(
+        { _id: { $in: assignedAtmIds } },
+        { $addToSet: { assignedEmployeeId: employee._id } },
+      );
+    }
+  }
+
+  await employee.populate("userId", "firstName lastName email userType");
   return res
     .status(200)
     .json(new ApiResponse(200, employee, "Employee updated successfully"));

@@ -7,6 +7,7 @@ import ApiError from "../../utils/ApiError.js";
 import Employee from "../employees/employee.model.js";
 import Customer from "../customers/customer.model.js";
 import { generateEmployeeCode } from "../employees/employee.utils.js";
+import ATM from "../atms/atm.model.js";
 
 export const getAllUsers = asyncHandler(async (req, res) => {
   const isAdmin =
@@ -269,8 +270,20 @@ export const createUserWizard = asyncHandler(async (req, res) => {
   try {
     if (role === "employee") {
       const employeeCode = await generateEmployeeCode();
+      const assignedAtmIds = [
+        ...new Set((employee.assignedAtmIds || []).map(String)),
+      ];
 
-      await Employee.create({
+      if (assignedAtmIds.length > 0) {
+        const atms = await ATM.find({ _id: { $in: assignedAtmIds } }).select(
+          "_id",
+        );
+        if (atms.length !== assignedAtmIds.length) {
+          throw new ApiError(404, "One or more ATMs not found");
+        }
+      }
+
+      const newEmployee = await Employee.create({
         userId: user._id,
         employeeCode,
         designation: employee.designation,
@@ -278,11 +291,18 @@ export const createUserWizard = asyncHandler(async (req, res) => {
         joiningDate: employee.joiningDate,
         employmentType: employee.employmentType,
         districtIds: employee.districtIds,
-        assignedAtmIds: employee.assignedAtmIds,
+        assignedAtmIds,
         regionIds: employee.regionIds,
         salary: employee.salary,
         createdBy: req.user._id,
       });
+
+      if (assignedAtmIds.length > 0) {
+        await ATM.updateMany(
+          { _id: { $in: assignedAtmIds } },
+          { $addToSet: { assignedEmployeeId: newEmployee._id } },
+        );
+      }
     }
 
     if (role === "customer") {

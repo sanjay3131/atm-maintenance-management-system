@@ -22,6 +22,18 @@ export const createATM = asyncHandler(async (req, res) => {
     status,
     assignedEmployeeId,
   } = req.body;
+  const assignedEmployeeIds = [
+    ...new Set((assignedEmployeeId || []).map(String)),
+  ];
+
+  if (assignedEmployeeIds.length > 0) {
+    const employees = await Employee.find({
+      _id: { $in: assignedEmployeeIds },
+    }).select("_id");
+    if (employees.length !== assignedEmployeeIds.length) {
+      throw new ApiError(404, "One or more employees not found");
+    }
+  }
 
   const isValidDistrictId = await District.findById(districtId);
   const isValidRegionId = await Region.findById(regionId);
@@ -52,9 +64,16 @@ export const createATM = asyncHandler(async (req, res) => {
     installationType,
     location,
     status,
-    assignedEmployeeId,
+    assignedEmployeeId: assignedEmployeeIds,
     createdBy: req.user._id,
   });
+
+  if (assignedEmployeeIds.length > 0) {
+    await Employee.updateMany(
+      { _id: { $in: assignedEmployeeIds } },
+      { $addToSet: { assignedAtmIds: atm._id } },
+    );
+  }
 
   return res
     .status(201)
@@ -103,6 +122,35 @@ export const getATMById = asyncHandler(async (req, res) => {
 // update atm
 export const updateATM = asyncHandler(async (req, res) => {
   const updatePayload = { ...req.body };
+  const atm = await ATM.findById(req.params.id);
+
+  if (!atm || atm.isDeleted) {
+    throw new ApiError(404, "ATM not found");
+  }
+
+  let assignedEmployeeIds;
+  let previousEmployeeIds;
+  if (
+    Object.prototype.hasOwnProperty.call(updatePayload, "assignedEmployeeId")
+  ) {
+    assignedEmployeeIds = [
+      ...new Set((updatePayload.assignedEmployeeId || []).map(String)),
+    ];
+    previousEmployeeIds = (atm.assignedEmployeeId || []).map((id) =>
+      id.toString(),
+    );
+
+    if (assignedEmployeeIds.length > 0) {
+      const employees = await Employee.find({
+        _id: { $in: assignedEmployeeIds },
+      }).select("_id");
+      if (employees.length !== assignedEmployeeIds.length) {
+        throw new ApiError(404, "One or more employees not found");
+      }
+    }
+
+    updatePayload.assignedEmployeeId = assignedEmployeeIds;
+  }
 
   if (Object.prototype.hasOwnProperty.call(updatePayload, "customerId")) {
     const customerId = updatePayload.customerId || updatePayload.customer;
@@ -136,6 +184,24 @@ export const updateATM = asyncHandler(async (req, res) => {
 
   if (!updatedATM || updatedATM.isDeleted) {
     throw new ApiError(404, "ATM not found");
+  }
+
+  if (assignedEmployeeIds) {
+    const removedEmployeeIds = previousEmployeeIds.filter(
+      (employeeId) => !assignedEmployeeIds.includes(employeeId),
+    );
+    if (removedEmployeeIds.length > 0) {
+      await Employee.updateMany(
+        { _id: { $in: removedEmployeeIds } },
+        { $pull: { assignedAtmIds: updatedATM._id } },
+      );
+    }
+    if (assignedEmployeeIds.length > 0) {
+      await Employee.updateMany(
+        { _id: { $in: assignedEmployeeIds } },
+        { $addToSet: { assignedAtmIds: updatedATM._id } },
+      );
+    }
   }
 
   return res
@@ -183,10 +249,10 @@ export const assignEmployeeToATM = asyncHandler(async (req, res) => {
     id.toString(),
   );
 
-  if (
-    atmEmployeeIds.includes(employeeId.toString()) ||
-    employeeAtmIds.includes(atmId.toString())
-  ) {
+  const isAssignedToATM = atmEmployeeIds.includes(employeeId.toString());
+  const isAssignedToEmployee = employeeAtmIds.includes(atmId.toString());
+
+  if (isAssignedToATM && isAssignedToEmployee) {
     throw new ApiError(400, "Employee is already assigned to this ATM");
   }
 
