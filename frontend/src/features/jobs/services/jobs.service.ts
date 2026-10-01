@@ -4,10 +4,13 @@ import type {
   AssignJobData,
   CreateJobData,
   Job,
+  JobHistoryEntry,
   JobsListResponse,
   JobsQueryParams,
   MyJobsListResponse,
   MyJobsQueryParams,
+  ApproveJobData,
+  VerifyJobData,
 } from "../types/job.types";
 
 export type JobPhotoType = "before" | "after";
@@ -54,6 +57,16 @@ export const getJobById = async (jobId: string): Promise<Job> => {
   return response.data.data;
 };
 
+export const getJobHistory = async (
+  jobId: string,
+): Promise<JobHistoryEntry[]> => {
+  const response = await api.get<{ data: JobHistoryEntry[] }>(
+    `/jobs/${jobId}/history`,
+  );
+
+  return response.data.data;
+};
+
 export const createJob = async (data: CreateJobData): Promise<Job> => {
   const response = await api.post<{ data: Job }>("/jobs/", data);
 
@@ -95,6 +108,30 @@ export const completeJob = async (
     `/jobs/${jobId}/complete`,
     data,
   );
+
+  return response.data.data;
+};
+
+export const verifyJob = async (
+  jobId: string,
+  data: VerifyJobData,
+): Promise<Job> => {
+  const response = await api.put<{ data: Job }>(`/jobs/${jobId}/verify`, data);
+
+  return response.data.data;
+};
+
+export const approveJob = async (
+  jobId: string,
+  data: ApproveJobData,
+): Promise<Job> => {
+  const response = await api.put<{ data: Job }>(`/jobs/${jobId}/approve`, data);
+
+  return response.data.data;
+};
+
+export const closeJob = async (jobId: string): Promise<Job> => {
+  const response = await api.put<{ data: Job }>(`/jobs/${jobId}/close`);
 
   return response.data.data;
 };

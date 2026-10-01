@@ -55,13 +55,11 @@ export const reassignJobSchema = z.object({
 export const verifyJobSchema = z.object({
   action: z.enum(["verify", "reject"]),
   remarks: z.string().optional(),
-  rejectionReason: z.string().optional(),
 });
 
 export const approveJobSchema = z.object({
   action: z.enum(["approve", "reject"]),
   remarks: z.string().optional(),
-  rejectionReason: z.string().optional(),
 });
 
 export const jobFilterSchema = z

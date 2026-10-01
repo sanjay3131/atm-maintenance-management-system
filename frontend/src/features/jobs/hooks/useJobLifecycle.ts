@@ -1,14 +1,17 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   acceptJob,
+  approveJob,
+  closeJob,
   completeJob,
   holdJob,
   startJob,
   uploadJobPhoto,
+  verifyJob,
   type CompleteJobData,
   type JobPhotoType,
 } from "../services/jobs.service";
-import type { Job } from "../types/job.types";
+import type { ApproveJobData, Job, VerifyJobData } from "../types/job.types";
 
 interface JobLifecycleVariables {
   jobId: string;
@@ -24,6 +27,7 @@ const useJobLifecycleMutation = (
     onSuccess: async (_job, { jobId }) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["job", jobId] }),
+        queryClient.invalidateQueries({ queryKey: ["job-history", jobId] }),
         queryClient.invalidateQueries({ queryKey: ["my-jobs"] }),
         queryClient.invalidateQueries({ queryKey: ["jobs"] }),
       ]);
@@ -34,6 +38,35 @@ const useJobLifecycleMutation = (
 export const useAcceptJob = () => useJobLifecycleMutation(acceptJob);
 export const useStartJob = () => useJobLifecycleMutation(startJob);
 export const useHoldJob = () => useJobLifecycleMutation(holdJob);
+export const useCloseJob = () => useJobLifecycleMutation(closeJob);
+
+interface JobReviewVariables<TData> {
+  jobId: string;
+  data: TData;
+}
+
+const useJobReviewMutation = <TData>(
+  mutationFn: (jobId: string, data: TData) => Promise<Job>,
+) => {
+  const queryClient = useQueryClient();
+
+  return useMutation<Job, Error, JobReviewVariables<TData>>({
+    mutationFn: ({ jobId, data }) => mutationFn(jobId, data),
+    onSuccess: async (_job, { jobId }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["job", jobId] }),
+        queryClient.invalidateQueries({ queryKey: ["job-history", jobId] }),
+        queryClient.invalidateQueries({ queryKey: ["my-jobs"] }),
+        queryClient.invalidateQueries({ queryKey: ["jobs"] }),
+      ]);
+    },
+  });
+};
+
+export const useVerifyJob = () =>
+  useJobReviewMutation<VerifyJobData>(verifyJob);
+export const useApproveJob = () =>
+  useJobReviewMutation<ApproveJobData>(approveJob);
 
 interface CompleteJobVariables {
   jobId: string;
@@ -48,6 +81,7 @@ export const useCompleteJob = () => {
     onSuccess: async (_job, { jobId }) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["job", jobId] }),
+        queryClient.invalidateQueries({ queryKey: ["job-history", jobId] }),
         queryClient.invalidateQueries({ queryKey: ["my-jobs"] }),
         queryClient.invalidateQueries({ queryKey: ["jobs"] }),
       ]);

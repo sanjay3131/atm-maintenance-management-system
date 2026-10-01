@@ -1,11 +1,14 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { isAxiosError } from "axios";
 import {
   ArrowLeft,
   Check,
+  ChevronLeft,
+  ChevronRight,
   LoaderCircle,
   Pause,
   Play,
+  X,
   UserRoundPlus,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -13,17 +16,28 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import AssignJobDialog from "@/features/jobs/components/AssignJobDialog";
 import EmployeeFieldWorkPanel from "@/features/jobs/components/EmployeeFieldWorkPanel";
 import {
   useAcceptJob,
+  useApproveJob,
+  useCloseJob,
   useHoldJob,
   useStartJob,
+  useVerifyJob,
 } from "@/features/jobs/hooks/useJobLifecycle";
+import { useJobHistory } from "@/features/jobs/hooks/useJobHistory";
 import { useJob } from "@/features/jobs/hooks/useJob";
 import { useATM } from "@/features/atms/hooks/useATM";
 import type {
   Job,
+  JobHistoryEntry,
   JobPhoto,
   JobStatus,
   JobUser,
@@ -59,6 +73,154 @@ function formatLabel(value?: string | null) {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function formatHistoryAction(action: string, entry: JobHistoryEntry) {
+  if (action === "status_changed") {
+    if (entry.toStatus === "IN_PROGRESS" && entry.fromStatus === "ON_HOLD") {
+      return "Resumed";
+    }
+    if (entry.toStatus === "IN_PROGRESS") return "Started";
+    if (entry.toStatus === "ON_HOLD") return "Put On Hold";
+    if (entry.toStatus === "ACCEPTED") return "Accepted";
+    if (entry.toStatus === "COMPLETED") return "Completed";
+  }
+
+  const labels: Record<string, string> = {
+    created: "Job Created",
+    assigned: "Assigned",
+    photo_uploaded: "Photo Uploaded",
+    gps_validated: "GPS Validated",
+    reassigned: "Reassigned",
+    verified: "Verified",
+    approved: "Approved",
+    rejected: "Rejected",
+    closed: "Closed",
+    note_added: "Note Added",
+  };
+
+  return labels[action] || formatLabel(action);
+}
+
+function isDetailsRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function formatHistoryDetailLines(
+  action: string,
+  details: unknown,
+  atm?: { documentId?: string; identifier?: string },
+): string[] {
+  if (details === null || details === undefined || details === "") return [];
+  if (typeof details === "string") return [details];
+  if (typeof details !== "object") return [String(details)];
+
+  if (Array.isArray(details)) {
+    const values = details.filter(
+      (value) =>
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean",
+    );
+    return values.length > 0 ? [`Details: ${values.join(", ")}`] : [];
+  }
+
+  const record = details as Record<string, unknown>;
+  if (action === "gps_validated") {
+    const gpsLines: string[] = [];
+    const distance = record.gpsDistance;
+    const accuracy = record.gpsAccuracy;
+    if (typeof distance === "number" && Number.isFinite(distance)) {
+      gpsLines.push(`GPS Distance: ${distance} m`);
+    }
+    if (typeof accuracy === "number" && Number.isFinite(accuracy)) {
+      gpsLines.push(`GPS Accuracy: ${accuracy} m`);
+    }
+
+    const formatLocation = (label: string, location: unknown) => {
+      if (!isDetailsRecord(location)) return;
+      const { latitude, longitude } = location;
+      if (
+        typeof latitude === "number" &&
+        Number.isFinite(latitude) &&
+        typeof longitude === "number" &&
+        Number.isFinite(longitude)
+      ) {
+        gpsLines.push(`${label}: ${latitude}, ${longitude}`);
+      }
+    };
+
+    formatLocation("Employee Location", record.employeeLocation);
+    formatLocation("ATM Location", record.atmLocation);
+    if (gpsLines.length > 0) return gpsLines;
+  }
+
+  const labels: Record<string, string> = {
+    adminRemarks: "Admin Remarks",
+    assignedTo: "Assigned employee updated",
+    employeeId: "Employee assignment updated",
+    fromEmployee: "Previous employee updated",
+    holdReason: "Hold Reason",
+    reason: "Reason",
+    rejectionReason: "Rejection Reason",
+    reassignmentReason: "Reassignment Reason",
+    title: "Title",
+    toEmployee: "New employee assigned",
+    atmId: "ATM ID",
+  };
+  const lines = Object.entries(record).flatMap(([key, value]) => {
+    if (value === null || value === undefined || value === "") return [];
+    if (key === "atmId" && typeof value === "string") {
+      const resolvesToCurrentATM =
+        atm?.documentId &&
+        atm.identifier &&
+        value.toLowerCase() === atm.documentId.toLowerCase();
+      return [`ATM ID: ${resolvesToCurrentATM ? atm.identifier : value}`];
+    }
+    if (
+      ["assignedTo", "employeeId", "fromEmployee", "toEmployee"].includes(key)
+    ) {
+      return [labels[key]];
+    }
+
+    const label =
+      labels[key] ||
+      key
+        .replace(/([A-Z])/g, " $1")
+        .replace(/^./, (character) => character.toUpperCase());
+    if (Array.isArray(value)) {
+      const scalarValues = value.filter(
+        (item) =>
+          typeof item === "string" ||
+          typeof item === "number" ||
+          typeof item === "boolean",
+      );
+      return scalarValues.length > 0
+        ? [`${label}: ${scalarValues.join(", ")}`]
+        : [];
+    }
+    if (typeof value === "object") return [`${label}: details recorded`];
+    return [`${label}: ${String(value)}`];
+  });
+
+  return lines;
+}
+
+function formatGpsValue(value?: number) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? String(value)
+    : NOT_AVAILABLE;
+}
+
+function getPhotoUrl(photo?: JobPhoto | null) {
+  return photo?.url || photo?.thumbnailUrl || undefined;
+}
+
+interface ReviewPhoto {
+  pairIndex: number;
+  side: "before" | "after";
+  photo: JobPhoto;
+  src: string;
 }
 
 function getStatusVariant(status: JobStatus) {
@@ -98,12 +260,14 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
 function PhotoSection({
   title,
   photos,
+  onPhotoClick,
 }: {
   title: string;
   photos?: Array<JobPhoto | null>;
+  onPhotoClick?: (index: number) => void;
 }) {
-  const availablePhotos = (photos ?? []).filter((photo): photo is JobPhoto =>
-    Boolean(photo?.thumbnailUrl || photo?.url),
+  const availablePhotos = (photos ?? []).flatMap((photo, index) =>
+    photo && getPhotoUrl(photo) ? [{ photo, index }] : [],
   );
 
   return (
@@ -116,16 +280,31 @@ function PhotoSection({
           <p className="text-sm text-muted-foreground">No photos available.</p>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {availablePhotos.map((photo) => (
+            {availablePhotos.map(({ photo, index }) => (
               <figure
                 key={photo._id}
                 className="overflow-hidden rounded-md border"
               >
-                <img
-                  src={photo.thumbnailUrl || photo.url || undefined}
-                  alt={`${title} photo`}
-                  className="aspect-square w-full object-cover"
-                />
+                {onPhotoClick ? (
+                  <button
+                    type="button"
+                    aria-label={`Review ${title.toLowerCase()} ${index + 1}`}
+                    className="group block w-full cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => onPhotoClick(index)}
+                  >
+                    <img
+                      src={photo.thumbnailUrl || photo.url || undefined}
+                      alt={`${title} photo ${index + 1}`}
+                      className="aspect-square w-full object-cover transition-opacity group-hover:opacity-90"
+                    />
+                  </button>
+                ) : (
+                  <img
+                    src={photo.thumbnailUrl || photo.url || undefined}
+                    alt={`${title} photo ${index + 1}`}
+                    className="aspect-square w-full object-cover"
+                  />
+                )}
                 <figcaption className="p-2 text-xs text-muted-foreground">
                   {formatDate(photo.uploadedAt)}
                 </figcaption>
@@ -175,9 +354,29 @@ export default function JobDetailsPage({
   const navigate = useNavigate();
   const { jobId = "" } = useParams<{ jobId: string }>();
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
+  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+  const [rejectionAction, setRejectionAction] = useState<
+    "verify" | "approve" | null
+  >(null);
+  const [rejectionRemarks, setRejectionRemarks] = useState("");
+  const [activePhotoPairIndex, setActivePhotoPairIndex] = useState<
+    number | null
+  >(null);
+  const [activeFullImageIndex, setActiveFullImageIndex] = useState<
+    number | null
+  >(null);
+  const photoViewerStateRef = useRef({
+    activePhotoPairIndex,
+    activeFullImageIndex,
+    photoPairCount: 0,
+    reviewPhotos: [] as ReviewPhoto[],
+  });
   const acceptMutation = useAcceptJob();
   const startMutation = useStartJob();
   const holdMutation = useHoldJob();
+  const verifyMutation = useVerifyJob();
+  const approveMutation = useApproveJob();
+  const closeMutation = useCloseJob();
   const {
     data: job,
     isLoading,
@@ -186,10 +385,126 @@ export default function JobDetailsPage({
     refetch,
     isFetching,
   } = useJob(jobId);
+  const historyQuery = useJobHistory(readOnly ? "" : jobId);
   const { data: atmDetails, isLoading: isATMDetailsLoading } = useATM(
     getRawATMId(job),
     !readOnly,
   );
+  const beforePhotos = job?.beforePhotos ?? [];
+  const afterPhotos = job?.afterPhotos ?? [];
+  const photoPairCount = Math.max(beforePhotos.length, afterPhotos.length);
+  const reviewPhotos: ReviewPhoto[] = [];
+
+  for (let pairIndex = 0; pairIndex < photoPairCount; pairIndex += 1) {
+    const beforePhoto = beforePhotos[pairIndex];
+    const beforeSrc = getPhotoUrl(beforePhoto);
+    if (beforePhoto && beforeSrc) {
+      reviewPhotos.push({
+        pairIndex,
+        side: "before",
+        photo: beforePhoto,
+        src: beforeSrc,
+      });
+    }
+
+    const afterPhoto = afterPhotos[pairIndex];
+    const afterSrc = getPhotoUrl(afterPhoto);
+    if (afterPhoto && afterSrc) {
+      reviewPhotos.push({
+        pairIndex,
+        side: "after",
+        photo: afterPhoto,
+        src: afterSrc,
+      });
+    }
+  }
+  const photoViewerOpen =
+    activePhotoPairIndex !== null || activeFullImageIndex !== null;
+
+  useEffect(() => {
+    photoViewerStateRef.current = {
+      activePhotoPairIndex,
+      activeFullImageIndex,
+      photoPairCount,
+      reviewPhotos,
+    };
+  });
+
+  const openPhotoPair = (pairIndex: number) => {
+    setActivePhotoPairIndex(pairIndex);
+    setActiveFullImageIndex(null);
+  };
+
+  const openFullImage = (side: ReviewPhoto["side"], pairIndex: number) => {
+    const imageIndex = reviewPhotos.findIndex(
+      (photo) => photo.side === side && photo.pairIndex === pairIndex,
+    );
+    if (imageIndex < 0) return;
+    setActivePhotoPairIndex(pairIndex);
+    setActiveFullImageIndex(imageIndex);
+  };
+
+  const moveFullImage = (direction: -1 | 1) => {
+    if (activeFullImageIndex === null) return;
+    const nextIndex = activeFullImageIndex + direction;
+    if (nextIndex < 0 || nextIndex >= reviewPhotos.length) return;
+    setActiveFullImageIndex(nextIndex);
+    setActivePhotoPairIndex(reviewPhotos[nextIndex].pairIndex);
+  };
+
+  useEffect(() => {
+    if (!photoViewerOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        event.key !== "Escape" &&
+        target instanceof HTMLElement &&
+        (target.isContentEditable || target.closest("input, textarea, select"))
+      ) {
+        return;
+      }
+
+      const {
+        activePhotoPairIndex: pairIndex,
+        activeFullImageIndex: imageIndex,
+        photoPairCount: pairCount,
+        reviewPhotos: photos,
+      } = photoViewerStateRef.current;
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (imageIndex !== null) {
+          setActiveFullImageIndex(null);
+        } else {
+          setActivePhotoPairIndex(null);
+        }
+        return;
+      }
+
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        event.stopPropagation();
+        const direction = event.key === "ArrowLeft" ? -1 : 1;
+        if (imageIndex !== null) {
+          const nextIndex = imageIndex + direction;
+          if (nextIndex >= 0 && nextIndex < photos.length) {
+            setActiveFullImageIndex(nextIndex);
+            setActivePhotoPairIndex(photos[nextIndex].pairIndex);
+          }
+        } else if (pairIndex !== null) {
+          const nextIndex = pairIndex + direction;
+          if (nextIndex >= 0 && nextIndex < pairCount) {
+            setActivePhotoPairIndex(nextIndex);
+          }
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [photoViewerOpen]);
 
   if (isLoading) return <DetailsSkeleton />;
 
@@ -244,6 +559,10 @@ export default function JobDetailsPage({
     acceptMutation.isPending ||
     startMutation.isPending ||
     holdMutation.isPending;
+  const reviewMutationPending =
+    verifyMutation.isPending ||
+    approveMutation.isPending ||
+    closeMutation.isPending;
 
   const runLifecycleAction = (
     mutation: typeof acceptMutation,
@@ -272,6 +591,93 @@ export default function JobDetailsPage({
     ["Closed", job.closedAt],
   ] as const;
 
+  const handleRejectSuccess = () => {
+    setIsRejectDialogOpen(false);
+    setRejectionAction(null);
+    setRejectionRemarks("");
+    toast.success("Job rejected.");
+  };
+
+  const handleRejectError = (mutationError: Error) => {
+    toast.error(getMutationErrorMessage(mutationError));
+  };
+
+  const confirmReject = () => {
+    if (!rejectionAction || reviewMutationPending) return;
+
+    const remarks = rejectionRemarks.trim() || undefined;
+    if (rejectionAction === "verify") {
+      verifyMutation.mutate(
+        { jobId: job._id, data: { action: "reject", remarks } },
+        { onSuccess: handleRejectSuccess, onError: handleRejectError },
+      );
+      return;
+    }
+
+    approveMutation.mutate(
+      { jobId: job._id, data: { action: "reject", remarks } },
+      { onSuccess: handleRejectSuccess, onError: handleRejectError },
+    );
+  };
+
+  const openRejectDialog = (action: "verify" | "approve") => {
+    setRejectionAction(action);
+    setRejectionRemarks("");
+    setIsRejectDialogOpen(true);
+  };
+
+  const handleRejectDialogChange = (open: boolean) => {
+    if (reviewMutationPending) return;
+    setIsRejectDialogOpen(open);
+    if (!open) {
+      setRejectionAction(null);
+      setRejectionRemarks("");
+    }
+  };
+
+  const runVerify = () => {
+    if (reviewMutationPending) return;
+    verifyMutation.mutate(
+      { jobId: job._id, data: { action: "verify" } },
+      {
+        onSuccess: () => toast.success("Job verified."),
+        onError: (mutationError) =>
+          toast.error(getMutationErrorMessage(mutationError)),
+      },
+    );
+  };
+
+  const runApprove = () => {
+    if (reviewMutationPending) return;
+    approveMutation.mutate(
+      { jobId: job._id, data: { action: "approve" } },
+      {
+        onSuccess: () => toast.success("Job approved."),
+        onError: (mutationError) =>
+          toast.error(getMutationErrorMessage(mutationError)),
+      },
+    );
+  };
+
+  const runClose = () => {
+    if (reviewMutationPending) return;
+    closeMutation.mutate(
+      { jobId: job._id },
+      {
+        onSuccess: () => toast.success("Job closed."),
+        onError: (mutationError) =>
+          toast.error(getMutationErrorMessage(mutationError)),
+      },
+    );
+  };
+
+  const activePairBefore =
+    activePhotoPairIndex === null ? null : beforePhotos[activePhotoPairIndex];
+  const activePairAfter =
+    activePhotoPairIndex === null ? null : afterPhotos[activePhotoPairIndex];
+  const activeFullPhoto =
+    activeFullImageIndex === null ? null : reviewPhotos[activeFullImageIndex];
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -294,11 +700,79 @@ export default function JobDetailsPage({
             {job.jobNumber || job.jobId}
           </p>
         </div>
-        {!readOnly && availableAssignmentStatus && (
-          <Button type="button" onClick={() => setIsAssignDialogOpen(true)}>
-            <UserRoundPlus />
-            Assign Job
-          </Button>
+        {!readOnly && (
+          <div className="flex flex-wrap items-center gap-2">
+            {availableAssignmentStatus && (
+              <Button type="button" onClick={() => setIsAssignDialogOpen(true)}>
+                <UserRoundPlus />
+                Assign Job
+              </Button>
+            )}
+            {job.status === "COMPLETED" && (
+              <>
+                <Button
+                  type="button"
+                  disabled={reviewMutationPending}
+                  onClick={runVerify}
+                >
+                  {verifyMutation.isPending ? (
+                    <LoaderCircle className="animate-spin" />
+                  ) : (
+                    <Check />
+                  )}
+                  Verify
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={reviewMutationPending}
+                  onClick={() => openRejectDialog("verify")}
+                >
+                  <X />
+                  Reject
+                </Button>
+              </>
+            )}
+            {job.status === "VERIFIED" && (
+              <>
+                <Button
+                  type="button"
+                  disabled={reviewMutationPending}
+                  onClick={runApprove}
+                >
+                  {approveMutation.isPending ? (
+                    <LoaderCircle className="animate-spin" />
+                  ) : (
+                    <Check />
+                  )}
+                  Approve
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={reviewMutationPending}
+                  onClick={() => openRejectDialog("approve")}
+                >
+                  <X />
+                  Reject
+                </Button>
+              </>
+            )}
+            {job.status === "APPROVED" && (
+              <Button
+                type="button"
+                disabled={reviewMutationPending}
+                onClick={runClose}
+              >
+                {closeMutation.isPending ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <Check />
+                )}
+                Close
+              </Button>
+            )}
+          </div>
         )}
         {readOnly && (
           <div className="flex flex-wrap items-center gap-2">
@@ -552,6 +1026,62 @@ export default function JobDetailsPage({
           </CardContent>
         </Card>
 
+        {!readOnly && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Completion GPS</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl>
+                <DetailRow
+                  label="Latitude"
+                  value={formatGpsValue(job.employeeGpsAtCompletion?.latitude)}
+                />
+                <DetailRow
+                  label="Longitude"
+                  value={formatGpsValue(job.employeeGpsAtCompletion?.longitude)}
+                />
+                <DetailRow
+                  label="Accuracy"
+                  value={
+                    job.employeeGpsAtCompletion?.accuracy !== undefined &&
+                    Number.isFinite(job.employeeGpsAtCompletion.accuracy)
+                      ? `${job.employeeGpsAtCompletion.accuracy} m`
+                      : NOT_AVAILABLE
+                  }
+                />
+                <DetailRow
+                  label="Distance from ATM"
+                  value={
+                    job.gpsDistance !== undefined &&
+                    Number.isFinite(job.gpsDistance)
+                      ? `${job.gpsDistance} m`
+                      : NOT_AVAILABLE
+                  }
+                />
+                <DetailRow
+                  label="GPS validation"
+                  value={
+                    job.gpsValidated === true ? (
+                      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                        Validated
+                      </Badge>
+                    ) : job.gpsValidated === false ? (
+                      <Badge variant="secondary">Not validated</Badge>
+                    ) : (
+                      NOT_AVAILABLE
+                    )
+                  }
+                />
+                <DetailRow
+                  label="Captured at"
+                  value={formatDate(job.employeeGpsAtCompletion?.timestamp)}
+                />
+              </dl>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle>Audit</CardTitle>
@@ -570,8 +1100,16 @@ export default function JobDetailsPage({
           </CardContent>
         </Card>
 
-        <PhotoSection title="Before photos" photos={job.beforePhotos} />
-        <PhotoSection title="After photos" photos={job.afterPhotos} />
+        <PhotoSection
+          title="Before photos"
+          photos={job.beforePhotos}
+          onPhotoClick={readOnly ? undefined : openPhotoPair}
+        />
+        <PhotoSection
+          title="After photos"
+          photos={job.afterPhotos}
+          onPhotoClick={readOnly ? undefined : openPhotoPair}
+        />
 
         {(job.employeeRemarks ||
           job.adminRemarks ||
@@ -634,6 +1172,88 @@ export default function JobDetailsPage({
             </CardContent>
           </Card>
         )}
+
+        {!readOnly && (
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Job History</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {historyQuery.isLoading ? (
+                <p className="text-sm text-muted-foreground">
+                  Loading history...
+                </p>
+              ) : historyQuery.isError ? (
+                <p role="status" className="text-sm text-destructive">
+                  Unable to load job history.
+                </p>
+              ) : historyQuery.data?.length ? (
+                <ol>
+                  {historyQuery.data.map((entry) => {
+                    const actorName =
+                      [
+                        entry.performedBy?.firstName,
+                        entry.performedBy?.lastName,
+                      ]
+                        .filter(Boolean)
+                        .join(" ") || "Unknown user";
+                    const details = formatHistoryDetailLines(
+                      entry.action,
+                      entry.details,
+                      {
+                        documentId: atmDetails?._id ?? atm?._id,
+                        identifier: atmDetails?.atmId ?? atm?.atmId,
+                      },
+                    );
+
+                    return (
+                      <li
+                        key={entry._id}
+                        className="border-b py-3 last:border-b-0"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <p className="text-sm font-medium">
+                            {formatHistoryAction(entry.action, entry)}
+                          </p>
+                          <time className="text-xs text-muted-foreground">
+                            {formatDate(entry.performedAt)}
+                          </time>
+                        </div>
+                        {entry.fromStatus && entry.toStatus && (
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {formatLabel(entry.fromStatus)} -&gt;{" "}
+                            {formatLabel(entry.toStatus)}
+                          </p>
+                        )}
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Performed by: {actorName}
+                          {entry.performedBy?.userType && (
+                            <>
+                              {" "}
+                              · Role: {formatLabel(entry.performedBy.userType)}
+                            </>
+                          )}
+                        </p>
+                        {details.map((detail, index) => (
+                          <p
+                            key={`${entry._id}-detail-${index}`}
+                            className="mt-2 break-words text-xs text-muted-foreground"
+                          >
+                            {detail}
+                          </p>
+                        ))}
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No history available.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {isAssignDialogOpen && (
@@ -642,6 +1262,235 @@ export default function JobDetailsPage({
           onClose={() => setIsAssignDialogOpen(false)}
         />
       )}
+
+      {!readOnly && (
+        <>
+          <Dialog
+            open={activePhotoPairIndex !== null}
+            onOpenChange={(open) => {
+              if (!open && activeFullImageIndex === null) {
+                setActivePhotoPairIndex(null);
+              }
+            }}
+          >
+            <DialogContent className="max-h-[95vh] max-w-6xl overflow-y-auto">
+              {activePhotoPairIndex !== null && (
+                <>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <DialogTitle>Job Photos</DialogTitle>
+                      <DialogDescription>
+                        Before and after photos for this job.
+                      </DialogDescription>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Close photo review"
+                      onClick={() => setActivePhotoPairIndex(null)}
+                    >
+                      <X />
+                    </Button>
+                  </div>
+
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    {[
+                      {
+                        side: "before" as const,
+                        label: "Before",
+                        photo: activePairBefore,
+                      },
+                      {
+                        side: "after" as const,
+                        label: "After",
+                        photo: activePairAfter,
+                      },
+                    ].map(({ side, label, photo }) => {
+                      const src = getPhotoUrl(photo);
+                      return (
+                        <section key={side} className="min-w-0 space-y-2">
+                          <h3 className="text-sm font-semibold">{label}</h3>
+                          {photo && src ? (
+                            <button
+                              type="button"
+                              aria-label={`Open ${label.toLowerCase()} photo ${activePhotoPairIndex + 1} full size`}
+                              className="flex aspect-[4/3] w-full cursor-zoom-in items-center justify-center overflow-hidden rounded-md border bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              onClick={() =>
+                                openFullImage(side, activePhotoPairIndex)
+                              }
+                            >
+                              <img
+                                src={src}
+                                alt={`${label} photo ${activePhotoPairIndex + 1}`}
+                                className="max-h-full max-w-full object-contain"
+                              />
+                            </button>
+                          ) : (
+                            <div
+                              className="flex aspect-[4/3] items-center justify-center rounded-md border border-dashed bg-muted/20 text-sm text-muted-foreground"
+                              role="status"
+                            >
+                              No photo available
+                            </div>
+                          )}
+                        </section>
+                      );
+                    })}
+                  </div>
+
+                  <p className="mt-4 text-center text-sm text-muted-foreground">
+                    {activePhotoPairIndex + 1} / {photoPairCount}
+                  </p>
+                  <div className="mt-3 flex justify-between gap-3 border-t pt-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={activePhotoPairIndex <= 0}
+                      onClick={() =>
+                        setActivePhotoPairIndex((index) =>
+                          index === null ? null : Math.max(0, index - 1),
+                        )
+                      }
+                    >
+                      <ChevronLeft />
+                      Previous
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={activePhotoPairIndex >= photoPairCount - 1}
+                      onClick={() =>
+                        setActivePhotoPairIndex((index) =>
+                          index === null
+                            ? null
+                            : Math.min(photoPairCount - 1, index + 1),
+                        )
+                      }
+                    >
+                      Next
+                      <ChevronRight />
+                    </Button>
+                  </div>
+                </>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={activeFullImageIndex !== null}
+            onOpenChange={(open) => {
+              if (!open) setActiveFullImageIndex(null);
+            }}
+          >
+            <DialogContent className="max-h-[95vh] max-w-7xl overflow-y-auto">
+              {activeFullPhoto && activeFullImageIndex !== null && (
+                <>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <DialogTitle>Full-size photo</DialogTitle>
+                      <DialogDescription className="mt-1">
+                        {formatLabel(activeFullPhoto.side)} ·{" "}
+                        {activeFullPhoto.pairIndex + 1}
+                      </DialogDescription>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Close full-size photo"
+                      onClick={() => setActiveFullImageIndex(null)}
+                    >
+                      <X />
+                    </Button>
+                  </div>
+                  <div className="mt-4 flex min-h-[40vh] items-center justify-center rounded-md bg-black/90 p-2">
+                    <img
+                      src={activeFullPhoto.src}
+                      alt={`${formatLabel(activeFullPhoto.side)} photo ${activeFullPhoto.pairIndex + 1}`}
+                      className="max-h-[70vh] max-w-full object-contain"
+                    />
+                  </div>
+                  <p className="mt-3 text-center text-sm text-muted-foreground">
+                    {activeFullPhoto.side === "before" ? "Before" : "After"} ·{" "}
+                    {activeFullPhoto.pairIndex + 1} · {activeFullImageIndex + 1}{" "}
+                    / {reviewPhotos.length}
+                  </p>
+                  <div className="mt-3 flex justify-between gap-3 border-t pt-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={activeFullImageIndex <= 0}
+                      onClick={() => moveFullImage(-1)}
+                    >
+                      <ChevronLeft />
+                      Previous
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={activeFullImageIndex >= reviewPhotos.length - 1}
+                      onClick={() => moveFullImage(1)}
+                    >
+                      Next
+                      <ChevronRight />
+                    </Button>
+                  </div>
+                </>
+              )}
+            </DialogContent>
+          </Dialog>
+        </>
+      )}
+
+      <Dialog open={isRejectDialogOpen} onOpenChange={handleRejectDialogChange}>
+        <DialogContent>
+          <div className="space-y-2">
+            <DialogTitle>Reject Job</DialogTitle>
+            <DialogDescription>
+              This job will move to Rejected. You may optionally provide a
+              reason.
+            </DialogDescription>
+          </div>
+          <div className="mt-4">
+            <label
+              htmlFor="job-rejection-remarks"
+              className="mb-2 block text-sm font-medium"
+            >
+              Rejection reason
+            </label>
+            <textarea
+              id="job-rejection-remarks"
+              value={rejectionRemarks}
+              onChange={(event) => setRejectionRemarks(event.target.value)}
+              rows={4}
+              disabled={reviewMutationPending}
+              className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+            />
+          </div>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleRejectDialogChange(false)}
+              disabled={reviewMutationPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={confirmReject}
+              disabled={reviewMutationPending}
+            >
+              {reviewMutationPending && (
+                <LoaderCircle className="animate-spin" />
+              )}
+              Confirm Reject
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

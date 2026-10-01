@@ -78,6 +78,47 @@ export interface JobReassignment {
   reassignedBy?: JobUser | string | null;
 }
 
+export interface EmployeeGpsAtCompletion {
+  latitude?: number;
+  longitude?: number;
+  accuracy?: number;
+  timestamp?: string;
+}
+
+export type JobHistoryAction =
+  | "created"
+  | "assigned"
+  | "status_changed"
+  | "photo_uploaded"
+  | "gps_validated"
+  | "reassigned"
+  | "verified"
+  | "approved"
+  | "rejected"
+  | "closed"
+  | "note_added";
+
+export interface JobHistoryActor {
+  _id: string;
+  firstName?: string;
+  lastName?: string;
+  userType?: string;
+}
+
+export interface JobHistoryEntry {
+  _id: string;
+  jobId: string;
+  action: JobHistoryAction;
+  fromStatus?: string;
+  toStatus?: string;
+  performedBy?: JobHistoryActor | null;
+  performedAt: string;
+  details?: unknown;
+  ipAddress?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Job {
   _id: string;
   jobId: string;
@@ -101,6 +142,9 @@ export interface Job {
   approvedAt?: string | null;
   closedAt?: string | null;
   rejectedAt?: string | null;
+  employeeGpsAtCompletion?: EmployeeGpsAtCompletion;
+  gpsDistance?: number;
+  gpsValidated?: boolean;
   updatedAt?: string;
   employeeRemarks?: string;
   adminRemarks?: string;
@@ -151,6 +195,16 @@ export interface CreateJobData {
 
 export interface AssignJobData {
   employeeId: string;
+}
+
+export interface VerifyJobData {
+  action: "verify" | "reject";
+  remarks?: string;
+}
+
+export interface ApproveJobData {
+  action: "approve" | "reject";
+  remarks?: string;
 }
 
 export interface JobsQueryParams {

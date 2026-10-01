@@ -516,12 +516,7 @@ export const closeJob = asyncHandler(async (req, res) => {
   const job = await Job.findById(id);
   if (!job || job.isDeleted) throw new ApiError(404, "Job not found");
 
-  const closableStatuses = [
-    JOB_STATUS.APPROVED,
-    JOB_STATUS.REJECTED,
-    JOB_STATUS.PENDING,
-  ];
-  if (!closableStatuses.includes(job.status))
+  if (job.status !== JOB_STATUS.APPROVED)
     throw new ApiError(400, `Cannot close job with status: ${job.status}`);
 
   const oldStatus = job.status;
