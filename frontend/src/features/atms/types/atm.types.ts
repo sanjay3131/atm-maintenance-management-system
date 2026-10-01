@@ -21,6 +21,12 @@ export interface ATMLocation {
   coordinates?: [number, number];
 }
 
+export interface SetATMLocationData {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+}
+
 export interface UpdateATMData {
   bankId: string;
   customerId?: string;

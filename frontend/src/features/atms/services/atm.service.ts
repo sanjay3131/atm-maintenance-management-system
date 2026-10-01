@@ -1,5 +1,9 @@
 import api from "@/lib/axios";
-import type { ATM, UpdateATMData } from "../types/atm.types";
+import type {
+  ATM,
+  SetATMLocationData,
+  UpdateATMData,
+} from "../types/atm.types";
 
 export const getATMs = async (): Promise<ATM[]> => {
   const response = await api.get("/atm/getAllATMs");
@@ -16,6 +20,17 @@ export const updateATM = async (
   data: UpdateATMData,
 ): Promise<void> => {
   await api.patch(`/atm/updateATM/${atmId}`, data);
+};
+
+export const setATMLocation = async (
+  atmId: string,
+  data: SetATMLocationData,
+): Promise<ATM> => {
+  const response = await api.post<{ data: ATM }>(
+    `/atm/${atmId}/set-location`,
+    data,
+  );
+  return response.data.data;
 };
 
 export const deleteATM = async (atmId: string): Promise<void> => {
