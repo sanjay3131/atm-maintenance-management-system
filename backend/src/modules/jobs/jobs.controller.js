@@ -1,6 +1,8 @@
 import asyncHandler from "../../utils/asyncHandler.js";
 import ApiResponse from "../../utils/ApiResponse.js";
 import ApiError from "../../utils/ApiError.js";
+import Customer from "../customers/customer.model.js";
+import Employee from "../employees/employee.model.js";
 import Job from "./jobs.model.js";
 import JobHistory from "./jobHistory.model.js";
 import ATM from "../atms/atm.model.js";
@@ -46,6 +48,64 @@ const logJobHistory = async ({
   });
 };
 
+const addEmployeeCodes = async (job) => {
+  const jobData = job.toObject();
+  const history = Array.isArray(jobData.reassignmentHistory)
+    ? jobData.reassignmentHistory
+    : [];
+  jobData.reassignmentHistory = history;
+  jobData.beforePhotos = Array.isArray(jobData.beforePhotos)
+    ? jobData.beforePhotos
+    : [];
+  jobData.afterPhotos = Array.isArray(jobData.afterPhotos)
+    ? jobData.afterPhotos
+    : [];
+  const employeeUsers = [
+    jobData.assignedEmployeeId,
+    ...history.flatMap((item) => [item.fromEmployee, item.toEmployee]),
+  ].filter(
+    (user) =>
+      user &&
+      typeof user === "object" &&
+      user._id &&
+      (user.firstName || user.lastName),
+  );
+  const userIds = [
+    ...new Set(employeeUsers.map((user) => user._id.toString())),
+  ];
+
+  if (userIds.length === 0) return jobData;
+
+  const employeeRecords = await Employee.find({
+    userId: { $in: userIds },
+  })
+    .select("userId employeeCode")
+    .lean();
+  const employeeCodes = new Map(
+    employeeRecords.map((employee) => [
+      employee.userId.toString(),
+      employee.employeeCode,
+    ]),
+  );
+  const attachCode = (user) => {
+    if (!user || typeof user !== "object" || !user._id) return user;
+
+    return {
+      ...user,
+      employeeCode: employeeCodes.get(user._id.toString()) ?? null,
+    };
+  };
+
+  jobData.assignedEmployeeId = attachCode(jobData.assignedEmployeeId);
+  jobData.reassignmentHistory = history.map((item) => ({
+    ...item,
+    fromEmployee: attachCode(item.fromEmployee),
+    toEmployee: attachCode(item.toEmployee),
+  }));
+
+  return jobData;
+};
+
 // ============================================
 // 1. CREATE JOB
 // ============================================
@@ -66,9 +126,10 @@ export const createJob = asyncHandler(async (req, res) => {
   const atm = await ATM.findById(atmId);
   if (!atm || atm.isDeleted) throw new ApiError(404, "ATM not found");
   if (customerId) {
-    const customer = await User.findOne({
+    const customer = await Customer.findOne({
       _id: customerId,
-      userType: "customer",
+      isActive: true,
+      isDeleted: false,
     });
     if (!customer) throw new ApiError(404, "Customer not found");
   }
@@ -573,7 +634,11 @@ export const getAllJobs = asyncHandler(async (req, res) => {
     if (req.user.userType === "employee")
       query.assignedEmployeeId = req.user._id;
     else if (req.user.userType === "customer") {
-      query.customerId = req.user._id;
+      const customer = await Customer.findOne({
+        userId: req.user._id,
+        isDeleted: false,
+      }).select("_id");
+      query.customerId = customer?._id ?? { $in: [] };
       query.status = {
         $in: [JOB_STATUS.VERIFIED, JOB_STATUS.APPROVED, JOB_STATUS.CLOSED],
       };
@@ -633,7 +698,6 @@ export const getAllJobs = asyncHandler(async (req, res) => {
     .populate("atmId", "atmId locationName bank address districtId regionId")
     .populate("assignedEmployeeId", "firstName lastName employeeCode")
     // .populate("complaintId", "complaintNumber title")
-    .populate("customerId", "firstName lastName")
     .populate("createdBy", "firstName lastName")
     .sort({ createdAt: -1 })
     .skip(skip)
@@ -663,19 +727,26 @@ export const getAllJobs = asyncHandler(async (req, res) => {
 // ============================================
 export const getJobById = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  if (!/^[0-9a-fA-F]{24}$/.test(id)) {
+    throw new ApiError(404, "Job not found");
+  }
 
   const job = await Job.findById(id)
     .populate(
       "atmId",
-      "atmId locationName bank address districtId regionId location",
+      "atmId locationName bank address districtId regionId location locationConfigured",
     )
+    .populate("assignedEmployeeId", "firstName lastName phoneNumber")
+    .populate("reassignmentHistory.fromEmployee", "firstName lastName")
+    .populate("reassignmentHistory.toEmployee", "firstName lastName")
+    .populate("reassignmentHistory.reassignedBy", "firstName lastName")
     .populate(
-      "assignedEmployeeId",
-      "firstName lastName employeeCode phoneNumber",
+      "complaintId",
+      "complaintNumber title description reportedBy reportedVia priority status reportedAt",
     )
-    .populate("complaintId", "complaintNumber title description")
-    .populate("customerId", "firstName lastName")
+    .populate("customerId", "customerName customerEmail customerPhone bankName")
     .populate("createdBy", "firstName lastName")
+    .populate("assignedBy", "firstName lastName")
     .populate("updatedBy", "firstName lastName")
     .populate("beforePhotos", "url thumbnailUrl photoType uploadedAt")
     .populate("afterPhotos", "url thumbnailUrl photoType uploadedAt");
@@ -688,7 +759,11 @@ export const getJobById = asyncHandler(async (req, res) => {
   const isCustomer = req.user.userType === "customer";
 
   if (isCustomer) {
-    if (job.customerId?._id?.toString() !== req.user._id.toString())
+    const customer = await Customer.findOne({
+      userId: req.user._id,
+      isDeleted: false,
+    }).select("_id");
+    if (job.customerId?._id?.toString() !== customer?._id?.toString())
       throw new ApiError(403, "Access denied");
     if (
       ![JOB_STATUS.VERIFIED, JOB_STATUS.APPROVED, JOB_STATUS.CLOSED].includes(
@@ -700,9 +775,11 @@ export const getJobById = asyncHandler(async (req, res) => {
     throw new ApiError(403, "Access denied");
   }
 
+  const responseJob = await addEmployeeCodes(job);
+
   return res
     .status(200)
-    .json(new ApiResponse(200, job, "Job fetched successfully"));
+    .json(new ApiResponse(200, responseJob, "Job fetched successfully"));
 });
 
 // ============================================
@@ -765,10 +842,17 @@ export const getJobHistory = asyncHandler(async (req, res) => {
     job.assignedEmployeeId?.toString() === req.user._id.toString();
   const isCustomer = req.user.userType === "customer";
 
-  if (isCustomer && job.customerId?.toString() !== req.user._id.toString())
+  if (isCustomer) {
+    const customer = await Customer.findOne({
+      userId: req.user._id,
+      isDeleted: false,
+    }).select("_id");
+    if (job.customerId?.toString() !== customer?._id?.toString()) {
+      throw new ApiError(403, "Access denied");
+    }
+  } else if (!isAdmin && !isAssigned) {
     throw new ApiError(403, "Access denied");
-  else if (!isAdmin && !isAssigned && !isCustomer)
-    throw new ApiError(403, "Access denied");
+  }
 
   const history = await JobHistory.find({ jobId: id })
     .populate("performedBy", "firstName lastName userType")
@@ -853,8 +937,7 @@ export const holdJob = asyncHandler(async (req, res) => {
   if (job.assignedEmployeeId?.toString() !== req.user._id.toString())
     throw new ApiError(403, "Not your job");
 
-  const validStatuses = [JOB_STATUS.ACCEPTED, JOB_STATUS.IN_PROGRESS];
-  if (!validStatuses.includes(job.status))
+  if (job.status !== JOB_STATUS.IN_PROGRESS)
     throw new ApiError(400, `Cannot hold job with status: ${job.status}`);
 
   const oldStatus = job.status;

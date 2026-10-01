@@ -13,6 +13,8 @@ import AmcPage from "@/pages/admin/AmcPage";
 import ComplaintsPage from "@/pages/admin/ComplaintsPage";
 import ATMDetailsPage from "@/pages/admin/ATMDetailsPage";
 import EditATMPage from "@/pages/admin/EditATMPage";
+import JobDetailsPage from "@/pages/admin/JobDetailsPage";
+import EmployeeJobsPage from "@/pages/employee/EmployeeJobsPage";
 
 export default function App() {
   return (
@@ -30,6 +32,7 @@ export default function App() {
             <Route path="/admin/atms/:id" element={<ATMDetailsPage />} />
             <Route path="/admin/atms/:id/edit" element={<EditATMPage />} />
             <Route path="/admin/jobs" element={<JobsPage />} />
+            <Route path="/admin/jobs/:jobId" element={<JobDetailsPage />} />
             <Route path="/admin/amc" element={<AmcPage />} />
             <Route path="/admin/complaints" element={<ComplaintsPage />} />
           </Route>
@@ -41,6 +44,11 @@ export default function App() {
 
         <Route element={<ProtectedRoute allowedRoles={["employee"]} />}>
           <Route path="/employee" element={<EmployeeDashboardPage />} />
+          <Route path="/employee/jobs" element={<EmployeeJobsPage />} />
+          <Route
+            path="/employee/jobs/:jobId"
+            element={<JobDetailsPage readOnly backPath="/employee/jobs" />}
+          />
         </Route>
 
         <Route path="/" element={<Navigate to="/login" replace />} />
