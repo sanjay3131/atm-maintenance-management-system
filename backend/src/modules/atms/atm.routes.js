@@ -12,6 +12,7 @@ import {
 import {
   createAtmSchema,
   updateAtmSchema,
+  assignATMEmployeeSchema,
   validateRequest,
 } from "./atm.validation.js";
 import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
@@ -65,6 +66,7 @@ router.patch(
   "/assignEmployee/:id",
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin"),
+  validateRequest(assignATMEmployeeSchema),
   assignEmployeeToATM,
 );
 // Employee sets ATM location

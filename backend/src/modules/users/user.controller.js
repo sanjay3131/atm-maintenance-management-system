@@ -276,10 +276,19 @@ export const createUserWizard = asyncHandler(async (req, res) => {
 
       if (assignedAtmIds.length > 0) {
         const atms = await ATM.find({ _id: { $in: assignedAtmIds } }).select(
-          "_id",
+          "_id atmId assignedEmployeeId",
         );
         if (atms.length !== assignedAtmIds.length) {
           throw new ApiError(404, "One or more ATMs not found");
+        }
+        const conflictingATM = atms.find(
+          (atm) => (atm.assignedEmployeeId || []).length > 0,
+        );
+        if (conflictingATM) {
+          throw new ApiError(
+            409,
+            `ATM ${conflictingATM.atmId} is already assigned to another employee. Reassign it from ATM management.`,
+          );
         }
       }
 
@@ -298,9 +307,16 @@ export const createUserWizard = asyncHandler(async (req, res) => {
       });
 
       if (assignedAtmIds.length > 0) {
+        await Employee.updateMany(
+          {
+            _id: { $ne: newEmployee._id },
+            assignedAtmIds: { $in: assignedAtmIds },
+          },
+          { $pull: { assignedAtmIds: { $in: assignedAtmIds } } },
+        );
         await ATM.updateMany(
           { _id: { $in: assignedAtmIds } },
-          { $addToSet: { assignedEmployeeId: newEmployee._id } },
+          { $set: { assignedEmployeeId: [newEmployee._id] } },
         );
       }
     }

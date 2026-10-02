@@ -1,5 +1,4 @@
 import AMC from "./amc.model.js";
-import Employee from "../employees/employee.model.js";
 import ATM from "../atms/atm.model.js";
 import User from "../users/user.model.js";
 import { AMC_CONFIG, AMC_STATUS } from "./amc.config.js";
@@ -33,65 +32,84 @@ export const generateMonthlyAMC = async (month, year, createdBy) => {
     )?._id ||
     null;
 
-  // Find all active employees with assigned ATMs
-  const employees = await Employee.find({
-    status: "active",
-    assignedAtmIds: { $exists: true, $ne: [] },
-  }).populate("userId", "firstName lastName");
-
   const results = { created: 0, skipped: 0, errors: [] };
 
-  for (const employee of employees) {
-    const atms = await ATM.find({
-      _id: { $in: employee.assignedAtmIds },
-      isDeleted: false,
-      status: { $in: ["ACTIVE", "UNDER_MAINTENANCE"] },
-    })
-      .populate("customer", "firstName lastName")
-      .populate("bankId", "bankName")
-      .populate("districtId", "districtName");
+  const atms = await ATM.find({
+    isDeleted: false,
+    status: { $in: ["ACTIVE", "UNDER_MAINTENANCE"] },
+    assignedEmployeeId: { $exists: true, $ne: [] },
+  })
+    .populate("customer", "firstName lastName")
+    .populate("bankId", "bankName")
+    .populate("districtId", "districtName")
+    .populate({
+      path: "assignedEmployeeId",
+      select: "employeeCode status supervisorId userId",
+      populate: { path: "userId", select: "status userType" },
+    });
 
-    for (const atm of atms) {
-      try {
-        const amcId = await generateAmcId(month, year);
+  for (const atm of atms) {
+    const employee =
+      atm.assignedEmployeeId?.length === 1
+        ? atm.assignedEmployeeId[0]
+        : null;
 
-        // Calculate deadline: 20th of the month
-        const deadlineDate = new Date(
-          year,
-          month - 1,
-          AMC_CONFIG.DEADLINE_DAY,
-          23,
-          59,
-          59,
-        );
+    if (!employee) {
+      results.errors.push({
+        atmId: atm.atmId,
+        error: "ATM must have exactly one assigned employee to generate AMC",
+      });
+      continue;
+    }
 
-        await AMC.create({
-          amcId,
-          atmId: atm._id,
-          employeeId: employee.userId._id,
-          supervisorId: employee.supervisorId || null,
-          customerId: atm.customer || null,
-          bankId: atm.bankId || null,
-          districtId: atm.districtId || null,
-          month,
-          year,
-          status: AMC_STATUS.PENDING,
-          deadlineDate,
-          createdBy: creatorId,
+    if (
+      employee.status !== "active" ||
+      employee.userId?.status !== "active" ||
+      employee.userId?.userType !== "employee"
+    ) {
+      results.skipped++;
+      continue;
+    }
+
+    try {
+      const amcId = await generateAmcId(month, year);
+
+      // Calculate deadline: 20th of the month
+      const deadlineDate = new Date(
+        year,
+        month - 1,
+        AMC_CONFIG.DEADLINE_DAY,
+        23,
+        59,
+        59,
+      );
+
+      await AMC.create({
+        amcId,
+        atmId: atm._id,
+        employeeId: employee.userId._id,
+        supervisorId: employee.supervisorId || null,
+        customerId: atm.customer || null,
+        bankId: atm.bankId || null,
+        districtId: atm.districtId || null,
+        month,
+        year,
+        status: AMC_STATUS.PENDING,
+        deadlineDate,
+        createdBy: creatorId,
+      });
+
+      results.created++;
+    } catch (err) {
+      // Unique index violation = already exists, skip silently
+      if (err.code === 11000) {
+        results.skipped++;
+      } else {
+        results.errors.push({
+          atmId: atm.atmId,
+          employee: employee.employeeCode,
+          error: err.message,
         });
-
-        results.created++;
-      } catch (err) {
-        // Unique index violation = already exists, skip silently
-        if (err.code === 11000) {
-          results.skipped++;
-        } else {
-          results.errors.push({
-            atmId: atm.atmId,
-            employee: employee.employeeCode,
-            error: err.message,
-          });
-        }
       }
     }
   }

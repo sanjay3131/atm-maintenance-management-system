@@ -6,6 +6,7 @@ import {
   ClipboardList,
   CalendarCheck,
   MessageSquareWarning,
+  Repeat,
 } from "lucide-react";
 
 const navItems = [
@@ -28,6 +29,11 @@ const navItems = [
     label: "Jobs",
     path: "/admin/jobs",
     icon: ClipboardList,
+  },
+  {
+    label: "Recurring Maintenance",
+    path: "/admin/recurring-maintenance",
+    icon: Repeat,
   },
   {
     label: "AMC",

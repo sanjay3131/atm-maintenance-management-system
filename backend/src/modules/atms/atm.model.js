@@ -115,6 +115,19 @@ const atmSchema = new mongoose.Schema(
   },
 );
 
+atmSchema.path("assignedEmployeeId").validate({
+  validator: function (employeeIds) {
+    if (
+      typeof this.isModified === "function" &&
+      !this.isModified("assignedEmployeeId")
+    ) {
+      return true;
+    }
+    return !employeeIds || employeeIds.length <= 1;
+  },
+  message: "An ATM can have only one assigned employee",
+});
+
 // Indexes
 atmSchema.index({ atmId: 1 }, { unique: true });
 atmSchema.index({ bankId: 1 });

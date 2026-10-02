@@ -66,6 +66,18 @@ function formatDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? NOT_AVAILABLE : date.toLocaleString();
 }
 
+function formatScheduledDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? NOT_AVAILABLE
+    : date.toLocaleDateString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+}
+
 function formatLabel(value?: string | null) {
   if (!value) return NOT_AVAILABLE;
   return value
@@ -860,6 +872,30 @@ export default function JobDetailsPage({
             </dl>
           </CardContent>
         </Card>
+
+        {job.recurringMaintenance?.source === "RECURRING" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Recurring Maintenance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl>
+                <DetailRow
+                  label="Type"
+                  value={formatLabel(
+                    job.recurringMaintenance.maintenanceType,
+                  )}
+                />
+                <DetailRow
+                  label="Scheduled date"
+                  value={formatScheduledDate(
+                    job.recurringMaintenance.scheduledDate,
+                  )}
+                />
+              </dl>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>

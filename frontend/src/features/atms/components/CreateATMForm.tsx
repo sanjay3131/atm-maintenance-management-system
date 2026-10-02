@@ -101,11 +101,15 @@ export default function CreateATMForm({
       status: initialATM.status,
       assignedEmployeeId: [
         ...new Set(
-          initialATM.assignedEmployeeId.map((employee) =>
-            typeof employee === "string" ? employee : employee._id,
+          initialATM.assignedEmployeeId.flatMap((employee) =>
+            typeof employee === "string"
+              ? [employee]
+              : employee
+                ? [employee._id]
+                : [],
           ),
         ),
-      ],
+      ].slice(0, 1),
     });
   }, [initialATM, reset]);
 
@@ -435,11 +439,8 @@ export default function CreateATMForm({
       {/* assign employee */}
       <div>
         <label className="mb-2 block text-sm font-medium">
-          Assign Employees
+          Maintenance Employee
         </label>
-        <p className="mb-2 text-xs text-muted-foreground">
-          {watch("assignedEmployeeId")?.length || 0} employee(s) selected
-        </p>
         <input
           type="text"
           placeholder="Search employee..."
@@ -448,69 +449,67 @@ export default function CreateATMForm({
           className="mb-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
         />
 
-        <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border p-3">
-          {employeesLoading ? (
-            <p className="text-sm text-muted-foreground">
-              Loading employees...
-            </p>
-          ) : filteredEmployees.length === 0 ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">
-              No employees found
-            </p>
-          ) : (
-            filteredEmployees.map(
-              (employee: {
-                _id: string;
-                employeeCode: string;
-                userId: {
-                  firstName: string;
-                  lastName?: string;
-                };
-              }) => {
-                const firstName = employee.userId?.firstName || "";
-                const lastName = employee.userId?.lastName || "";
-
-                const fullName = `${firstName} ${lastName}`.trim();
-
-                const initials = lastName
-                  ? `${firstName.charAt(0)}${lastName.charAt(0)}`
-                  : firstName.charAt(0);
-
-                const displayInitials = initials.toUpperCase() || "E";
-                return (
-                  <label
-                    key={employee._id}
-                    className="flex cursor-pointer items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:bg-muted"
-                  >
-                    <input
-                      type="checkbox"
-                      value={employee._id}
-                      {...register("assignedEmployeeId")}
-                      className="h-4 w-4"
-                    />
-
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                      {displayInitials}{" "}
-                    </div>
-
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">
-                        {fullName || "Unknown Employee"}
-                      </p>
-
-                      <p className="text-xs text-muted-foreground">
-                        {employee.employeeCode}
-                      </p>
-                    </div>
-                  </label>
-                );
-              },
+        <Select
+          value={watch("assignedEmployeeId")?.[0] || "unassigned"}
+          onValueChange={(value) =>
+            setValue(
+              "assignedEmployeeId",
+              value && value !== "unassigned" ? [value] : [],
+              { shouldValidate: true },
             )
-          )}
-        </div>
-
+          }
+          disabled={employeesLoading}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select an employee">
+              {watch("assignedEmployeeId")?.length
+                ? filteredEmployees.find(
+                    (employee: { _id: string }) =>
+                      employee._id === watch("assignedEmployeeId")?.[0],
+                  )?.userId?.firstName || "Selected employee"
+                : "Not Assigned"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="unassigned">Not Assigned</SelectItem>
+            {employeesLoading ? (
+              <SelectItem value="loading" disabled>
+                Loading employees...
+              </SelectItem>
+            ) : (
+              filteredEmployees
+                .filter(
+                  (employee: {
+                    status?: string;
+                    userId?: { status?: string };
+                  }) =>
+                    employee.status === "active" &&
+                    employee.userId?.status === "active",
+                )
+                .map(
+                  (employee: {
+                    _id: string;
+                    employeeCode: string;
+                    userId: { firstName: string; lastName?: string };
+                  }) => (
+                    <SelectItem key={employee._id} value={employee._id}>
+                      {employee.employeeCode} —{" "}
+                      {`${employee.userId?.firstName || ""} ${
+                        employee.userId?.lastName || ""
+                      }`.trim()}
+                    </SelectItem>
+                  ),
+                )
+            )}
+          </SelectContent>
+        </Select>
+        {errors.assignedEmployeeId && (
+          <p className="mt-1 text-sm text-red-500">
+            {errors.assignedEmployeeId.message}
+          </p>
+        )}
         <p className="mt-1 text-xs text-muted-foreground">
-          Select one or more employees to assign this ATM.
+          One employee is responsible for this ATM’s maintenance.
         </p>
       </div>
 

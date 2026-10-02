@@ -14,6 +14,7 @@ import ComplaintsPage from "@/pages/admin/ComplaintsPage";
 import ATMDetailsPage from "@/pages/admin/ATMDetailsPage";
 import EditATMPage from "@/pages/admin/EditATMPage";
 import JobDetailsPage from "@/pages/admin/JobDetailsPage";
+import RecurringMaintenancePage from "@/pages/admin/RecurringMaintenancePage";
 import EmployeeJobsPage from "@/pages/employee/EmployeeJobsPage";
 
 export default function App() {
@@ -33,6 +34,10 @@ export default function App() {
             <Route path="/admin/atms/:id/edit" element={<EditATMPage />} />
             <Route path="/admin/jobs" element={<JobsPage />} />
             <Route path="/admin/jobs/:jobId" element={<JobDetailsPage />} />
+            <Route
+              path="/admin/recurring-maintenance"
+              element={<RecurringMaintenancePage />}
+            />
             <Route path="/admin/amc" element={<AmcPage />} />
             <Route path="/admin/complaints" element={<ComplaintsPage />} />
           </Route>

@@ -55,6 +55,26 @@ function formatDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? "Not available" : date.toLocaleString();
 }
 
+function formatScheduledDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Not available"
+    : date.toLocaleDateString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+}
+
+function getRecurringMaintenanceLabel(
+  maintenanceType: "DAILY_CLEANING" | "WEEKLY_MOPPING",
+) {
+  return maintenanceType === "DAILY_CLEANING"
+    ? "Daily Cleaning"
+    : "Weekly Mopping";
+}
+
 function getStatusVariant(status: JobStatus) {
   if (status === "REJECTED") return "destructive" as const;
   if (status === "PENDING" || status === "ON_HOLD") return "secondary" as const;
@@ -260,6 +280,24 @@ export default function EmployeeJobsPage() {
                     <p className="line-clamp-3 text-sm text-muted-foreground">
                       {job.description}
                     </p>
+                  )}
+                  {job.recurringMaintenance?.source === "RECURRING" && (
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary">Recurring</Badge>
+                        <span className="text-sm font-medium">
+                          {getRecurringMaintenanceLabel(
+                            job.recurringMaintenance.maintenanceType,
+                          )}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Scheduled:{" "}
+                        {formatScheduledDate(
+                          job.recurringMaintenance.scheduledDate,
+                        )}
+                      </p>
+                    </div>
                   )}
                 </CardHeader>
                 <CardContent className="space-y-4">

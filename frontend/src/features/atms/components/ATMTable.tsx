@@ -20,6 +20,9 @@ export default function ATMTable({
             <th className="px-4 py-3 text-left font-medium">Bank</th>
             <th className="px-4 py-3 text-left font-medium">District</th>
             <th className="px-4 py-3 text-left font-medium">Region</th>
+            <th className="px-4 py-3 text-left font-medium">
+              Maintenance Employee
+            </th>
             <th className="px-4 py-3 text-left font-medium">Status</th>
           </tr>
         </thead>
@@ -27,7 +30,7 @@ export default function ATMTable({
           {atms.length === 0 ? (
             <tr>
               <td
-                colSpan={6}
+                colSpan={7}
                 className="px-4 py-12 text-center text-sm text-muted-foreground"
               >
                 {emptyMessage}
@@ -62,6 +65,27 @@ export default function ATMTable({
 
                 <td className="px-4 py-3">
                   {atm.regionId?.name || "Not assigned"}
+                </td>
+
+                <td className="px-4 py-3">
+                  {atm.assignedEmployeeId.length === 0
+                    ? "Not Assigned"
+                    : atm.assignedEmployeeId
+                        .map((assignment) => {
+                          if (!assignment || typeof assignment === "string") {
+                            return "Assigned employee";
+                          }
+                          const name = [
+                            assignment.userId?.firstName,
+                            assignment.userId?.lastName,
+                          ]
+                            .filter(Boolean)
+                            .join(" ");
+                          return `${assignment.employeeCode || "Employee"}${
+                            name ? ` — ${name}` : ""
+                          }`;
+                        })
+                        .join(", ")}
                 </td>
 
                 <td className="px-4 py-3">{atm.status}</td>

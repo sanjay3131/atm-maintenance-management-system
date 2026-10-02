@@ -70,6 +70,15 @@ export interface JobPhoto {
   uploadedAt?: string;
 }
 
+export interface RecurringMaintenanceJobMetadata {
+  source: "RECURRING";
+  planId: string;
+  maintenanceType: "DAILY_CLEANING" | "WEEKLY_MOPPING";
+  occurrenceKey: string;
+  scheduledDate: string;
+  dueAt: string;
+}
+
 export interface JobReassignment {
   fromEmployee?: JobUser | string | null;
   toEmployee?: JobUser | string | null;
@@ -133,6 +142,7 @@ export interface Job {
   workType: JobWorkType;
   priority: JobPriority;
   status: JobStatus;
+  recurringMaintenance?: RecurringMaintenanceJobMetadata;
   createdAt: string;
   assignedAt?: string | null;
   acceptedAt?: string | null;

@@ -12,6 +12,16 @@ import {
   approveJobSchema,
 } from "./jobs.validation.js";
 import {
+  createRecurringMaintenancePlanSchema,
+  updateRecurringMaintenancePlanSchema,
+} from "./recurringMaintenance.validation.js";
+import {
+  createRecurringMaintenancePlanController,
+  listRecurringMaintenancePlans,
+  triggerRecurringJobGeneration,
+  updateRecurringMaintenancePlanController,
+} from "./recurringMaintenance.controller.js";
+import {
   createJob,
   assignJob,
   acceptJob,
@@ -31,6 +41,34 @@ import {
 } from "./jobs.controller.js";
 
 const router = Router();
+
+// Recurring maintenance administration
+router.get(
+  "/recurring/plans",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  listRecurringMaintenancePlans,
+);
+router.post(
+  "/recurring/plans",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(createRecurringMaintenancePlanSchema),
+  createRecurringMaintenancePlanController,
+);
+router.patch(
+  "/recurring/plans/:planId",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(updateRecurringMaintenancePlanSchema),
+  updateRecurringMaintenancePlanController,
+);
+router.post(
+  "/recurring/generate",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  triggerRecurringJobGeneration,
+);
 
 // Admin routes
 router.post(

@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft, MapPin, Pencil, Trash2 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
+import { isAxiosError } from "axios";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,11 +13,25 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import api from "@/lib/axios";
 import { useDeleteATM } from "@/features/atms/hooks/useDeleteATM";
+import { useAssignEmployeeToATM } from "@/features/atms/hooks/useAssignEmployeeToATM";
 import { useATM } from "@/features/atms/hooks/useATM";
 import type { ATMEmployee, ATMStatus } from "@/features/atms/types/atm.types";
 
 const NOT_AVAILABLE = "Not available";
+
+interface EmployeeOption extends ATMEmployee {
+  status?: string;
+  userId?: NonNullable<ATMEmployee["userId"]> | null;
+}
 
 function formatValue(value: string | number | null | undefined) {
   return value === null || value === undefined || value === ""
@@ -90,8 +105,33 @@ export default function ATMDetailsPage() {
   const { id = "" } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
   const deleteATM = useDeleteATM();
+  const assignEmployee = useAssignEmployeeToATM();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
   const { data: atm, isLoading, isError, refetch, isFetching } = useATM(id);
+  const {
+    data: availableEmployees = [],
+    isLoading: employeesLoading,
+    isError: employeesError,
+  } = useQuery({
+    queryKey: ["employees"],
+    queryFn: async () => {
+      const response = await api.get<{ data: EmployeeOption[] }>("/employees");
+      return response.data.data;
+    },
+    select: (items) =>
+      items.filter(
+        (employee) =>
+          employee.status === "active" &&
+          employee.userId?.status === "active" &&
+          employee.userId.userType === "employee",
+      ),
+    enabled: assignDialogOpen,
+  });
+  const selectedEmployee = availableEmployees.find(
+    (employee) => employee._id === selectedEmployeeId,
+  );
 
   const handleDelete = () => {
     if (!atm) return;
@@ -107,6 +147,29 @@ export default function ATMDetailsPage() {
         toast.error("ATM deletion failed. Please try again.");
       },
     });
+  };
+
+  const handleAssignEmployee = () => {
+    if (!atm || !selectedEmployeeId) return;
+
+    assignEmployee.mutate(
+      { atmId: atm._id, employeeId: selectedEmployeeId },
+      {
+        onSuccess: () => {
+          toast.success("Maintenance employee updated successfully.");
+          void queryClient.invalidateQueries({ queryKey: ["atm", atm._id] });
+          void queryClient.invalidateQueries({ queryKey: ["atms"] });
+          void queryClient.invalidateQueries({ queryKey: ["employees"] });
+          setAssignDialogOpen(false);
+        },
+        onError: (error) => {
+          const message = isAxiosError<{ message?: string }>(error)
+            ? error.response?.data?.message
+            : undefined;
+          toast.error(message || "Employee assignment failed.");
+        },
+      },
+    );
   };
 
   if (isLoading) return <DetailsSkeleton />;
@@ -139,9 +202,11 @@ export default function ATMDetailsPage() {
   }
 
   const coordinates = atm.location?.coordinates;
-  const employees = atm.assignedEmployeeId.filter(
-    (employee): employee is ATMEmployee => typeof employee !== "string",
+  const assignedEmployees = atm.assignedEmployeeId.filter(
+    (employee): employee is ATMEmployee =>
+      employee !== null && typeof employee === "object",
   );
+  const assignment = assignedEmployees[0];
 
   return (
     <div className="space-y-6 p-6">
@@ -166,6 +231,15 @@ export default function ATMDetailsPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              setSelectedEmployeeId(assignment?._id || "");
+              setAssignDialogOpen(true);
+            }}
+          >
+            {assignment ? "Change Employee" : "Assign Employee"}
+          </Button>
           <Button onClick={() => navigate(`/admin/atms/${atm._id}/edit`)}>
             <Pencil />
             Edit ATM
@@ -213,6 +287,94 @@ export default function ATMDetailsPage() {
             >
               <Trash2 />
               {deleteATM.isPending ? "Deleting..." : "Delete ATM"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={assignDialogOpen}
+        onOpenChange={(open) => {
+          if (!assignEmployee.isPending) setAssignDialogOpen(open);
+        }}
+      >
+        <DialogContent>
+          <div className="space-y-2">
+            <DialogTitle>
+              {assignment ? "Change Maintenance Employee" : "Assign Employee"}
+            </DialogTitle>
+            <DialogDescription>
+              Choose the one employee responsible for maintenance at this ATM.
+            </DialogDescription>
+          </div>
+          <p className="mt-4 text-sm">
+            ATM: <span className="font-medium">{atm.atmId}</span>
+          </p>
+          <label className="mt-4 block text-sm font-medium" htmlFor="employee">
+            Employee
+          </label>
+          <Select
+            value={selectedEmployeeId}
+            onValueChange={(value) => setSelectedEmployeeId(value || "")}
+            disabled={employeesLoading || employeesError}
+          >
+            <SelectTrigger id="employee" className="mt-2 w-full">
+              <SelectValue
+                placeholder={
+                  employeesLoading ? "Loading employees..." : "Select employee"
+                }
+              >
+                {selectedEmployee
+                  ? `${selectedEmployee.employeeCode} — ${[
+                      selectedEmployee.userId?.firstName,
+                      selectedEmployee.userId?.lastName,
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}`
+                  : undefined}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {availableEmployees.map((employee) => (
+                <SelectItem key={employee._id} value={employee._id}>
+                  {employee.employeeCode} —{" "}
+                  {`${employee.userId?.firstName || ""} ${
+                    employee.userId?.lastName || ""
+                  }`.trim()}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {employeesError && (
+            <p className="mt-2 text-sm text-destructive">
+              Failed to load employees. Close and reopen the dialog to retry.
+            </p>
+          )}
+          {availableEmployees.length === 0 &&
+            !employeesLoading &&
+            !employeesError && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              No active employees are available.
+            </p>
+          )}
+          <div className="mt-6 flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setAssignDialogOpen(false)}
+              disabled={assignEmployee.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAssignEmployee}
+              disabled={
+                !selectedEmployeeId ||
+                employeesLoading ||
+                employeesError ||
+                assignEmployee.isPending
+              }
+            >
+              {assignEmployee.isPending ? "Saving..." : "Save"}
             </Button>
           </div>
         </DialogContent>
@@ -316,14 +478,14 @@ export default function ATMDetailsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Employees</CardTitle>
+            <CardTitle>Maintenance Employee</CardTitle>
           </CardHeader>
           <CardContent>
-            {employees.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{NOT_AVAILABLE}</p>
+            {assignedEmployees.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Not Assigned</p>
             ) : (
               <div className="space-y-3">
-                {employees.map((employee) => (
+                {assignedEmployees.map((employee) => (
                   <div
                     key={employee._id}
                     className="flex items-center gap-3 rounded-md border p-3"
@@ -341,6 +503,12 @@ export default function ATMDetailsPage() {
                     </div>
                   </div>
                 ))}
+                {assignedEmployees.length > 1 && (
+                  <p className="text-sm text-destructive">
+                    Multiple employee assignments were found in existing data.
+                    Use Change Employee to replace them with one assignment.
+                  </p>
+                )}
               </div>
             )}
           </CardContent>

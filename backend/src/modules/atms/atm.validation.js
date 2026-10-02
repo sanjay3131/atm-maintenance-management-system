@@ -37,7 +37,10 @@ export const createAtmSchema = z.object({
     })
     .optional(),
 
-  assignedEmployeeId: z.array(objectIdSchema).optional(),
+  assignedEmployeeId: z
+    .array(objectIdSchema)
+    .max(1, "An ATM can have only one assigned employee")
+    .optional(),
 });
 // update atm schema
 export const updateAtmSchema = z.object({
@@ -74,12 +77,18 @@ export const updateAtmSchema = z.object({
       errorMap: () => ({ message: "Status must be either ACTIVE or INACTIVE" }),
     })
     .optional(),
-  assignedEmployeeId: z.array(objectIdSchema).optional(),
+  assignedEmployeeId: z
+    .array(objectIdSchema)
+    .max(1, "An ATM can have only one assigned employee")
+    .optional(),
+});
+
+export const assignATMEmployeeSchema = z.object({
+  employeeId: objectIdSchema,
 });
 export const validateRequest = (schema) => {
   return asyncHandler(async (req, res, next) => {
     const result = schema.safeParse(req.body);
-    console.log(result);
 
     if (!result.success) {
       const errors = result.error.issues.map((issue) => ({

@@ -9,6 +9,45 @@ import User from "../users/user.model.js";
 import ATM from "./atm.model.js";
 import { generateATMId } from "./atm.utils.js";
 
+const validateActiveEmployee = async (employeeId) => {
+  const employee = await Employee.findById(employeeId).populate(
+    "userId",
+    "userType status",
+  );
+
+  if (!employee) throw new ApiError(404, "Employee not found");
+  if (
+    employee.status !== "active" ||
+    employee.userId?.status !== "active" ||
+    employee.userId?.userType !== "employee"
+  ) {
+    throw new ApiError(400, "Employee is inactive");
+  }
+
+  return employee;
+};
+
+const syncATMEmployeeAssignment = async (atm, employeeId, updatedBy) => {
+  atm.assignedEmployeeId = employeeId ? [employeeId] : [];
+  atm.updatedBy = updatedBy;
+  await atm.save();
+
+  await Employee.updateMany(
+    { assignedAtmIds: atm._id },
+    { $pull: { assignedAtmIds: atm._id } },
+  );
+
+  if (employeeId) {
+    await Employee.updateOne(
+      { _id: employeeId },
+      {
+        $addToSet: { assignedAtmIds: atm._id },
+        $set: { updatedBy },
+      },
+    );
+  }
+};
+
 export const createATM = asyncHandler(async (req, res) => {
   const {
     bankId,
@@ -22,17 +61,13 @@ export const createATM = asyncHandler(async (req, res) => {
     status,
     assignedEmployeeId,
   } = req.body;
-  const assignedEmployeeIds = [
-    ...new Set((assignedEmployeeId || []).map(String)),
-  ];
+  const assignedEmployeeIds = [...new Set((assignedEmployeeId || []).map(String))];
 
   if (assignedEmployeeIds.length > 0) {
-    const employees = await Employee.find({
-      _id: { $in: assignedEmployeeIds },
-    }).select("_id");
-    if (employees.length !== assignedEmployeeIds.length) {
-      throw new ApiError(404, "One or more employees not found");
+    if (assignedEmployeeIds.length > 1) {
+      throw new ApiError(400, "An ATM can have only one assigned employee");
     }
+    await validateActiveEmployee(assignedEmployeeIds[0]);
   }
 
   const isValidDistrictId = await District.findById(districtId);
@@ -69,10 +104,7 @@ export const createATM = asyncHandler(async (req, res) => {
   });
 
   if (assignedEmployeeIds.length > 0) {
-    await Employee.updateMany(
-      { _id: { $in: assignedEmployeeIds } },
-      { $addToSet: { assignedAtmIds: atm._id } },
-    );
+    await syncATMEmployeeAssignment(atm, assignedEmployeeIds[0], req.user._id);
   }
 
   return res
@@ -86,7 +118,11 @@ export const getAllATMs = asyncHandler(async (req, res) => {
     .populate("bankId", "bankName")
     .populate("districtId", "districtName")
     .populate("regionId", "name")
-    .populate("assignedEmployeeId", "employeeCode firstName lastName")
+    .populate({
+      path: "assignedEmployeeId",
+      select: "employeeCode userId",
+      populate: { path: "userId", select: "firstName lastName status" },
+    })
     .populate("customer", "customerName");
 
   return res
@@ -129,27 +165,21 @@ export const updateATM = asyncHandler(async (req, res) => {
   }
 
   let assignedEmployeeIds;
-  let previousEmployeeIds;
   if (
     Object.prototype.hasOwnProperty.call(updatePayload, "assignedEmployeeId")
   ) {
     assignedEmployeeIds = [
       ...new Set((updatePayload.assignedEmployeeId || []).map(String)),
     ];
-    previousEmployeeIds = (atm.assignedEmployeeId || []).map((id) =>
-      id.toString(),
-    );
 
     if (assignedEmployeeIds.length > 0) {
-      const employees = await Employee.find({
-        _id: { $in: assignedEmployeeIds },
-      }).select("_id");
-      if (employees.length !== assignedEmployeeIds.length) {
-        throw new ApiError(404, "One or more employees not found");
+      if (assignedEmployeeIds.length > 1) {
+        throw new ApiError(400, "An ATM can have only one assigned employee");
       }
+      await validateActiveEmployee(assignedEmployeeIds[0]);
     }
 
-    updatePayload.assignedEmployeeId = assignedEmployeeIds;
+    delete updatePayload.assignedEmployeeId;
   }
 
   if (Object.prototype.hasOwnProperty.call(updatePayload, "customerId")) {
@@ -186,22 +216,12 @@ export const updateATM = asyncHandler(async (req, res) => {
     throw new ApiError(404, "ATM not found");
   }
 
-  if (assignedEmployeeIds) {
-    const removedEmployeeIds = previousEmployeeIds.filter(
-      (employeeId) => !assignedEmployeeIds.includes(employeeId),
+  if (assignedEmployeeIds !== undefined) {
+    await syncATMEmployeeAssignment(
+      updatedATM,
+      assignedEmployeeIds[0] || null,
+      req.user._id,
     );
-    if (removedEmployeeIds.length > 0) {
-      await Employee.updateMany(
-        { _id: { $in: removedEmployeeIds } },
-        { $pull: { assignedAtmIds: updatedATM._id } },
-      );
-    }
-    if (assignedEmployeeIds.length > 0) {
-      await Employee.updateMany(
-        { _id: { $in: assignedEmployeeIds } },
-        { $addToSet: { assignedAtmIds: updatedATM._id } },
-      );
-    }
   }
 
   return res
@@ -232,45 +252,23 @@ export const assignEmployeeToATM = asyncHandler(async (req, res) => {
   const { employeeId } = req.body;
   const atmId = req.params.id;
 
+  if (!/^[a-fA-F0-9]{24}$/.test(atmId)) {
+    throw new ApiError(400, "Invalid ATM ID");
+  }
+
   const atm = await ATM.findById(atmId);
   if (!atm || atm.isDeleted) {
     throw new ApiError(404, "ATM not found");
   }
 
-  const employee = await Employee.findById(employeeId);
-  if (!employee) {
-    throw new ApiError(404, "Employee not found");
-  }
-
-  const atmEmployeeIds = (atm.assignedEmployeeId || []).map((id) =>
-    id.toString(),
-  );
-  const employeeAtmIds = (employee.assignedAtmIds || []).map((id) =>
-    id.toString(),
-  );
-
-  const isAssignedToATM = atmEmployeeIds.includes(employeeId.toString());
-  const isAssignedToEmployee = employeeAtmIds.includes(atmId.toString());
-
-  if (isAssignedToATM && isAssignedToEmployee) {
-    throw new ApiError(400, "Employee is already assigned to this ATM");
-  }
-
-  atm.assignedEmployeeId = Array.from(
-    new Set([...atmEmployeeIds, employeeId.toString()]),
-  );
-  atm.updatedBy = req.user._id;
-  await atm.save();
-
-  employee.assignedAtmIds = Array.from(
-    new Set([...employeeAtmIds, atmId.toString()]),
-  );
-  employee.updatedBy = req.user._id;
-  await employee.save();
+  await validateActiveEmployee(employeeId);
+  await syncATMEmployeeAssignment(atm, employeeId, req.user._id);
 
   return res
     .status(200)
-    .json(new ApiResponse(200, atm, "ATM assigned to employee successfully"));
+    .json(
+      new ApiResponse(200, atm, "ATM employee assignment updated successfully"),
+    );
 });
 
 // ============================================
@@ -291,10 +289,10 @@ export const setATMLocation = asyncHandler(async (req, res) => {
   const employee = await Employee.findOne({ userId: req.user._id });
   if (!employee) throw new ApiError(404, "Employee not found");
 
-  const assignedAtmIds = (employee.assignedAtmIds || []).map((id) =>
-    id.toString(),
+  const atmEmployeeIds = (atm.assignedEmployeeId || []).map((employeeId) =>
+    employeeId.toString(),
   );
-  if (!assignedAtmIds.includes(id)) {
+  if (!atmEmployeeIds.includes(employee._id.toString())) {
     throw new ApiError(403, "You are not assigned to this ATM");
   }
 

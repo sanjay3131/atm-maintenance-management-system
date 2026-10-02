@@ -77,6 +77,26 @@ function formatDate(value: string) {
       });
 }
 
+function formatScheduledDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Not available"
+    : date.toLocaleDateString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+}
+
+function getRecurringMaintenanceLabel(
+  maintenanceType: "DAILY_CLEANING" | "WEEKLY_MOPPING",
+) {
+  return maintenanceType === "DAILY_CLEANING"
+    ? "Daily Cleaning"
+    : "Weekly Mopping";
+}
+
 function getATM(job: Job) {
   return typeof job.atmId === "object" ? job.atmId : null;
 }
@@ -416,7 +436,27 @@ export default function JobsPage() {
                             {job.jobNumber || job.jobId}
                           </Link>
                         </td>
-                        <td className="min-w-44 px-4 py-3">{job.title}</td>
+                        <td className="min-w-44 px-4 py-3">
+                          <div>{job.title}</div>
+                          {job.recurringMaintenance?.source === "RECURRING" && (
+                            <div className="mt-1 space-y-1">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <Badge variant="secondary">Recurring</Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {getRecurringMaintenanceLabel(
+                                    job.recurringMaintenance.maintenanceType,
+                                  )}
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Scheduled:{" "}
+                                {formatScheduledDate(
+                                  job.recurringMaintenance.scheduledDate,
+                                )}
+                              </p>
+                            </div>
+                          )}
+                        </td>
                         <td className="min-w-36 px-4 py-3">
                           <div>{atm?.atmId || "ATM unavailable"}</div>
                           {atm?.locationName && (

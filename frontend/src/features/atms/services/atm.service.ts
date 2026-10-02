@@ -22,6 +22,16 @@ export const updateATM = async (
   await api.patch(`/atm/updateATM/${atmId}`, data);
 };
 
+export const assignEmployeeToATM = async (
+  atmId: string,
+  employeeId: string,
+): Promise<ATM> => {
+  const response = await api.patch(`/atm/assignEmployee/${atmId}`, {
+    employeeId,
+  });
+  return response.data.data;
+};
+
 export const setATMLocation = async (
   atmId: string,
   data: SetATMLocationData,

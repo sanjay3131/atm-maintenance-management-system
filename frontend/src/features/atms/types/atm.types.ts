@@ -5,10 +5,13 @@ export type InstallationType = "ONSITE" | "OFFSITE";
 export interface ATMEmployee {
   _id: string;
   employeeCode?: string;
+  status?: string;
   userId?: {
     firstName?: string;
     lastName?: string;
-  };
+    status?: string;
+    userType?: string;
+  } | null;
 }
 
 export interface ATMCustomer {
@@ -62,7 +65,7 @@ export interface ATM {
     name: string;
   } | null;
 
-  assignedEmployeeId: Array<string | ATMEmployee>;
+  assignedEmployeeId: Array<string | ATMEmployee | null>;
   customer?: string | ATMCustomer | null;
   location?: ATMLocation | null;
   locationConfigured?: boolean;

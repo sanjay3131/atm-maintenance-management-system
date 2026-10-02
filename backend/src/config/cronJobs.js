@@ -6,6 +6,8 @@ import {
   markOverdueAMCs,
 } from "../modules/amc/amc.service.js";
 import { AMC_CONFIG } from "../modules/amc/amc.config.js";
+import { generateRecurringJobs } from "../modules/jobs/recurringMaintenance.service.js";
+import { MAINTENANCE_TIMEZONE } from "../modules/jobs/recurringMaintenance.utils.js";
 
 export const initCronJobs = () => {
   // Cloudinary cleanup — daily at 2:00 AM
@@ -14,6 +16,21 @@ export const initCronJobs = () => {
     const result = await cleanupOldPhotos();
     console.log("[Cron] Cloudinary cleanup completed:", result);
   });
+
+  // Generate today's daily/weekly recurring jobs at 12:05 AM India time.
+  cron.schedule(
+    "5 0 * * *",
+    async () => {
+      console.log("[Cron] Starting recurring maintenance job generation...");
+      try {
+        const result = await generateRecurringJobs();
+        console.log("[Cron] Recurring maintenance generation completed:", result);
+      } catch (err) {
+        console.error("[Cron] Recurring maintenance generation failed:", err);
+      }
+    },
+    { timezone: MAINTENANCE_TIMEZONE },
+  );
 
   // AMC generation — 1st of every month at 1:00 AM
   cron.schedule(AMC_CONFIG.CRON.GENERATE, async () => {
@@ -48,6 +65,6 @@ export const initCronJobs = () => {
   });
 
   console.log(
-    "[Cron] Scheduled jobs: Cloudinary cleanup (2AM), AMC generation (1st @ 1AM), AMC overdue check (8AM)",
+    "[Cron] Scheduled jobs: Cloudinary cleanup (2AM), recurring maintenance generation (12:05AM IST), AMC generation (1st @ 1AM), AMC overdue check (8AM)",
   );
 };

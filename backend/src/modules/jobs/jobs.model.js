@@ -1,6 +1,39 @@
 import mongoose from "mongoose";
 import { JOB_STATUS } from "../../utils/jobStatus.js";
 
+const recurringMaintenanceSchema = new mongoose.Schema(
+  {
+    source: {
+      type: String,
+      enum: ["RECURRING"],
+      required: true,
+    },
+    planId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "RecurringMaintenancePlan",
+      required: true,
+    },
+    maintenanceType: {
+      type: String,
+      enum: ["DAILY_CLEANING", "WEEKLY_MOPPING"],
+      required: true,
+    },
+    occurrenceKey: {
+      type: String,
+      required: true,
+    },
+    scheduledDate: {
+      type: Date,
+      required: true,
+    },
+    dueAt: {
+      type: Date,
+      required: true,
+    },
+  },
+  { _id: false },
+);
+
 const jobSchema = new mongoose.Schema(
   {
     jobId: {
@@ -75,6 +108,10 @@ const jobSchema = new mongoose.Schema(
       type: String,
       enum: ["low", "medium", "high", "critical"],
       default: "medium",
+    },
+    recurringMaintenance: {
+      type: recurringMaintenanceSchema,
+      default: undefined,
     },
 
     // Timestamps
@@ -218,6 +255,17 @@ jobSchema.index({ assignedEmployeeId: 1, status: 1 });
 jobSchema.index({ atmId: 1, createdAt: -1 });
 jobSchema.index({ customerId: 1, status: 1 });
 jobSchema.index({ isDeleted: 1 });
+jobSchema.index(
+  { "recurringMaintenance.occurrenceKey": 1 },
+  { unique: true, sparse: true, name: "unique_recurring_job_occurrence" },
+);
+jobSchema.index(
+  { "recurringMaintenance.dueAt": 1, status: 1, isDeleted: 1 },
+  {
+    name: "recurring_job_due_status",
+    partialFilterExpression: { "recurringMaintenance.source": "RECURRING" },
+  },
+);
 
 const Job = mongoose.model("Job", jobSchema);
 
