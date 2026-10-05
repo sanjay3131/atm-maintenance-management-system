@@ -7,6 +7,7 @@ import {
   CalendarCheck,
   MessageSquareWarning,
   Repeat,
+  Landmark,
 } from "lucide-react";
 
 const navItems = [
@@ -24,6 +25,11 @@ const navItems = [
     label: "ATMs",
     path: "/admin/atms",
     icon: Monitor,
+  },
+  {
+    label: "Banks",
+    path: "/admin/banks",
+    icon: Landmark,
   },
   {
     label: "Jobs",

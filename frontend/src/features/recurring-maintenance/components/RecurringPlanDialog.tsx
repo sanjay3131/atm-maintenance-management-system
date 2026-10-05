@@ -127,18 +127,22 @@ export default function RecurringPlanDialog({
 
   const selectedType = watch("maintenanceType");
   const selectedAtmId = watch("atmId");
-  const activeATMs = useMemo(
-    () => atms.filter((atm) => atm.status === "ACTIVE"),
+  const eligibleATMs = useMemo(
+    () =>
+      atms.filter(
+        (atm) =>
+          atm.status === "ACTIVE" || atm.status === "UNDER_MAINTENANCE",
+      ),
     [atms],
   );
   const normalizedSearch = atmSearch.trim().toLowerCase();
   const maintenanceTypeRegistration = register("maintenanceType");
-  const filteredATMs = activeATMs.filter((atm) =>
+  const filteredATMs = eligibleATMs.filter((atm) =>
     [atm.atmId, atm.locationName, atm.districtId?.districtName]
       .filter(Boolean)
       .some((value) => value?.toLowerCase().includes(normalizedSearch)),
   );
-  const selectedATM = activeATMs.find((atm) => atm._id === selectedAtmId);
+  const selectedATM = eligibleATMs.find((atm) => atm._id === selectedAtmId);
 
   const onSubmit = async (values: RecurringMaintenanceFormValues) => {
     try {
@@ -226,9 +230,9 @@ export default function RecurringPlanDialog({
                     {atmsFetching ? "Retrying..." : "Retry"}
                   </Button>
                 </div>
-              ) : activeATMs.length === 0 ? (
+              ) : eligibleATMs.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  No active ATMs are available.
+                  No eligible ATMs are available.
                 </p>
               ) : (
                 <select
@@ -237,7 +241,7 @@ export default function RecurringPlanDialog({
                   aria-invalid={Boolean(errors.atmId)}
                   className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                 >
-                  <option value="">Select an active ATM</option>
+                  <option value="">Select an eligible ATM</option>
                   {filteredATMs.map((atm) => (
                     <option key={atm._id} value={atm._id}>
                       {atm.atmId} — {atm.districtId?.districtName || "District"}{" "}
@@ -253,7 +257,7 @@ export default function RecurringPlanDialog({
               )}
               {normalizedSearch && filteredATMs.length === 0 && (
                 <p className="mt-1 text-sm text-muted-foreground">
-                  No active ATMs match this search.
+                  No eligible ATMs match this search.
                 </p>
               )}
             </div>
@@ -379,7 +383,7 @@ export default function RecurringPlanDialog({
                 isPending ||
                 (isEditing && !isDirty) ||
                 (!isEditing &&
-                  (atmsLoading || atmsError || activeATMs.length === 0))
+                  (atmsLoading || atmsError || eligibleATMs.length === 0))
               }
             >
               {isPending

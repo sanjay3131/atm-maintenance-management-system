@@ -16,6 +16,7 @@ import EditATMPage from "@/pages/admin/EditATMPage";
 import JobDetailsPage from "@/pages/admin/JobDetailsPage";
 import RecurringMaintenancePage from "@/pages/admin/RecurringMaintenancePage";
 import EmployeeJobsPage from "@/pages/employee/EmployeeJobsPage";
+import BanksPage from "@/pages/admin/BanksPage";
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
           <Route element={<AdminLayout />}>
             <Route path="/admin" element={<AdminDashboardPage />} />
             <Route path="/admin/employees" element={<EmployeesPage />} />
+            <Route path="/admin/banks" element={<BanksPage />} />
             <Route path="/admin/atms" element={<AtmsPage />} />
             <Route path="/admin/atms/:id" element={<ATMDetailsPage />} />
             <Route path="/admin/atms/:id/edit" element={<EditATMPage />} />
