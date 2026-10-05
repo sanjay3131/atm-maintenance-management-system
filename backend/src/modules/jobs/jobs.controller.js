@@ -615,6 +615,9 @@ export const getAllJobs = asyncHandler(async (req, res) => {
     atmId,
     customerId,
     bank,
+    bankId,
+    districtId,
+    regionId,
     fromDate,
     toDate,
     page = 1,
@@ -622,6 +625,23 @@ export const getAllJobs = asyncHandler(async (req, res) => {
     search,
   } = req.query;
   const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
+
+  if (bankId && !isAdmin) {
+    throw new ApiError(403, "Only admins can filter jobs by bank");
+  }
+  for (const [field, value] of Object.entries({
+    bankId,
+    districtId,
+    regionId,
+  })) {
+    if (
+      value !== undefined &&
+      value !== "" &&
+      (typeof value !== "string" || !/^[0-9a-fA-F]{24}$/.test(value))
+    ) {
+      throw new ApiError(400, `Invalid ${field}`);
+    }
+  }
 
   const query = { isDeleted: false };
 
@@ -653,15 +673,29 @@ export const getAllJobs = asyncHandler(async (req, res) => {
     if (toDate) query.createdAt.$lte = new Date(toDate);
   }
 
-  if (search) {
-    query.$or = [
-      { jobId: { $regex: search, $options: "i" } },
-      { title: { $regex: search, $options: "i" } },
-    ];
+  let bankATMIds;
+  if (bankId) {
+    const bankATMs = await ATM.find({
+      bankId,
+      isDeleted: false,
+    }).select("_id");
+    bankATMIds = bankATMs.map((atm) => atm._id);
   }
 
+  const atmConditions = [];
+  if (bankId && !districtId && !regionId && !(bank && isAdmin)) {
+    query.atmId = atmId
+      ? bankATMIds.some((id) => id.toString() === atmId)
+        ? atmId
+        : { $in: [] }
+      : { $in: bankATMIds };
+  } else if (bankId) {
+    atmConditions.push({ bankId });
+  }
+  if (districtId) atmConditions.push({ districtId });
+  if (regionId) atmConditions.push({ regionId });
+
   if (bank && isAdmin) {
-    // Find banks matching the search term
     const matchingBanks = await Bank.find({
       $or: [
         { bankName: { $regex: bank, $options: "i" } },
@@ -669,22 +703,32 @@ export const getAllJobs = asyncHandler(async (req, res) => {
       ],
     }).select("_id");
 
-    const bankIds = matchingBanks.map((b) => b._id.toString());
+    atmConditions.push({
+      bankId: { $in: matchingBanks.map((matchingBank) => matchingBank._id) },
+    });
+  }
 
-    // Find ATMs linked to those banks
-    const atms = await ATM.find({
-      bankId: { $in: bankIds },
-      isDeleted: false,
-    }).select("_id");
+  if (atmConditions.length > 0) {
+    const matchingATMIds =
+      (
+        await ATM.find({
+          $and: [{ isDeleted: false }, ...atmConditions],
+        }).select("_id")
+      ).map((atm) => atm._id);
+    query.atmId = atmId
+      ? matchingATMIds.some((id) => id.toString() === atmId)
+        ? atmId
+        : { $in: [] }
+      : { $in: matchingATMIds };
+  } else if (atmId) {
+    query.atmId = atmId;
+  }
 
-    const atmIds = atms.map((a) => a._id.toString());
-
-    if (atmIds.length > 0) {
-      query.atmId = { $in: atmIds };
-    } else {
-      // No matching ATMs — return empty result
-      query.atmId = { $in: [] };
-    }
+  if (search) {
+    query.$or = [
+      { jobId: { $regex: search, $options: "i" } },
+      { title: { $regex: search, $options: "i" } },
+    ];
   }
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -700,6 +744,31 @@ export const getAllJobs = asyncHandler(async (req, res) => {
 
   const total = await Job.countDocuments(query);
 
+  let statusCounts;
+  if (bankId) {
+    // Keep summary counts scoped to the bank, independent of row filters and pagination.
+    const groupedCounts = await Job.aggregate([
+      {
+        $match: {
+          isDeleted: false,
+          atmId: { $in: bankATMIds },
+        },
+      },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+    statusCounts = Object.fromEntries(
+      Object.values(JOB_STATUS).map((jobStatus) => [
+        jobStatus,
+        groupedCounts.find((count) => count._id === jobStatus)?.count ?? 0,
+      ]),
+    );
+  }
+
   return res.status(200).json(
     new ApiResponse(
       200,
@@ -711,6 +780,7 @@ export const getAllJobs = asyncHandler(async (req, res) => {
           total,
           totalPages: Math.ceil(total / parseInt(limit)),
         },
+        ...(statusCounts ? { statusCounts } : {}),
       },
       "Jobs fetched successfully",
     ),

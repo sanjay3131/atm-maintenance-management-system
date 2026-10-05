@@ -179,6 +179,7 @@ export interface JobsPagination {
 export interface JobsListResponse {
   jobs: Job[];
   pagination: JobsPagination;
+  statusCounts?: Partial<Record<JobStatus, number>>;
 }
 
 export interface MyJobsListResponse {
@@ -220,6 +221,9 @@ export interface ApproveJobData {
 export interface JobsQueryParams {
   page: number;
   limit: number;
+  bankId?: string;
+  districtId?: string;
+  regionId?: string;
   search?: string;
   status?: JobStatus;
   priority?: JobPriority;

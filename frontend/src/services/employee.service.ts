@@ -14,7 +14,9 @@ export interface Employee {
     firstName: string;
     lastName?: string;
     email: string;
+    phoneNumber?: string;
     userType: string;
+    status?: string;
   };
 
   districtIds: string[];

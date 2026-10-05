@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { isAxiosError } from "axios";
 import { Landmark, Pencil, Plus, RefreshCw } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,7 @@ function BankTableSkeleton() {
 }
 
 export default function BanksPage() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(ALL_BANKS);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -249,6 +251,16 @@ export default function BanksPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                navigate(`/admin/banks/${bank._id}`)
+                              }
+                            >
+                              View
+                            </Button>
                             <Button
                               type="button"
                               size="sm"
