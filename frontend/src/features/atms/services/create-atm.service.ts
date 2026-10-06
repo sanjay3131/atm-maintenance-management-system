@@ -4,7 +4,7 @@ export interface CreateATMData {
   bankId: string;
   customerId: string;
   districtId: string;
-  regionId: string;
+  regionId: string | null;
   locationName: string;
   address: string;
   installationType: "ONSITE" | "OFFSITE";
@@ -22,7 +22,7 @@ export interface CreatedATM {
   customer: string;
   bankId: string;
   districtId: string;
-  regionId: string;
+  regionId: string | null;
   locationName: string;
   address: string;
   installationType: "ONSITE" | "OFFSITE";

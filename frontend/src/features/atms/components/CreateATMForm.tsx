@@ -1,4 +1,5 @@
 import { useForm } from "react-hook-form";
+import { isAxiosError } from "axios";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   createATMFormSchema,
@@ -6,7 +7,7 @@ import {
 } from "../types/create-atm.schema";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/axios";
-import { useRegionsByDistrict } from "@/features/users/hooks/useRegionsByDistrict";
+import { useAllRegionsByDistrict } from "@/features/users/hooks/useAllRegionsByDistrict";
 import { useCreateATM } from "../hooks/useCreateATM";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -20,6 +21,16 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { ATM, UpdateATMData } from "../types/atm.types";
 import { useUpdateATM } from "../hooks/useUpdateATM";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import type { District } from "@/features/users/types/district.types";
+
+const NO_REGION = "NO_REGION";
 
 interface CreateATMFormProps {
   onClose: () => void;
@@ -31,6 +42,9 @@ export default function CreateATMForm({
   initialATM,
 }: CreateATMFormProps) {
   const [employeeSearch, setEmployeeSearch] = useState("");
+  const [moveConfirmationOpen, setMoveConfirmationOpen] = useState(false);
+  const [pendingFormData, setPendingFormData] =
+    useState<CreateATMFormData | null>(null);
   const queryClient = useQueryClient();
   const createATM = useCreateATM();
   const updateATM = useUpdateATM();
@@ -48,7 +62,11 @@ export default function CreateATMForm({
       return response.data.data;
     },
   });
-  const { data: districts = [], isLoading: districtsLoading } = useQuery({
+  const {
+    data: districts = [],
+    isLoading: districtsLoading,
+    isError: districtsError,
+  } = useQuery<District[]>({
     queryKey: ["districts"],
     queryFn: async () => {
       const response = await api.get("/districts");
@@ -94,7 +112,7 @@ export default function CreateATMForm({
           ? initialATM.customer
           : (initialATM.customer?._id ?? ""),
       districtId: initialATM.districtId?._id ?? "",
-      regionId: initialATM.regionId?._id ?? "",
+      regionId: initialATM.regionId?._id ?? NO_REGION,
       locationName: initialATM.locationName,
       address: initialATM.address,
       installationType: initialATM.installationType,
@@ -115,16 +133,60 @@ export default function CreateATMForm({
 
   const selectedDistrictId = watch("districtId");
 
-  const { data: regions = [], isLoading: regionsLoading } =
-    useRegionsByDistrict(selectedDistrictId);
-  // on submit function
-  const onSubmit = (data: CreateATMFormData) => {
+  const {
+    data: regions = [],
+    isLoading: regionsLoading,
+    isError: regionsError,
+  } = useAllRegionsByDistrict(selectedDistrictId);
+  const activeRegions = regions.filter((region) => region.isActive);
+  const noRegionsLoaded =
+    Boolean(selectedDistrictId) &&
+    !regionsLoading &&
+    !regionsError &&
+    activeRegions.length === 0;
+  const selectedRegionId = watch("regionId");
+  const destinationRegionId =
+    selectedRegionId === NO_REGION ? null : selectedRegionId;
+  const geographicAssignmentChanged =
+    initialATM !== undefined &&
+    (initialATM.districtId?._id !== selectedDistrictId ||
+      (initialATM.regionId?._id ?? null) !== destinationRegionId);
+
+  const invalidateATMGeographyQueries = async (includeJobs: boolean) => {
+    const queryKeys = [
+      ["atms"],
+      ["district-atms"],
+      ["region-atms"],
+      ["district-employees"],
+      ["region-employees"],
+      ["district-customers"],
+      ["region-customers"],
+      ["district-geographic-summaries"],
+    ];
+    if (includeJobs) queryKeys.push(["jobs"]);
+    await Promise.all(
+      queryKeys.map((queryKey) =>
+        queryClient.invalidateQueries({ queryKey }),
+      ),
+    );
+  };
+
+  const saveATM = async (data: CreateATMFormData) => {
     if (initialATM) {
+      const targetRegionId =
+        data.regionId === NO_REGION ? null : data.regionId;
+      const hasGeographicChange =
+        initialATM.districtId?._id !== data.districtId ||
+        (initialATM.regionId?._id ?? null) !== targetRegionId;
       const updateData: UpdateATMData = {
         customerId: data.customerId,
         bankId: data.bankId,
-        districtId: data.districtId,
-        regionId: data.regionId,
+        ...(hasGeographicChange
+          ? {
+              districtId: data.districtId,
+              regionId: targetRegionId,
+            }
+          : {}),
         locationName: data.locationName,
         address: data.address,
         installationType: data.installationType,
@@ -135,16 +197,23 @@ export default function CreateATMForm({
       updateATM.mutate(
         { atmId: initialATM._id, data: updateData },
         {
-          onSuccess: () => {
+          onSuccess: async () => {
             toast.success(`ATM ${initialATM.atmId} updated successfully!`);
-            queryClient.invalidateQueries({ queryKey: ["atms"] });
-            queryClient.invalidateQueries({
-              queryKey: ["atm", initialATM._id],
-            });
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ["atms"] }),
+              queryClient.invalidateQueries({
+                queryKey: ["atm", initialATM._id],
+              }),
+              invalidateATMGeographyQueries(hasGeographicChange),
+            ]);
             onClose();
           },
           onError: (error) => {
-            toast.error("ATM update failed!");
+            toast.error(
+              isAxiosError<{ message?: string }>(error)
+                ? error.response?.data?.message || "ATM update failed."
+                : error.message || "ATM update failed.",
+            );
             console.error("ATM update failed:", error);
           },
         },
@@ -152,21 +221,33 @@ export default function CreateATMForm({
       return;
     }
 
-    createATM.mutate(data, {
-      onSuccess: (atm) => {
-        toast.success(`ATM ${atm.atmId} created successfully!`);
-
-        queryClient.invalidateQueries({
-          queryKey: ["atms"],
-        });
-
-        onClose();
+    createATM.mutate(
+      { ...data, regionId: data.regionId === NO_REGION ? null : data.regionId },
+      {
+        onSuccess: async (atm) => {
+          toast.success(`ATM ${atm.atmId} created successfully!`);
+          await invalidateATMGeographyQueries(false);
+          onClose();
+        },
+        onError: (error) => {
+          toast.error(
+            isAxiosError<{ message?: string }>(error)
+              ? error.response?.data?.message || "ATM creation failed."
+              : error.message || "ATM creation failed.",
+          );
+          console.error("ATM creation failed:", error);
+        },
       },
-      onError: (error) => {
-        toast.error("ATM creation failed!");
-        console.error("ATM creation failed:", error);
-      },
-    });
+    );
+  };
+
+  const onSubmit = (data: CreateATMFormData) => {
+    if (geographicAssignmentChanged) {
+      setPendingFormData(data);
+      setMoveConfirmationOpen(true);
+      return;
+    }
+    void saveATM(data);
   };
 
   const filteredEmployees = useMemo(() => {
@@ -275,32 +356,43 @@ export default function CreateATMForm({
         <Select
           value={watch("districtId")}
           onValueChange={(value) => {
-            if (value) {
+            if (value && value !== selectedDistrictId) {
               setValue("districtId", value);
               setValue("regionId", "");
             }
           }}
-          disabled={districtsLoading}
+          disabled={districtsLoading || districtsError}
         >
           <SelectTrigger className="w-full">
             <SelectValue placeholder="Select district">
               {
-                districts.find(
-                  (district: { _id: string; districtName: string }) =>
-                    district._id === watch("districtId"),
-                )?.districtName
+                districts.find((district) => district._id === watch("districtId"))
+                  ?.districtName ??
+                (initialATM?.districtId?._id === watch("districtId")
+                  ? `${initialATM.districtId.districtName} (inactive or unavailable)`
+                  : null)
               }
             </SelectValue>
           </SelectTrigger>
 
           <SelectContent>
-            {districts.map(
-              (district: { _id: string; districtName: string }) => (
+            {initialATM?.districtId?._id &&
+              !districts.some(
+                (district) =>
+                  district._id === initialATM.districtId._id &&
+                  district.isActive,
+              ) && (
+                <SelectItem value={initialATM.districtId._id} disabled>
+                  {initialATM.districtId.districtName} (inactive or unavailable)
+                </SelectItem>
+              )}
+            {districts
+              .filter((district) => district.isActive)
+              .map((district) => (
                 <SelectItem key={district._id} value={district._id}>
                   {district.districtName}
                 </SelectItem>
-              ),
-            )}
+              ))}
           </SelectContent>
         </Select>
         {errors.districtId && (
@@ -318,7 +410,12 @@ export default function CreateATMForm({
           onValueChange={(value) => {
             if (value) setValue("regionId", value);
           }}
-          disabled={!selectedDistrictId || regionsLoading}
+          disabled={
+            !selectedDistrictId ||
+            regionsLoading ||
+            regionsError ||
+            districtsError
+          }
         >
           <SelectTrigger className="w-full">
             <SelectValue
@@ -327,24 +424,54 @@ export default function CreateATMForm({
                   ? "Select district first"
                   : regionsLoading
                     ? "Loading regions..."
-                    : "Select region"
+                    : regionsError
+                      ? "Regions unavailable"
+                      : "Select region"
               }
             >
               {
-                regions.find(
-                  (region: { _id: string; name: string }) =>
-                    region._id === watch("regionId"),
-                )?.name
+                selectedRegionId === NO_REGION
+                  ? noRegionsLoaded
+                  ? "No Region"
+                  : initialATM?.regionId
+                    ? `${initialATM.regionId.name} (existing assignment)`
+                    : "Select region"
+                  : regions.find((region) => region._id === selectedRegionId)
+                    ?.name ??
+                  (initialATM?.regionId?._id === selectedRegionId
+                    ? `${initialATM.regionId.name} (inactive or unavailable)`
+                    : null)
               }
             </SelectValue>
           </SelectTrigger>
 
           <SelectContent>
-            {regions.map((region: { _id: string; name: string }) => (
+            {activeRegions.map((region) => (
               <SelectItem key={region._id} value={region._id}>
                 {region.name}
               </SelectItem>
             ))}
+            {initialATM?.regionId?._id === selectedRegionId &&
+              !activeRegions.some(
+                (region) => region._id === selectedRegionId,
+              ) && (
+                <SelectItem value={selectedRegionId} disabled>
+                  {regions.find((region) => region._id === selectedRegionId)
+                    ?.name || initialATM.regionId.name}{" "}
+                  (inactive or unavailable)
+                </SelectItem>
+              )}
+            {noRegionsLoaded && (
+              <SelectItem value={NO_REGION}>No Region (no active regions)</SelectItem>
+            )}
+            {selectedRegionId === NO_REGION &&
+              activeRegions.length > 0 &&
+              !regionsLoading &&
+              !regionsError && (
+                <SelectItem value={NO_REGION} disabled>
+                  No Region (existing assignment; select an active region)
+                </SelectItem>
+              )}
           </SelectContent>
         </Select>
         {errors.regionId && (
@@ -527,6 +654,72 @@ export default function CreateATMForm({
             ? "Creating..."
             : "Create ATM"}
       </button>
+
+      <Dialog
+        open={moveConfirmationOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setMoveConfirmationOpen(false);
+            setPendingFormData(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogTitle>Confirm ATM geographic move</DialogTitle>
+          <DialogDescription>
+            This move is allowed only when the ATM has no unresolved Jobs,
+            unresolved AMC work, or active recurring maintenance plans.
+          </DialogDescription>
+          <div className="space-y-3 text-sm">
+            <p>
+              <span className="font-medium">From:</span>{" "}
+              {initialATM?.districtId?.districtName || "District unavailable"}
+              {" / "}
+              {initialATM?.regionId?.name || "No Region"}
+            </p>
+            <p>
+              <span className="font-medium">To:</span>{" "}
+              {districts.find((district) => district._id === selectedDistrictId)
+                ?.districtName || "District unavailable"}
+              {" / "}
+              {destinationRegionId
+                ? regions.find((region) => region._id === destinationRegionId)
+                    ?.name || "Region unavailable"
+                : "No Region"}
+            </p>
+            <p className="text-muted-foreground">
+              The existing employee assignment, customer relationship, Jobs,
+              AMC records, and recurring plans will not be reassigned or
+              rewritten.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setMoveConfirmationOpen(false);
+                setPendingFormData(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={updateATM.isPending || !pendingFormData}
+              onClick={() => {
+                if (!pendingFormData) return;
+                const submitted = pendingFormData;
+                setMoveConfirmationOpen(false);
+                setPendingFormData(null);
+                void saveATM(submitted);
+              }}
+            >
+              {updateATM.isPending ? "Moving..." : "Confirm move"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </form>
   );
 }

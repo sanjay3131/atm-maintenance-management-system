@@ -11,6 +11,7 @@ import Bank from "../banks/bank.model.js";
 import { validateGpsProximity } from "../../utils/haversine.js";
 import { JOB_STATUS, VALID_STATUS_TRANSITIONS } from "../../utils/jobStatus.js";
 import { deleteJobPhotos } from "../../config/cloudinaryCleanup.js";
+import { escapeRegex } from "../../utils/geographicQuery.js";
 
 // ============================================
 // HELPERS
@@ -673,33 +674,16 @@ export const getAllJobs = asyncHandler(async (req, res) => {
     if (toDate) query.createdAt.$lte = new Date(toDate);
   }
 
-  let bankATMIds;
-  if (bankId) {
-    const bankATMs = await ATM.find({
-      bankId,
-      isDeleted: false,
-    }).select("_id");
-    bankATMIds = bankATMs.map((atm) => atm._id);
-  }
-
   const atmConditions = [];
-  if (bankId && !districtId && !regionId && !(bank && isAdmin)) {
-    query.atmId = atmId
-      ? bankATMIds.some((id) => id.toString() === atmId)
-        ? atmId
-        : { $in: [] }
-      : { $in: bankATMIds };
-  } else if (bankId) {
-    atmConditions.push({ bankId });
-  }
+  if (bankId) atmConditions.push({ bankId });
   if (districtId) atmConditions.push({ districtId });
   if (regionId) atmConditions.push({ regionId });
 
   if (bank && isAdmin) {
     const matchingBanks = await Bank.find({
       $or: [
-        { bankName: { $regex: bank, $options: "i" } },
-        { bankCode: { $regex: bank, $options: "i" } },
+        { bankName: { $regex: escapeRegex(bank), $options: "i" } },
+        { bankCode: { $regex: escapeRegex(bank), $options: "i" } },
       ],
     }).select("_id");
 
@@ -708,13 +692,11 @@ export const getAllJobs = asyncHandler(async (req, res) => {
     });
   }
 
+  let matchingATMIds;
   if (atmConditions.length > 0) {
-    const matchingATMIds =
-      (
-        await ATM.find({
-          $and: [{ isDeleted: false }, ...atmConditions],
-        }).select("_id")
-      ).map((atm) => atm._id);
+    matchingATMIds = await ATM.distinct("_id", {
+      $and: [{ isDeleted: false }, ...atmConditions],
+    });
     query.atmId = atmId
       ? matchingATMIds.some((id) => id.toString() === atmId)
         ? atmId
@@ -745,15 +727,9 @@ export const getAllJobs = asyncHandler(async (req, res) => {
   const total = await Job.countDocuments(query);
 
   let statusCounts;
-  if (bankId) {
-    // Keep summary counts scoped to the bank, independent of row filters and pagination.
+  if (bankId || districtId || regionId) {
     const groupedCounts = await Job.aggregate([
-      {
-        $match: {
-          isDeleted: false,
-          atmId: { $in: bankATMIds },
-        },
-      },
+      { $match: { isDeleted: false, atmId: { $in: matchingATMIds ?? [] } } },
       {
         $group: {
           _id: "$status",

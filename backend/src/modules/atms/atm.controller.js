@@ -5,9 +5,19 @@ import Customer from "../customers/customer.model.js";
 import District from "../districts/district.models.js";
 import Employee from "../employees/employee.model.js";
 import Region from "../region/region.model.js";
+import AMC from "../amc/amc.model.js";
+import { AMC_STATUS } from "../amc/amc.config.js";
+import Job from "../jobs/jobs.model.js";
+import { JOB_STATUS } from "../../utils/jobStatus.js";
+import RecurringMaintenancePlan from "../jobs/recurringMaintenancePlan.model.js";
 import User from "../users/user.model.js";
 import ATM from "./atm.model.js";
 import { generateATMId } from "./atm.utils.js";
+import {
+  buildATMGeographicQuery,
+  escapeRegex,
+  parsePagination,
+} from "../../utils/geographicQuery.js";
 
 const validateActiveEmployee = async (employeeId) => {
   const employee = await Employee.findById(employeeId).populate(
@@ -48,6 +58,89 @@ const syncATMEmployeeAssignment = async (atm, employeeId, updatedBy) => {
   }
 };
 
+const validateActiveATMGeography = async (districtId, regionId) => {
+  const district = await District.findById(districtId);
+  if (!district) {
+    throw new ApiError(404, "Destination district was not found");
+  }
+  if (!district.isActive) {
+    throw new ApiError(400, "Destination district is inactive");
+  }
+
+  if (regionId == null) {
+    const activeRegionCount = await Region.countDocuments({
+      districtId,
+      isActive: true,
+    });
+    if (activeRegionCount > 0) {
+      throw new ApiError(
+        400,
+        "Select an active region because this district has active regions",
+      );
+    }
+    return;
+  }
+
+  const region = await Region.findById(regionId);
+  if (!region) {
+    throw new ApiError(404, "Destination region was not found");
+  }
+  if (!region.isActive) {
+    throw new ApiError(400, "Destination region is inactive");
+  }
+  if (region.districtId.toString() !== districtId.toString()) {
+    throw new ApiError(
+      400,
+      "Destination region does not belong to the selected district",
+    );
+  }
+};
+
+const idOrNull = (value) => {
+  if (value == null) return null;
+  return (typeof value === "object" ? value._id : value).toString();
+};
+
+const ensureATMCanMove = async (atmId) => {
+  const [unresolvedJobs, unresolvedAmcs, activePlans] = await Promise.all([
+    Job.countDocuments({
+      atmId,
+      isDeleted: false,
+      status: { $ne: JOB_STATUS.CLOSED },
+    }),
+    AMC.countDocuments({
+      atmId,
+      isDeleted: false,
+      status: {
+        $in: [
+          AMC_STATUS.PENDING,
+          AMC_STATUS.IN_PROGRESS,
+          AMC_STATUS.OVERDUE,
+        ],
+      },
+    }),
+    RecurringMaintenancePlan.countDocuments({ atmId, isActive: true }),
+  ]);
+
+  const blockers = [];
+  if (unresolvedJobs > 0) {
+    blockers.push(`${unresolvedJobs} unresolved job(s)`);
+  }
+  if (unresolvedAmcs > 0) {
+    blockers.push(`${unresolvedAmcs} unresolved AMC record(s)`);
+  }
+  if (activePlans > 0) {
+    blockers.push(`${activePlans} active recurring maintenance plan(s)`);
+  }
+
+  if (blockers.length > 0) {
+    throw new ApiError(
+      409,
+      `ATM cannot be moved while it has ${blockers.join(", ")}. Resolve these records or follow an approved procedure before moving it.`,
+    );
+  }
+};
+
 export const createATM = asyncHandler(async (req, res) => {
   const {
     bankId,
@@ -63,15 +156,14 @@ export const createATM = asyncHandler(async (req, res) => {
   } = req.body;
   const assignedEmployeeIds = [...new Set((assignedEmployeeId || []).map(String))];
 
+  await validateActiveATMGeography(districtId, regionId);
+
   if (assignedEmployeeIds.length > 0) {
     if (assignedEmployeeIds.length > 1) {
       throw new ApiError(400, "An ATM can have only one assigned employee");
     }
     await validateActiveEmployee(assignedEmployeeIds[0]);
   }
-
-  const isValidDistrictId = await District.findById(districtId);
-  const isValidRegionId = await Region.findById(regionId);
 
   const resolvedCustomerId = customerId;
   if (resolvedCustomerId) {
@@ -82,9 +174,6 @@ export const createATM = asyncHandler(async (req, res) => {
     });
 
     if (!cust) throw new ApiError(404, "Customer not found...");
-  }
-  if (!isValidDistrictId || !isValidRegionId) {
-    throw new ApiError(404, "district or region is not valid");
   }
   const atmId = await generateATMId();
 
@@ -114,6 +203,143 @@ export const createATM = asyncHandler(async (req, res) => {
 
 // view all atm
 export const getAllATMs = asyncHandler(async (req, res) => {
+  const { districtId, regionId, bankId, status, search } = req.query;
+  const isScoped =
+    districtId !== undefined ||
+    regionId !== undefined ||
+    bankId !== undefined ||
+    req.query.page !== undefined ||
+    req.query.limit !== undefined ||
+    status !== undefined ||
+    search !== undefined;
+
+  if (isScoped) {
+    const scope = buildATMGeographicQuery({ districtId, regionId, bankId });
+    const { page, limit, skip } = parsePagination(req.query.page, req.query.limit);
+    if (
+      status !== undefined &&
+      !["ACTIVE", "INACTIVE", "UNDER_MAINTENANCE", "REMOVED"].includes(status)
+    ) {
+      throw new ApiError(400, "Invalid status");
+    }
+    if (search !== undefined && typeof search !== "string") {
+      throw new ApiError(400, "Invalid search");
+    }
+
+    const query = {
+      ...scope,
+      ...(status ? { status } : {}),
+      ...(search?.trim()
+        ? {
+            $or: [
+              { atmId: { $regex: escapeRegex(search.trim()), $options: "i" } },
+              {
+                locationName: {
+                  $regex: escapeRegex(search.trim()),
+                  $options: "i",
+                },
+              },
+              {
+                address: {
+                  $regex: escapeRegex(search.trim()),
+                  $options: "i",
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+
+    const [atms, aggregate] = await Promise.all([
+      ATM.find(query)
+        .populate("bankId", "bankName")
+        .populate("districtId", "districtName")
+        .populate("regionId", "name")
+        .populate({
+          path: "assignedEmployeeId",
+          select: "employeeCode userId",
+          populate: { path: "userId", select: "firstName lastName status" },
+        })
+        .populate("customer", "customerName")
+        .sort({ atmId: 1, _id: 1 })
+        .skip(skip)
+        .limit(limit),
+      ATM.aggregate([
+        { $match: query },
+        {
+          $facet: {
+            total: [{ $count: "count" }],
+            statusCounts: [
+              { $group: { _id: "$status", count: { $sum: 1 } } },
+            ],
+            linkedCustomers: [
+              { $match: { customer: { $ne: null } } },
+              { $group: { _id: "$customer" } },
+              {
+                $lookup: {
+                  from: Customer.collection.name,
+                  let: { customerId: "$_id" },
+                  pipeline: [
+                    {
+                      $match: {
+                        $expr: { $eq: ["$_id", "$$customerId"] },
+                        isDeleted: false,
+                      },
+                    },
+                  ],
+                  as: "customer",
+                },
+              },
+              { $match: { "customer.0": { $exists: true } } },
+              { $count: "count" },
+            ],
+            linkedEmployees: [
+              { $unwind: "$assignedEmployeeId" },
+              { $match: { assignedEmployeeId: { $ne: null } } },
+              { $group: { _id: "$assignedEmployeeId" } },
+              {
+                $lookup: {
+                  from: Employee.collection.name,
+                  localField: "_id",
+                  foreignField: "_id",
+                  as: "employee",
+                },
+              },
+              { $match: { "employee.0": { $exists: true } } },
+              { $count: "count" },
+            ],
+          },
+        },
+      ]),
+    ]);
+
+    const summary = aggregate[0] ?? {};
+    const total = summary.total?.[0]?.count ?? 0;
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          atms,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit),
+          },
+          summary: {
+            total,
+            statusCounts: Object.fromEntries(
+              (summary.statusCounts ?? []).map(({ _id, count }) => [_id, count]),
+            ),
+            linkedCustomers: summary.linkedCustomers?.[0]?.count ?? 0,
+            linkedEmployees: summary.linkedEmployees?.[0]?.count ?? 0,
+          },
+        },
+        "ATMs fetched successfully",
+      ),
+    );
+  }
+
   const atms = await ATM.find({ isDeleted: false })
     .populate("bankId", "bankName")
     .populate("districtId", "districtName")
@@ -162,6 +388,48 @@ export const updateATM = asyncHandler(async (req, res) => {
 
   if (!atm || atm.isDeleted) {
     throw new ApiError(404, "ATM not found");
+  }
+
+  const hasDistrictUpdate = Object.prototype.hasOwnProperty.call(
+    updatePayload,
+    "districtId",
+  );
+  const hasRegionUpdate = Object.prototype.hasOwnProperty.call(
+    updatePayload,
+    "regionId",
+  );
+  const hasGeographyUpdate = hasDistrictUpdate || hasRegionUpdate;
+  const districtChanged =
+    hasDistrictUpdate &&
+    idOrNull(updatePayload.districtId) !== idOrNull(atm.districtId);
+  let geographyChanged = false;
+
+  if (hasGeographyUpdate) {
+    const destinationDistrictId = hasDistrictUpdate
+      ? updatePayload.districtId
+      : atm.districtId;
+    const destinationRegionId = hasRegionUpdate
+      ? updatePayload.regionId
+      : districtChanged
+        ? null
+        : atm.regionId;
+
+    await validateActiveATMGeography(
+      destinationDistrictId,
+      destinationRegionId,
+    );
+
+    geographyChanged =
+      idOrNull(destinationDistrictId) !== idOrNull(atm.districtId) ||
+      idOrNull(destinationRegionId) !== idOrNull(atm.regionId);
+
+    if (districtChanged && !hasRegionUpdate) {
+      updatePayload.regionId = destinationRegionId;
+    }
+
+    if (geographyChanged) {
+      await ensureATMCanMove(atm._id);
+    }
   }
 
   let assignedEmployeeIds;

@@ -33,8 +33,8 @@ export interface SetATMLocationData {
 export interface UpdateATMData {
   bankId: string;
   customerId?: string;
-  districtId: string;
-  regionId: string;
+  districtId?: string;
+  regionId?: string | null;
   locationName: string;
   address: string;
   installationType: InstallationType;
@@ -71,4 +71,20 @@ export interface ATM {
   locationConfigured?: boolean;
   locationCapturedAt?: string | null;
   locationAccuracy?: number | null;
+}
+
+export interface ScopedATMsResponse {
+  atms: ATM[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+  summary: {
+    total: number;
+    statusCounts: Partial<Record<ATMStatus, number>>;
+    linkedCustomers: number;
+    linkedEmployees: number;
+  };
 }

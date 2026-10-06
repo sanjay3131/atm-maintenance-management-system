@@ -1,9 +1,34 @@
 import api from "@/lib/axios";
 import type {
   ATM,
+  ScopedATMsResponse,
   SetATMLocationData,
   UpdateATMData,
 } from "../types/atm.types";
+
+export const getDistrictATMs = async (
+  districtId: string,
+  page: number,
+  limit: number,
+): Promise<ScopedATMsResponse> => {
+  const response = await api.get<{ data: ScopedATMsResponse }>(
+    "/atm/getAllATMs",
+    { params: { districtId, page, limit } },
+  );
+  return response.data.data;
+};
+
+export const getRegionATMs = async (
+  regionId: string,
+  page: number,
+  limit: number,
+): Promise<ScopedATMsResponse> => {
+  const response = await api.get<{ data: ScopedATMsResponse }>(
+    "/atm/getAllATMs",
+    { params: { regionId, page, limit } },
+  );
+  return response.data.data;
+};
 
 export const getATMs = async (): Promise<ATM[]> => {
   const response = await api.get("/atm/getAllATMs");

@@ -2,6 +2,7 @@ import express from "express";
 import {
   createRegion,
   deleteRegion,
+  getAllRegionsByDistrict,
   getAllRegions,
   getRegionById,
   getRegionsByDistrict,
@@ -37,6 +38,13 @@ router.get(
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin"),
   getRegionsByDistrict,
+);
+
+router.get(
+  "/district/:districtId/all",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  getAllRegionsByDistrict,
 );
 
 router.get(

@@ -7,6 +7,11 @@ import Employee from "./employee.model.js";
 import { generateEmployeeCode } from "./employee.utils.js";
 import ApiError from "../../utils/ApiError.js";
 import ATM from "../atms/atm.model.js";
+import {
+  buildATMGeographicQuery,
+  escapeRegex,
+  parsePagination,
+} from "../../utils/geographicQuery.js";
 
 const ensureATMsAvailableForEmployee = async (atmIds, employeeId = null) => {
   if (atmIds.length === 0) return;
@@ -241,6 +246,183 @@ export const viewEmployeeById = asyncHandler(async (req, res) => {
 // view all employees (admin and superAdmin)
 
 export const viewAllEmployees = asyncHandler(async (req, res) => {
+  const { districtId, regionId, bankId, status, search, page, limit } =
+    req.query;
+  const isScoped =
+    districtId !== undefined ||
+    regionId !== undefined ||
+    bankId !== undefined ||
+    status !== undefined ||
+    search !== undefined ||
+    page !== undefined ||
+    limit !== undefined;
+
+  if (isScoped) {
+    const atmQuery = buildATMGeographicQuery({ districtId, regionId, bankId });
+    const pagination = parsePagination(page, limit);
+    if (
+      status !== undefined &&
+      !["active", "inactive", "on_leave", "resigned"].includes(status)
+    ) {
+      throw new ApiError(400, "Invalid status");
+    }
+    if (search !== undefined && typeof search !== "string") {
+      throw new ApiError(400, "Invalid search");
+    }
+
+    const normalizedSearch = search?.trim();
+    const employeeFilter = {
+      ...(status ? { "employee.status": status } : {}),
+      ...(normalizedSearch
+        ? {
+            $or: [
+              {
+                "employee.employeeCode": {
+                  $regex: escapeRegex(normalizedSearch),
+                  $options: "i",
+                },
+              },
+              {
+                "employee.designation": {
+                  $regex: escapeRegex(normalizedSearch),
+                  $options: "i",
+                },
+              },
+              {
+                "employee.department": {
+                  $regex: escapeRegex(normalizedSearch),
+                  $options: "i",
+                },
+              },
+              {
+                "user.firstName": {
+                  $regex: escapeRegex(normalizedSearch),
+                  $options: "i",
+                },
+              },
+              {
+                "user.lastName": {
+                  $regex: escapeRegex(normalizedSearch),
+                  $options: "i",
+                },
+              },
+              {
+                "user.email": {
+                  $regex: escapeRegex(normalizedSearch),
+                  $options: "i",
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+
+    const [result] = await ATM.aggregate([
+      { $match: atmQuery },
+      { $unwind: "$assignedEmployeeId" },
+      { $match: { assignedEmployeeId: { $ne: null } } },
+      {
+        $group: {
+          _id: "$assignedEmployeeId",
+          linkedAtmIds: { $addToSet: "$_id" },
+        },
+      },
+      {
+        $lookup: {
+          from: Employee.collection.name,
+          localField: "_id",
+          foreignField: "_id",
+          as: "employee",
+        },
+      },
+      { $unwind: "$employee" },
+      {
+        $lookup: {
+          from: User.collection.name,
+          let: { userId: "$employee.userId" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$_id", "$$userId"] } } },
+            {
+              $project: {
+                firstName: 1,
+                lastName: 1,
+                email: 1,
+                phoneNumber: 1,
+                userType: 1,
+                status: 1,
+              },
+            },
+          ],
+          as: "user",
+        },
+      },
+      {
+        $facet: {
+          total: [{ $count: "count" }],
+          statusCounts: [
+            {
+              $group: {
+                _id: "$employee.status",
+                count: { $sum: 1 },
+              },
+            },
+          ],
+          matchingEmployees: [
+            { $match: employeeFilter },
+            { $sort: { "employee.employeeCode": 1, _id: 1 } },
+            { $skip: pagination.skip },
+            { $limit: pagination.limit },
+            {
+              $project: {
+                _id: "$employee._id",
+                userId: { $arrayElemAt: ["$user", 0] },
+                employeeCode: "$employee.employeeCode",
+                designation: "$employee.designation",
+                department: "$employee.department",
+                joiningDate: "$employee.joiningDate",
+                employmentType: "$employee.employmentType",
+                status: "$employee.status",
+                supervisorId: "$employee.supervisorId",
+                salary: "$employee.salary",
+                createdAt: "$employee.createdAt",
+                updatedAt: "$employee.updatedAt",
+                linkedATMCount: { $size: "$linkedAtmIds" },
+              },
+            },
+          ],
+          matchingTotal: [
+            { $match: employeeFilter },
+            { $count: "count" },
+          ],
+        },
+      },
+    ]);
+
+    const statusCounts = Object.fromEntries(
+      (result?.statusCounts ?? []).map(({ _id, count }) => [_id, count]),
+    );
+    const matchingTotal = result?.matchingTotal?.[0]?.count ?? 0;
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          employees: result?.matchingEmployees ?? [],
+          pagination: {
+            page: pagination.page,
+            limit: pagination.limit,
+            total: matchingTotal,
+            totalPages: Math.ceil(matchingTotal / pagination.limit),
+          },
+          summary: {
+            total: result?.total?.[0]?.count ?? 0,
+            statusCounts,
+          },
+        },
+        "Employees retrieved successfully",
+      ),
+    );
+  }
+
   const employees = await Employee.find().populate(
     "userId",
     "firstName lastName email userType status",

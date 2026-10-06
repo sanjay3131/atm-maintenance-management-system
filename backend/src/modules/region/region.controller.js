@@ -71,7 +71,7 @@ export const getAllRegions = asyncHandler(async (req, res) => {
 export const getRegionById = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const region = await Region.findOne({ _id: id, isActive: true }).populate(
+  const region = await Region.findById(id).populate(
     "districtId",
     "districtName pinCode state",
   );
@@ -109,11 +109,35 @@ export const getRegionsByDistrict = asyncHandler(async (req, res) => {
     );
 });
 
+export const getAllRegionsByDistrict = asyncHandler(async (req, res) => {
+  const { districtId } = req.params;
+
+  const district = await District.findById(districtId);
+
+  if (!district) {
+    throw new ApiError(404, "District not found");
+  }
+
+  const regions = await Region.find({ districtId })
+    .populate("districtId", "districtName pinCode state")
+    .sort({ name: 1 });
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        regions,
+        "All regions for district retrieved successfully",
+      ),
+    );
+});
+
 export const updateRegion = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { name, code, description, isActive } = req.body;
 
-  const region = await Region.findOne({ _id: id, isActive: true });
+  const region = await Region.findById(id);
 
   if (!region) {
     throw new ApiError(404, "Region not found");

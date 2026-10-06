@@ -30,6 +30,44 @@ export interface Employee {
   updatedAt: string;
 }
 
+export interface DistrictEmployee {
+  _id: string;
+  employeeCode: string;
+  designation: string;
+  department: string;
+  joiningDate: string;
+  employmentType: "full-time" | "part-time" | "contract";
+  status: "active" | "inactive" | "on_leave" | "resigned";
+  userId?: {
+    _id: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phoneNumber?: string;
+    userType?: string;
+    status?: string;
+  } | null;
+  supervisorId?: string | null;
+  salary?: number;
+  createdAt: string;
+  updatedAt: string;
+  linkedATMCount: number;
+}
+
+export interface ScopedEmployeesResponse {
+  employees: DistrictEmployee[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+  summary: {
+    total: number;
+    statusCounts: Partial<Record<DistrictEmployee["status"], number>>;
+  };
+}
+
 export interface CreateEmployeePayload {
   userId: string;
   designation: string;
@@ -57,6 +95,30 @@ export interface UpdateEmployeePayload {
 export const getEmployees = async (): Promise<Employee[]> => {
   const response = await api.get("/employees");
 
+  return response.data.data;
+};
+
+export const getDistrictEmployees = async (
+  districtId: string,
+  page: number,
+  limit: number,
+): Promise<ScopedEmployeesResponse> => {
+  const response = await api.get<{ data: ScopedEmployeesResponse }>(
+    "/employees",
+    { params: { districtId, page, limit } },
+  );
+  return response.data.data;
+};
+
+export const getRegionEmployees = async (
+  regionId: string,
+  page: number,
+  limit: number,
+): Promise<ScopedEmployeesResponse> => {
+  const response = await api.get<{ data: ScopedEmployeesResponse }>(
+    "/employees",
+    { params: { regionId, page, limit } },
+  );
   return response.data.data;
 };
 

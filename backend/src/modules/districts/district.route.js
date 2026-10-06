@@ -4,6 +4,7 @@ import {
   deleteDistrict,
   getAllDistricts,
   getDistrictById,
+  getDistrictGeographicSummaries,
   updateDistrict,
 } from "./district.controller.js";
 import {
@@ -29,6 +30,13 @@ router.get(
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin"),
   getAllDistricts,
+);
+
+router.get(
+  "/geographic-summaries",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  getDistrictGeographicSummaries,
 );
 
 router.get(

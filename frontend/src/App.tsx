@@ -18,6 +18,9 @@ import RecurringMaintenancePage from "@/pages/admin/RecurringMaintenancePage";
 import EmployeeJobsPage from "@/pages/employee/EmployeeJobsPage";
 import BanksPage from "@/pages/admin/BanksPage";
 import BankDetailPage from "@/pages/admin/BankDetailPage";
+import DistrictsPage from "@/pages/admin/DistrictsPage";
+import DistrictDetailPage from "@/pages/admin/DistrictDetailPage";
+import RegionDetailPage from "@/pages/admin/RegionDetailPage";
 
 export default function App() {
   return (
@@ -33,6 +36,15 @@ export default function App() {
             <Route path="/admin/employees" element={<EmployeesPage />} />
             <Route path="/admin/banks" element={<BanksPage />} />
             <Route path="/admin/banks/:bankId" element={<BankDetailPage />} />
+            <Route path="/admin/districts" element={<DistrictsPage />} />
+            <Route
+              path="/admin/districts/:districtId"
+              element={<DistrictDetailPage />}
+            />
+            <Route
+              path="/admin/districts/:districtId/regions/:regionId"
+              element={<RegionDetailPage />}
+            />
             <Route path="/admin/atms" element={<AtmsPage />} />
             <Route path="/admin/atms/:id" element={<ATMDetailsPage />} />
             <Route path="/admin/atms/:id/edit" element={<EditATMPage />} />

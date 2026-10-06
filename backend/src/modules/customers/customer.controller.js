@@ -3,9 +3,15 @@ import ApiResponse from "../../utils/ApiResponse.js";
 import ApiError from "../../utils/ApiError.js";
 import User from "../users/user.model.js";
 import Customer from "./customer.model.js";
+import ATM from "../atms/atm.model.js";
 import Job from "../jobs/jobs.model.js";
 import { sanitizeUser } from "../../utils/sanitizeUser.js";
 import { hashPassword } from "../auth/auth.utils.js";
+import {
+  buildATMGeographicQuery,
+  escapeRegex,
+  parsePagination,
+} from "../../utils/geographicQuery.js";
 
 // ============================================
 // ADMIN APIs: Customer Management
@@ -91,6 +97,170 @@ export const getAllCustomers = asyncHandler(async (req, res) => {
 
   if (!isAdmin) {
     throw new ApiError(403, "Access denied");
+  }
+
+  const { districtId, regionId, bankId, status, search, page, limit } =
+    req.query;
+  const isScoped =
+    districtId !== undefined ||
+    regionId !== undefined ||
+    bankId !== undefined ||
+    status !== undefined ||
+    search !== undefined ||
+    page !== undefined ||
+    limit !== undefined;
+
+  if (isScoped) {
+    const atmQuery = buildATMGeographicQuery({ districtId, regionId, bankId });
+    const pagination = parsePagination(page, limit);
+    if (
+      status !== undefined &&
+      !["active", "inactive", "true", "false"].includes(status)
+    ) {
+      throw new ApiError(400, "Invalid status");
+    }
+    if (search !== undefined && typeof search !== "string") {
+      throw new ApiError(400, "Invalid search");
+    }
+
+    const normalizedStatus =
+      status === "active" || status === "true"
+        ? true
+        : status === "inactive" || status === "false"
+          ? false
+          : undefined;
+    const normalizedSearch = search?.trim();
+    const customerFilter = {
+      ...(normalizedStatus === undefined
+        ? {}
+        : { "customer.isActive": normalizedStatus }),
+      ...(normalizedSearch
+        ? {
+            $or: [
+              {
+                "customer.customerName": {
+                  $regex: escapeRegex(normalizedSearch),
+                  $options: "i",
+                },
+              },
+              {
+                "customer.customerEmail": {
+                  $regex: escapeRegex(normalizedSearch),
+                  $options: "i",
+                },
+              },
+              {
+                "customer.customerPhone": {
+                  $regex: escapeRegex(normalizedSearch),
+                  $options: "i",
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+
+    const [result] = await ATM.aggregate([
+      { $match: atmQuery },
+      { $match: { customer: { $ne: null } } },
+      {
+        $group: {
+          _id: "$customer",
+          linkedAtmIds: { $addToSet: "$_id" },
+        },
+      },
+      {
+        $lookup: {
+          from: Customer.collection.name,
+          localField: "_id",
+          foreignField: "_id",
+          as: "customer",
+        },
+      },
+      { $unwind: "$customer" },
+      { $match: { "customer.isDeleted": false } },
+      {
+        $facet: {
+          total: [{ $count: "count" }],
+          statusCounts: [
+            { $group: { _id: "$customer.isActive", count: { $sum: 1 } } },
+          ],
+          matchingCustomers: [
+            { $match: customerFilter },
+            { $sort: { "customer.createdAt": -1, _id: 1 } },
+            { $skip: pagination.skip },
+            { $limit: pagination.limit },
+            {
+              $lookup: {
+                from: User.collection.name,
+                localField: "customer.userId",
+                foreignField: "_id",
+                pipeline: [
+                  {
+                    $project: {
+                      firstName: 1,
+                      lastName: 1,
+                      email: 1,
+                      phoneNumber: 1,
+                      status: 1,
+                      userType: 1,
+                    },
+                  },
+                ],
+                as: "user",
+              },
+            },
+            {
+              $project: {
+                _id: "$customer._id",
+                userId: { $arrayElemAt: ["$user", 0] },
+                customerName: "$customer.customerName",
+                customerEmail: "$customer.customerEmail",
+                customerPhone: "$customer.customerPhone",
+                bankName: "$customer.bankName",
+                isActive: "$customer.isActive",
+                isDeleted: "$customer.isDeleted",
+                createdAt: "$customer.createdAt",
+                updatedAt: "$customer.updatedAt",
+                linkedATMCount: { $size: "$linkedAtmIds" },
+              },
+            },
+          ],
+          matchingTotal: [
+            { $match: customerFilter },
+            { $count: "count" },
+          ],
+        },
+      },
+    ]);
+
+    const statusCounts = Object.fromEntries(
+      (result?.statusCounts ?? []).map(({ _id, count }) => [
+        _id ? "active" : "inactive",
+        count,
+      ]),
+    );
+    const matchingTotal = result?.matchingTotal?.[0]?.count ?? 0;
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          customers: result?.matchingCustomers ?? [],
+          pagination: {
+            page: pagination.page,
+            limit: pagination.limit,
+            total: matchingTotal,
+            totalPages: Math.ceil(matchingTotal / pagination.limit),
+          },
+          summary: {
+            total: result?.total?.[0]?.count ?? 0,
+            active: statusCounts.active ?? 0,
+            inactive: statusCounts.inactive ?? 0,
+          },
+        },
+        "Customers fetched successfully",
+      ),
+    );
   }
 
   const customers = await Customer.find({ isDeleted: false })

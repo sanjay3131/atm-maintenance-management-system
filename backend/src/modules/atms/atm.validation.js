@@ -10,8 +10,8 @@ const objectIdSchema = z
 export const createAtmSchema = z.object({
   bankId: z.string().trim().min(1, "Bank ID is required"),
   customerId: z.string().trim().min(1, "Customer ID is required"),
-  districtId: z.string().trim().min(1, "District ID is required"),
-  regionId: z.string().trim().min(1, "Region ID is required"),
+  districtId: objectIdSchema,
+  regionId: objectIdSchema.nullable(),
   locationName: z.string().trim().min(1, "Location name is required"),
   address: z.string().trim().min(1, "Address is required"),
   installationType: z.enum(["ONSITE", "OFFSITE"], {
@@ -46,8 +46,8 @@ export const createAtmSchema = z.object({
 export const updateAtmSchema = z.object({
   bankId: z.string().trim().min(1, "Bank ID is required").optional(),
   customerId: z.string().trim().min(1, "Customer ID is required").optional(),
-  districtId: z.string().trim().min(1, "District ID is required").optional(),
-  regionId: z.string().trim().optional(),
+  districtId: objectIdSchema.optional(),
+  regionId: objectIdSchema.nullable().optional(),
   locationName: z
     .string()
     .trim()
