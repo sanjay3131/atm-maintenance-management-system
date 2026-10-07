@@ -52,6 +52,7 @@ interface JobDetailsPageProps {
 
 const assignmentTransition: Partial<Record<JobStatus, JobStatus>> = {
   PENDING: "ASSIGNED",
+  REJECTED: "ASSIGNED",
 };
 
 function formatValue(value: string | number | null | undefined) {
@@ -717,7 +718,7 @@ export default function JobDetailsPage({
             {availableAssignmentStatus && (
               <Button type="button" onClick={() => setIsAssignDialogOpen(true)}>
                 <UserRoundPlus />
-                Assign Job
+                {job.status === "REJECTED" ? "Reassign Job" : "Assign Job"}
               </Button>
             )}
             {job.status === "COMPLETED" && (

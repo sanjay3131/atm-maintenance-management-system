@@ -6,6 +6,11 @@ import ATM from "../atms/atm.model.js";
 import Customer from "../customers/customer.model.js";
 import User from "../users/user.model.js";
 import Job from "../jobs/jobs.model.js";
+import {
+  linkComplaintAndJob,
+  softDeleteComplaintAndUnlinkJob,
+  unlinkComplaintAndJob,
+} from "./complaintJobIntegrity.service.js";
 
 // ============================================
 // HELPERS
@@ -49,6 +54,47 @@ const VALID_STATUS_TRANSITIONS = {
   RESOLVED: ["CLOSED"],
   CLOSED: [],
   CANCELLED: [],
+};
+
+const assertStatusMatchesLinkedJob = async (complaint, status) => {
+  if (!["ASSIGNED", "IN_PROGRESS", "RESOLVED", "CLOSED"].includes(status)) {
+    return;
+  }
+
+  if (!complaint.jobId) {
+    throw new ApiError(400, `${status} complaints must have a linked Job`);
+  }
+
+  const job = await Job.findById(complaint.jobId);
+  if (
+    !job ||
+    job.isDeleted ||
+    job.complaintId?.toString() !== complaint._id.toString() ||
+    job.atmId.toString() !== complaint.atmId.toString()
+  ) {
+    throw new ApiError(400, "Complaint must have a valid active linked Job");
+  }
+
+  if (status === "IN_PROGRESS" && job.status !== "IN_PROGRESS") {
+    throw new ApiError(
+      400,
+      "Complaint can be IN_PROGRESS only when its Job is IN_PROGRESS",
+    );
+  }
+
+  if (
+    status === "RESOLVED" &&
+    !["COMPLETED", "VERIFIED", "APPROVED", "CLOSED"].includes(job.status)
+  ) {
+    throw new ApiError(
+      400,
+      "Complaint can be RESOLVED only after its Job is completed, verified, or approved",
+    );
+  }
+
+  if (status === "CLOSED" && job.status !== "CLOSED") {
+    throw new ApiError(400, "Complaint can be CLOSED only when its Job is CLOSED");
+  }
 };
 
 // ============================================
@@ -301,6 +347,7 @@ export const updateComplaint = asyncHandler(async (req, res) => {
       );
     }
 
+    await assertStatusMatchesLinkedJob(complaint, status);
     complaint.status = status;
 
     if (status === "RESOLVED") {
@@ -345,15 +392,10 @@ export const deleteComplaint = asyncHandler(async (req, res) => {
 
   const { id } = req.params;
 
-  const complaint = await Complaint.findById(id);
-  if (!complaint || complaint.isDeleted) {
-    throw new ApiError(404, "Complaint not found");
-  }
-
-  complaint.isDeleted = true;
-  complaint.deletedAt = new Date();
-  complaint.deletedBy = req.user._id;
-  await complaint.save();
+  const complaint = await softDeleteComplaintAndUnlinkJob({
+    complaintId: id,
+    deletedBy: req.user._id,
+  });
 
   return res
     .status(200)
@@ -378,31 +420,11 @@ export const linkComplaintToJob = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { jobId } = req.body;
 
-  const complaint = await Complaint.findById(id);
-  if (!complaint || complaint.isDeleted) {
-    throw new ApiError(404, "Complaint not found");
-  }
-
-  if (["CLOSED", "CANCELLED"].includes(complaint.status)) {
-    throw new ApiError(400, "Cannot link a closed or cancelled complaint");
-  }
-
-  const job = await Job.findById(jobId);
-  if (!job || job.isDeleted) {
-    throw new ApiError(404, "Job not found");
-  }
-
-  if (job.atmId.toString() !== complaint.atmId.toString()) {
-    throw new ApiError(400, "Job must be for the same ATM as the complaint");
-  }
-
-  complaint.jobId = jobId;
-  complaint.status = "ASSIGNED";
-  complaint.updatedBy = req.user._id;
-  await complaint.save();
-
-  job.complaintId = id;
-  await job.save();
+  const complaint = await linkComplaintAndJob({
+    complaintId: id,
+    jobId,
+    updatedBy: req.user._id,
+  });
 
   const populatedComplaint = await populateComplaint(
     Complaint.findById(complaint._id),
@@ -430,21 +452,10 @@ export const unlinkComplaintFromJob = asyncHandler(async (req, res) => {
 
   const { id } = req.params;
 
-  const complaint = await Complaint.findById(id);
-  if (!complaint || complaint.isDeleted) {
-    throw new ApiError(404, "Complaint not found");
-  }
-
-  if (complaint.jobId) {
-    await Job.findByIdAndUpdate(complaint.jobId, {
-      $unset: { complaintId: 1 },
-    });
-
-    complaint.jobId = undefined;
-    complaint.status = "OPEN";
-    complaint.updatedBy = req.user._id;
-    await complaint.save();
-  }
+  const complaint = await unlinkComplaintAndJob({
+    complaintId: id,
+    updatedBy: req.user._id,
+  });
 
   const populatedComplaint = await populateComplaint(
     Complaint.findById(complaint._id),

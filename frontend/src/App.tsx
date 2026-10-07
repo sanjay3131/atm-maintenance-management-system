@@ -11,6 +11,7 @@ import AtmsPage from "@/pages/admin/AtmsPage";
 import JobsPage from "@/pages/admin/JobsPage";
 import AmcPage from "@/pages/admin/AmcPage";
 import ComplaintsPage from "@/pages/admin/ComplaintsPage";
+import ComplaintDetailsPage from "@/pages/admin/ComplaintDetailsPage";
 import ATMDetailsPage from "@/pages/admin/ATMDetailsPage";
 import EditATMPage from "@/pages/admin/EditATMPage";
 import JobDetailsPage from "@/pages/admin/JobDetailsPage";
@@ -63,6 +64,10 @@ export default function App() {
             />
             <Route path="/admin/amc" element={<AmcPage />} />
             <Route path="/admin/complaints" element={<ComplaintsPage />} />
+            <Route
+              path="/admin/complaints/:id"
+              element={<ComplaintDetailsPage />}
+            />
           </Route>
         </Route>
 

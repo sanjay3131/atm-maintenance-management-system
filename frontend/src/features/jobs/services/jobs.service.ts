@@ -82,6 +82,18 @@ export const assignJob = async (
   return response.data.data;
 };
 
+export const reassignJob = async (
+  jobId: string,
+  data: AssignJobData & { reason: string },
+): Promise<Job> => {
+  const response = await api.put<{ data: Job }>(
+    `/jobs/${jobId}/reassign`,
+    data,
+  );
+
+  return response.data.data;
+};
+
 export const acceptJob = async (jobId: string): Promise<Job> => {
   const response = await api.put<{ data: Job }>(`/jobs/${jobId}/accept`);
 

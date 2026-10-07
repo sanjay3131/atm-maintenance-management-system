@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
 import { toast } from "sonner";
+import { useATMs } from "@/features/atms/hooks/useATMs";
 import { useEmployees } from "@/features/employees/hooks/useEmployees";
 import type { Employee } from "@/services/employee.service";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAssignJob } from "../hooks/useAssignJob";
+import { useReassignJob } from "../hooks/useReassignJob";
 import type { Job } from "../types/job.types";
 
 interface AssignJobDialogProps {
@@ -27,10 +29,12 @@ interface AssignJobDialogProps {
 
 function getErrorMessage(error: unknown) {
   if (isAxiosError<{ message?: string }>(error)) {
-    return error.response?.data?.message || "Unable to assign the job.";
+    return error.response?.data?.message || "Unable to update the job assignment.";
   }
 
-  return error instanceof Error ? error.message : "Unable to assign the job.";
+  return error instanceof Error
+    ? error.message
+    : "Unable to update the job assignment.";
 }
 
 function getEmployeeDisplayName(employee: Employee) {
@@ -44,52 +48,131 @@ export default function AssignJobDialog({
   onClose,
 }: AssignJobDialogProps) {
   const [employeeId, setEmployeeId] = useState("");
+  const attemptedATMDefault = useRef(false);
+  const {
+    data: atms = [],
+    isLoading: isATMsLoading,
+    isError: isATMsError,
+  } = useATMs();
   const {
     data: employees = [],
-    isLoading,
-    isError,
+    isLoading: isEmployeesLoading,
+    isError: isEmployeesError,
     refetch,
     isFetching,
   } = useEmployees();
   const assignMutation = useAssignJob();
+  const reassignMutation = useReassignJob();
+  const isRejected = job.status === "REJECTED";
+  const isPending = assignMutation.isPending || reassignMutation.isPending;
+  const [reason, setReason] = useState("");
   const atm =
     typeof job.atmId === "object" && job.atmId !== null ? job.atmId : null;
-  const assignableEmployees = employees.filter((employee) =>
-    Boolean(employee.userId?._id),
+  const assignableEmployees = employees.filter(
+    (employee) =>
+      employee.status === "active" &&
+      employee.userId?.status === "active" &&
+      employee.userId.userType === "employee" &&
+      Boolean(employee.userId._id),
   );
+  const jobATMId =
+    typeof job.atmId === "object" && job.atmId !== null
+      ? job.atmId._id
+      : job.atmId;
+
+  useEffect(() => {
+    if (
+      attemptedATMDefault.current ||
+      isATMsLoading ||
+      isEmployeesLoading ||
+      isATMsError ||
+      isEmployeesError
+    ) {
+      return;
+    }
+
+    attemptedATMDefault.current = true;
+    if (employeeId || !jobATMId) return;
+
+    const atm = atms.find((option) => option._id === jobATMId);
+    const atmEmployee = atm?.assignedEmployeeId.find(Boolean);
+    if (!atmEmployee) return;
+
+    const atmEmployeeId =
+      typeof atmEmployee === "string" ? atmEmployee : atmEmployee._id;
+    const assignedUserId = employees.find(
+      (employee) => employee._id === atmEmployeeId,
+    )?.userId._id;
+    if (
+      assignedUserId &&
+      assignableEmployees.some(
+        (employee) => employee.userId._id === assignedUserId,
+      )
+    ) {
+      setEmployeeId(assignedUserId);
+    }
+  }, [
+    assignableEmployees,
+    atms,
+    employees,
+    employeeId,
+    isATMsError,
+    isATMsLoading,
+    isEmployeesError,
+    isEmployeesLoading,
+    jobATMId,
+  ]);
+
   const selectedEmployee = assignableEmployees.find(
     (employee) => employee.userId._id === employeeId,
   );
 
   const handleAssign = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!employeeId || assignMutation.isPending) return;
+    if (
+      !employeeId ||
+      isPending ||
+      (isRejected && reason.trim().length < 5)
+    ) {
+      return;
+    }
 
-    assignMutation.mutate(
-      { jobId: job._id, employeeId },
-      {
-        onSuccess: () => {
-          toast.success(
-            `Job ${job.jobNumber || job.jobId} assigned successfully.`,
-          );
-          onClose();
-        },
-        onError: (error) => toast.error(getErrorMessage(error)),
-      },
-    );
+    const handleSuccess = () => {
+      toast.success(
+        isRejected
+          ? `Job ${job.jobNumber || job.jobId} reassigned successfully.`
+          : `Job ${job.jobNumber || job.jobId} assigned successfully.`,
+      );
+      onClose();
+    };
+    const handleError = (error: Error) => toast.error(getErrorMessage(error));
+
+    if (isRejected) {
+      reassignMutation.mutate(
+        { jobId: job._id, employeeId, reason: reason.trim() },
+        { onSuccess: handleSuccess, onError: handleError },
+      );
+    } else {
+      assignMutation.mutate(
+        { jobId: job._id, employeeId },
+        { onSuccess: handleSuccess, onError: handleError },
+      );
+    }
   };
 
   return (
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open && !assignMutation.isPending) onClose();
+        if (!open && !isPending) onClose();
       }}
     >
       <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
-        <DialogTitle>Assign Job</DialogTitle>
+        <DialogTitle>{isRejected ? "Reassign Job" : "Assign Job"}</DialogTitle>
         <DialogDescription className="mt-1">
-          Select an employee for this pending job.
+          {isRejected
+            ? "Choose an employee and provide a reason to return this rejected job to the assigned workflow."
+            : "Select an employee for this pending job."}
         </DialogDescription>
 
         <div className="mt-4 space-y-2 rounded-lg border bg-muted/30 p-4 text-sm">
@@ -119,18 +202,18 @@ export default function AssignJobDialog({
               value={employeeId || null}
               onValueChange={(value) => setEmployeeId(value ?? "")}
               disabled={
-                isLoading ||
-                isError ||
+                isEmployeesLoading ||
+                isEmployeesError ||
                 assignableEmployees.length === 0 ||
-                assignMutation.isPending
+                isPending
               }
             >
               <SelectTrigger className="w-full">
                 <SelectValue
                   placeholder={
-                    isLoading
+                    isEmployeesLoading
                       ? "Loading employees..."
-                      : isError
+                      : isEmployeesError
                         ? "Could not load employees"
                         : assignableEmployees.length === 0
                           ? "No employees available"
@@ -157,7 +240,34 @@ export default function AssignJobDialog({
             </Select>
           </div>
 
-          {isLoading && (
+          {isRejected && (
+            <div>
+              <label
+                htmlFor="job-reassignment-reason"
+                className="mb-2 block text-sm font-medium"
+              >
+                Reassignment reason
+              </label>
+              <textarea
+                id="job-reassignment-reason"
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                minLength={5}
+                maxLength={1000}
+                rows={3}
+                required
+                disabled={isPending}
+                className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              />
+              {reason.trim().length > 0 && reason.trim().length < 5 && (
+                <p className="mt-1 text-sm text-destructive">
+                  Enter at least 5 characters.
+                </p>
+              )}
+            </div>
+          )}
+
+          {isEmployeesLoading && (
             <div className="space-y-2" role="status">
               <div className="h-4 w-40 animate-pulse rounded bg-muted" />
               <div className="h-9 animate-pulse rounded-lg bg-muted" />
@@ -165,7 +275,7 @@ export default function AssignJobDialog({
             </div>
           )}
 
-          {isError && (
+          {isEmployeesError && (
             <div className="flex items-center justify-between gap-3 text-sm text-destructive">
               <span>Could not load employees.</span>
               <Button
@@ -180,26 +290,38 @@ export default function AssignJobDialog({
             </div>
           )}
 
-          {!isLoading && !isError && assignableEmployees.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              No employees are available to assign.
-            </p>
-          )}
+          {!isEmployeesLoading &&
+            !isEmployeesError &&
+            assignableEmployees.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No employees are available to assign.
+              </p>
+            )}
 
           <div className="flex justify-end gap-2 border-t pt-4">
             <Button
               type="button"
               variant="outline"
               onClick={onClose}
-              disabled={assignMutation.isPending}
+              disabled={isPending}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={!employeeId || assignMutation.isPending}
+              disabled={
+                !employeeId ||
+                isPending ||
+                (isRejected && reason.trim().length < 5)
+              }
             >
-              {assignMutation.isPending ? "Assigning..." : "Assign job"}
+              {isPending
+                ? isRejected
+                  ? "Reassigning..."
+                  : "Assigning..."
+                : isRejected
+                  ? "Reassign job"
+                  : "Assign job"}
             </Button>
           </div>
         </form>

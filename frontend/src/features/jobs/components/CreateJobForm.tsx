@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { isAxiosError } from "axios";
@@ -27,6 +28,10 @@ import type {
 interface CreateJobFormProps {
   onCancel: () => void;
   onCreated: () => void;
+  initialAtmId?: string;
+  initialComplaintId?: string;
+  initialTitle?: string;
+  initialDescription?: string;
 }
 
 interface ComplaintOption {
@@ -58,6 +63,10 @@ function getErrorMessage(error: unknown) {
 export default function CreateJobForm({
   onCancel,
   onCreated,
+  initialAtmId,
+  initialComplaintId,
+  initialTitle,
+  initialDescription,
 }: CreateJobFormProps) {
   const {
     data: atms = [],
@@ -76,8 +85,8 @@ export default function CreateJobForm({
   } = useForm<CreateJobFormValues>({
     resolver: zodResolver(createJobFormSchema),
     defaultValues: {
-      title: "",
-      description: "",
+      title: initialTitle ?? "",
+      description: initialDescription ?? "",
       atmId: "",
       complaintId: "",
       workType: "repair",
@@ -85,6 +94,12 @@ export default function CreateJobForm({
     },
   });
 
+  const [atmPrefillStatus, setAtmPrefillStatus] = useState<
+    "pending" | "applied" | "unavailable"
+  >(initialAtmId ? "pending" : "unavailable");
+  const [complaintPrefillStatus, setComplaintPrefillStatus] = useState<
+    "pending" | "applied" | "unavailable"
+  >(initialComplaintId ? "pending" : "unavailable");
   const selectedATMId = watch("atmId");
   const selectedComplaintId = watch("complaintId");
   const selectedATM = atms.find((atm) => atm._id === selectedATMId);
@@ -112,13 +127,95 @@ export default function CreateJobForm({
       );
     },
   });
+  const selectedComplaint = complaints.find(
+    (complaint) => complaint._id === selectedComplaintId,
+  );
+
+  useEffect(() => {
+    if (
+      !initialAtmId ||
+      isAtmsLoading ||
+      isAtmsError ||
+      selectedATMId
+    ) {
+      return;
+    }
+
+    const matchingATM = atms.find((atm) => atm._id === initialAtmId);
+    if (!matchingATM) {
+      setAtmPrefillStatus("unavailable");
+      return;
+    }
+
+    setValue("atmId", matchingATM._id, { shouldValidate: true });
+    setAtmPrefillStatus("applied");
+  }, [
+    atms,
+    initialAtmId,
+    isAtmsError,
+    isAtmsLoading,
+    selectedATMId,
+    setValue,
+  ]);
+
+  useEffect(() => {
+    if (!initialComplaintId || selectedComplaintId) return;
+
+    if (!selectedATMId || selectedATMId !== initialAtmId) {
+      if (atmPrefillStatus === "unavailable") {
+        setComplaintPrefillStatus("unavailable");
+      }
+      return;
+    }
+
+    if (areComplaintsLoading || areComplaintsError) return;
+
+    const matchingComplaint = complaints.find(
+      (complaint) => complaint._id === initialComplaintId,
+    );
+    if (!matchingComplaint) {
+      setComplaintPrefillStatus("unavailable");
+      return;
+    }
+
+    setValue("complaintId", matchingComplaint._id, {
+      shouldValidate: true,
+    });
+    setComplaintPrefillStatus("applied");
+  }, [
+    areComplaintsError,
+    areComplaintsLoading,
+    atmPrefillStatus,
+    complaints,
+    initialAtmId,
+    initialComplaintId,
+    selectedATMId,
+    selectedComplaintId,
+    setValue,
+  ]);
 
   const onSubmit = (values: CreateJobFormValues) => {
+    const matchingATM = atms.find((atm) => atm._id === values.atmId);
+    if (!matchingATM) {
+      toast.error("Select an available ATM before creating the Job.");
+      return;
+    }
+
+    const matchingComplaint = values.complaintId
+      ? complaints.find((complaint) => complaint._id === values.complaintId)
+      : undefined;
+    if (values.complaintId && !matchingComplaint) {
+      toast.error(
+        "The selected Complaint is no longer available. Select an available Complaint or clear the selection.",
+      );
+      return;
+    }
+
     const payload: CreateJobData = {
       title: values.title,
-      atmId: values.atmId,
+      atmId: matchingATM._id,
       ...(values.description ? { description: values.description } : {}),
-      ...(values.complaintId ? { complaintId: values.complaintId } : {}),
+      ...(matchingComplaint ? { complaintId: matchingComplaint._id } : {}),
       ...(values.workType ? { workType: values.workType } : {}),
       ...(values.priority ? { priority: values.priority } : {}),
     };
@@ -236,6 +333,13 @@ export default function CreateJobForm({
             </Button>
           </div>
         )}
+        {initialAtmId &&
+          atmPrefillStatus === "unavailable" &&
+          !selectedATMId && (
+            <p className="mt-2 text-sm text-amber-700" role="status">
+              The requested ATM is unavailable. Select an ATM manually.
+            </p>
+          )}
       </div>
 
       <div>
@@ -271,11 +375,9 @@ export default function CreateJobForm({
                       : "Select a complaint"
               }
             >
-              {
-                complaints.find(
-                  (complaint) => complaint._id === selectedComplaintId,
-                )?.complaintNumber
-              }
+              {selectedComplaint
+                ? `${selectedComplaint.complaintNumber} · ${selectedComplaint.title}`
+                : undefined}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -308,6 +410,14 @@ export default function CreateJobForm({
             </Button>
           </div>
         )}
+        {initialComplaintId &&
+          complaintPrefillStatus === "unavailable" &&
+          !selectedComplaintId && (
+            <p className="mt-2 text-sm text-amber-700" role="status">
+              The requested Complaint is unavailable for this ATM. Select a
+              Complaint manually or continue without one.
+            </p>
+          )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

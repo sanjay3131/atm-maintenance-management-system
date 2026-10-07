@@ -45,6 +45,24 @@ const loadActiveEmployee = async (employeeId, session) => {
   return employee;
 };
 
+export const findActiveEmployeeByUserId = async (userId) => {
+  const employee = await Employee.findOne({ userId }).populate(
+    "userId",
+    "userType status",
+  );
+
+  if (!employee) throw new ApiError(404, "Employee not found");
+  if (
+    employee.status !== "active" ||
+    employee.userId?.status !== "active" ||
+    employee.userId?.userType !== "employee"
+  ) {
+    throw new ApiError(400, "Employee is inactive");
+  }
+
+  return employee;
+};
+
 export const replaceATMEmployeeAssignmentInTransaction = async ({
   atmId,
   employeeId,

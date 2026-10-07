@@ -12,6 +12,12 @@ import { validateGpsProximity } from "../../utils/haversine.js";
 import { JOB_STATUS, VALID_STATUS_TRANSITIONS } from "../../utils/jobStatus.js";
 import { deleteJobPhotos } from "../../config/cloudinaryCleanup.js";
 import { escapeRegex } from "../../utils/geographicQuery.js";
+import { findActiveEmployeeByUserId } from "../employees/employeeAssignment.service.js";
+import {
+  closeJobAndComplaint,
+  createJobWithComplaint,
+  softDeleteJobAndUnlinkComplaint,
+} from "../complaints/complaintJobIntegrity.service.js";
 
 // ============================================
 // HELPERS
@@ -137,7 +143,7 @@ export const createJob = asyncHandler(async (req, res) => {
 
   const jobId = await generateJobId();
 
-  const job = await Job.create({
+  const jobData = {
     jobId,
     jobNumber: jobId,
     title,
@@ -149,7 +155,13 @@ export const createJob = asyncHandler(async (req, res) => {
     priority: priority || "medium",
     status: JOB_STATUS.PENDING,
     createdBy: req.user._id,
-  });
+  };
+  const job = complaintId
+    ? await createJobWithComplaint({
+        jobData,
+        updatedBy: req.user._id,
+      })
+    : await Job.create(jobData);
 
   await logJobHistory({
     jobId: job._id,
@@ -185,12 +197,7 @@ export const assignJob = asyncHandler(async (req, res) => {
   if (job.status !== JOB_STATUS.PENDING)
     throw new ApiError(400, `Cannot assign job with status: ${job.status}`);
 
-  const employee = await User.findOne({
-    _id: employeeId,
-    userType: "employee",
-    status: "active",
-  });
-  if (!employee) throw new ApiError(404, "Employee not found or inactive");
+  await findActiveEmployeeByUserId(employeeId);
 
   const oldStatus = job.status;
   job.assignedEmployeeId = employeeId;
@@ -514,22 +521,15 @@ export const closeJob = asyncHandler(async (req, res) => {
   if (!isAdmin) throw new ApiError(403, "Only admins can close jobs");
 
   const { id } = req.params;
-  const job = await Job.findById(id);
-  if (!job || job.isDeleted) throw new ApiError(404, "Job not found");
-
-  if (job.status !== JOB_STATUS.APPROVED)
-    throw new ApiError(400, `Cannot close job with status: ${job.status}`);
-
-  const oldStatus = job.status;
-  job.status = JOB_STATUS.CLOSED;
-  job.closedAt = new Date();
-  job.updatedBy = req.user._id;
-  await job.save();
+  const job = await closeJobAndComplaint({
+    jobId: id,
+    closedBy: req.user._id,
+  });
 
   await logJobHistory({
     jobId: job._id,
     action: "closed",
-    fromStatus: oldStatus,
+    fromStatus: JOB_STATUS.APPROVED,
     toStatus: JOB_STATUS.CLOSED,
     performedBy: req.user._id,
     req,
@@ -554,13 +554,7 @@ export const reassignJob = asyncHandler(async (req, res) => {
   if (job.status === JOB_STATUS.CLOSED)
     throw new ApiError(400, "Cannot reassign a closed job");
 
-  const newEmployee = await User.findOne({
-    _id: employeeId,
-    userType: "employee",
-    status: "active",
-  });
-  if (!newEmployee)
-    throw new ApiError(404, "New employee not found or inactive");
+  await findActiveEmployeeByUserId(employeeId);
   if (job.assignedEmployeeId?.toString() === employeeId)
     throw new ApiError(400, "Job already assigned to this employee");
 
@@ -944,15 +938,12 @@ export const deleteJob = asyncHandler(async (req, res) => {
   if (!isAdmin) throw new ApiError(403, "Only admins");
 
   const { id } = req.params;
-  const job = await Job.findById(id);
-  if (!job || job.isDeleted) throw new ApiError(404, "Job not found");
+  const job = await softDeleteJobAndUnlinkComplaint({
+    jobId: id,
+    deletedBy: req.user._id,
+  });
 
   await deleteJobPhotos(id);
-
-  job.isDeleted = true;
-  job.deletedAt = new Date();
-  job.deletedBy = req.user._id;
-  await job.save();
 
   await logJobHistory({
     jobId: job._id,

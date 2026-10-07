@@ -91,16 +91,16 @@ app.use(
 // app.use("/api/", limiter);
 
 // Stricter rate limit for auth endpoints
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: {
-    success: false,
-    message: "Too many login attempts. Please try again after 15 minutes.",
-  },
-});
-app.use("/api/v1/auth/login", authLimiter);
-app.use("/api/v1/auth/forgot-password", authLimiter);
+// const authLimiter = rateLimit({
+//   windowMs: 15 * 60 * 1000,
+//   max: 10,
+//   message: {
+//     success: false,
+//     message: "Too many login attempts. Please try again after 15 minutes.",
+//   },
+// });
+// app.use("/api/v1/auth/login", authLimiter);
+// app.use("/api/v1/auth/forgot-password", authLimiter);
 
 // ============================================
 // BODY PARSING

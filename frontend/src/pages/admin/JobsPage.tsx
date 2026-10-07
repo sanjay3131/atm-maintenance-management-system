@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -6,7 +6,7 @@ import {
   Search,
   UserRoundPlus,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,6 +35,33 @@ import type {
 
 const ALL = "ALL";
 const PAGE_SIZE = 10;
+
+interface CreateJobContext {
+  atmId: string;
+  complaintId: string;
+  title?: string;
+  description?: string;
+}
+
+function getCreateJobContext(state: unknown): CreateJobContext | null {
+  if (typeof state !== "object" || state === null) return null;
+
+  const context = (state as Record<string, unknown>).createJobContext;
+  if (typeof context !== "object" || context === null) return null;
+
+  const { atmId, complaintId, title, description } = context as Record<
+    string,
+    unknown
+  >;
+  return typeof atmId === "string" && typeof complaintId === "string"
+    ? {
+        atmId,
+        complaintId,
+        ...(typeof title === "string" ? { title } : {}),
+        ...(typeof description === "string" ? { description } : {}),
+      }
+    : null;
+}
 
 const jobStatuses: JobStatus[] = [
   "PENDING",
@@ -155,13 +182,20 @@ function JobsTableSkeleton() {
 }
 
 export default function JobsPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const navigationContext = getCreateJobContext(location.state);
+  const [createJobContext, setCreateJobContext] =
+    useState<CreateJobContext | null>(navigationContext);
+  const consumedNavigationContext = useRef(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [status, setStatus] = useState<JobStatus | typeof ALL>(ALL);
   const [priority, setPriority] = useState<JobPriority | typeof ALL>(ALL);
   const [workType, setWorkType] = useState<JobWorkType | typeof ALL>(ALL);
   const [page, setPage] = useState(1);
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] =
+    useState(Boolean(navigationContext));
   const [jobToAssign, setJobToAssign] = useState<Job | null>(null);
 
   useEffect(() => {
@@ -171,6 +205,32 @@ export default function JobsPage() {
 
     return () => window.clearTimeout(timeout);
   }, [search]);
+
+  useEffect(() => {
+    if (!navigationContext || consumedNavigationContext.current) return;
+    consumedNavigationContext.current = true;
+
+    const nextState =
+      typeof location.state === "object" && location.state !== null
+        ? { ...(location.state as Record<string, unknown>) }
+        : {};
+    delete nextState.createJobContext;
+
+    navigate(
+      `${location.pathname}${location.search}${location.hash}`,
+      {
+        replace: true,
+        state: Object.keys(nextState).length > 0 ? nextState : null,
+      },
+    );
+  }, [
+    location.hash,
+    location.pathname,
+    location.search,
+    location.state,
+    navigate,
+    navigationContext,
+  ]);
 
   const { data, isLoading, isError, refetch, isFetching } = useJobs({
     page,
@@ -190,6 +250,10 @@ export default function JobsPage() {
     workType !== ALL;
 
   const resetPage = () => setPage(1);
+  const closeCreateDialog = () => {
+    setIsCreateDialogOpen(false);
+    setCreateJobContext(null);
+  };
   const clearFilters = () => {
     setSearch("");
     setDebouncedSearch("");
@@ -243,13 +307,28 @@ export default function JobsPage() {
             {pagination?.total ?? 0} total jobs
           </p>
         </div>
-        <Button type="button" onClick={() => setIsCreateDialogOpen(true)}>
+        <Button
+          type="button"
+          onClick={() => {
+            setCreateJobContext(null);
+            setIsCreateDialogOpen(true);
+          }}
+        >
           <Plus />
           Create Job
         </Button>
       </div>
 
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+      <Dialog
+        open={isCreateDialogOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setIsCreateDialogOpen(true);
+          } else {
+            closeCreateDialog();
+          }
+        }}
+      >
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogTitle>Create Job</DialogTitle>
           <DialogDescription className="mt-1">
@@ -257,9 +336,13 @@ export default function JobsPage() {
           </DialogDescription>
           {isCreateDialogOpen && (
             <CreateJobForm
-              onCancel={() => setIsCreateDialogOpen(false)}
+              initialAtmId={createJobContext?.atmId}
+              initialComplaintId={createJobContext?.complaintId}
+              initialTitle={createJobContext?.title}
+              initialDescription={createJobContext?.description}
+              onCancel={closeCreateDialog}
               onCreated={() => {
-                setIsCreateDialogOpen(false);
+                closeCreateDialog();
                 clearFilters();
               }}
             />
@@ -485,7 +568,8 @@ export default function JobsPage() {
                           {formatDate(job.createdAt)}
                         </td>
                         <td className="px-4 py-3">
-                          {job.status === "PENDING" && (
+                          {(job.status === "PENDING" ||
+                            job.status === "REJECTED") && (
                             <Button
                               type="button"
                               variant="outline"
@@ -493,7 +577,7 @@ export default function JobsPage() {
                               onClick={() => setJobToAssign(job)}
                             >
                               <UserRoundPlus />
-                              Assign
+                              {job.status === "REJECTED" ? "Reassign" : "Assign"}
                             </Button>
                           )}
                         </td>
