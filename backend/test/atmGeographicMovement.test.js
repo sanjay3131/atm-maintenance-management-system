@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import mongoose from "mongoose";
 import AMC from "../src/modules/amc/amc.model.js";
 import { AMC_STATUS } from "../src/modules/amc/amc.config.js";
 import ATM from "../src/modules/atms/atm.model.js";
@@ -61,6 +62,7 @@ function createMocks({
     },
   },
   activeRegionCount = 1,
+  customer = { _id: "customer-id", isActive: true, isDeleted: false },
 } = {}) {
   const captured = {};
   const overrides = [
@@ -78,7 +80,19 @@ function createMocks({
     [
       Customer,
       "findOne",
-      async () => ({ _id: "customer-id", isActive: true, isDeleted: false }),
+      () => ({
+        session() {
+          return Promise.resolve(
+            customer && {
+              ...customer,
+            atmIds: [],
+            async save() {
+              captured.customer = this;
+            },
+            },
+          );
+        },
+      }),
     ],
     [
       ATM,
@@ -93,10 +107,41 @@ function createMocks({
     [
       ATM,
       "create",
-      async (data) => {
-        captured.created = data;
-        return { ...data, _id: atmId };
+      async ([data]) => {
+        const created = {
+          ...data,
+          _id: atmId,
+          async save() {
+            captured.savedATM = this;
+          },
+        };
+        captured.created = created;
+        return [created];
       },
+    ],
+    [
+      Customer,
+      "updateMany",
+      async (...args) => {
+        captured.customerCleanup = args;
+      },
+    ],
+    [
+      mongoose,
+      "startSession",
+      async () => ({
+        async withTransaction(operation) {
+          try {
+            return await operation(this);
+          } catch (error) {
+            delete captured.created;
+            delete captured.savedATM;
+            delete captured.customer;
+            throw error;
+          }
+        },
+        async endSession() {},
+      }),
     ],
     [
       ATM,
@@ -158,6 +203,21 @@ const createBody = (changes = {}) => ({
   ...changes,
 });
 
+test("rejects ATM creation with an invalid Customer without committing a partial ATM", async () => {
+  const { captured, overrides } = createMocks({ customer: null });
+  await withOverrides(overrides, async () => {
+    await assert.rejects(
+      invoke(createATM, {
+        body: createBody(),
+        user: { _id: "admin-id" },
+      }),
+      /Customer not found/,
+    );
+  });
+  assert.equal(captured.created, undefined);
+  assert.equal(captured.customer, undefined);
+});
+
 function updateRequest(body) {
   return {
     params: { id: atmId },
@@ -189,6 +249,8 @@ test("creates an ATM with an active District and its active Region", async () =>
     assert.equal(body.data.districtId, districtId);
     assert.equal(body.data.regionId, regionId);
     assert.equal(captured.created.regionId, regionId);
+    assert.equal(captured.savedATM.customer, "customer-id");
+    assert.deepEqual(captured.customer.atmIds, [atmId]);
   });
 });
 

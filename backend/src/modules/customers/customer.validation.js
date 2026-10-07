@@ -9,7 +9,6 @@ export const createCustomerSchema = z.object({
   customerName: z.string().min(1, "Customer name is required").optional(),
   customerPhone: z.string().optional(),
   bankName: z.string().min(1, "Bank name is required"),
-  atmIds: z.array(z.string()).optional(),
   districtIds: z.array(z.string()).optional(),
 });
 
@@ -17,7 +16,6 @@ export const updateCustomerSchema = z.object({
   customerName: z.string().min(1).optional(),
   customerPhone: z.string().optional(),
   bankName: z.string().optional(),
-  atmIds: z.array(z.string()).optional(),
   districtIds: z.array(z.string()).optional(),
   isActive: z.boolean().optional(),
 });

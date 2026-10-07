@@ -12,6 +12,7 @@ import {
   escapeRegex,
   parsePagination,
 } from "../../utils/geographicQuery.js";
+import { softDeleteCustomerIfUnassigned } from "./customerAssignment.service.js";
 
 // ============================================
 // ADMIN APIs: Customer Management
@@ -38,7 +39,6 @@ export const createCustomer = asyncHandler(async (req, res) => {
     customerName,
     customerPhone,
     bankName,
-    atmIds,
     districtIds,
   } = req.body;
 
@@ -71,7 +71,7 @@ export const createCustomer = asyncHandler(async (req, res) => {
     customerEmail: email.toLowerCase(),
     customerPhone: customerPhone || phoneNumber,
     bankName: bankName || "",
-    atmIds: atmIds || [],
+    atmIds: [],
     districtIds: districtIds || [],
     createdBy: req.user._id,
   });
@@ -326,12 +326,18 @@ export const updateCustomer = asyncHandler(async (req, res) => {
     );
   }
 
+  if (Object.prototype.hasOwnProperty.call(req.body, "atmIds")) {
+    throw new ApiError(
+      400,
+      "ATM assignments can only be changed through ATM management",
+    );
+  }
+
   const allowedUpdates = isAdmin
     ? [
         "customerName",
         "customerPhone",
         "bankName",
-        "atmIds",
         "districtIds",
         "isActive",
       ]
@@ -373,18 +379,10 @@ export const deleteCustomer = asyncHandler(async (req, res) => {
 
   const { id } = req.params;
 
-  const customer = await Customer.findById(id);
-
-  if (!customer || customer.isDeleted) {
-    throw new ApiError(404, "Customer not found");
-  }
-
-  customer.isDeleted = true;
-  customer.updatedBy = req.user._id;
-  await customer.save();
-
-  // Also deactivate the user account
-  await User.findByIdAndUpdate(customer.userId, { status: "inactive" });
+  await softDeleteCustomerIfUnassigned({
+    customerId: id,
+    updatedBy: req.user._id,
+  });
 
   return res
     .status(200)

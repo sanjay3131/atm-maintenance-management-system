@@ -5,9 +5,12 @@ import { sanitizeUser } from "../../utils/sanitizeUser.js";
 import { hashPassword } from "../auth/auth.utils.js";
 import ApiError from "../../utils/ApiError.js";
 import Employee from "../employees/employee.model.js";
+import {
+  replaceEmployeeATMAssignmentsInTransaction,
+  withEmployeeAssignmentTransaction,
+} from "../employees/employeeAssignment.service.js";
 import Customer from "../customers/customer.model.js";
 import { generateEmployeeCode } from "../employees/employee.utils.js";
-import ATM from "../atms/atm.model.js";
 
 export const getAllUsers = asyncHandler(async (req, res) => {
   const isAdmin =
@@ -274,25 +277,7 @@ export const createUserWizard = asyncHandler(async (req, res) => {
         ...new Set((employee.assignedAtmIds || []).map(String)),
       ];
 
-      if (assignedAtmIds.length > 0) {
-        const atms = await ATM.find({ _id: { $in: assignedAtmIds } }).select(
-          "_id atmId assignedEmployeeId",
-        );
-        if (atms.length !== assignedAtmIds.length) {
-          throw new ApiError(404, "One or more ATMs not found");
-        }
-        const conflictingATM = atms.find(
-          (atm) => (atm.assignedEmployeeId || []).length > 0,
-        );
-        if (conflictingATM) {
-          throw new ApiError(
-            409,
-            `ATM ${conflictingATM.atmId} is already assigned to another employee. Reassign it from ATM management.`,
-          );
-        }
-      }
-
-      const newEmployee = await Employee.create({
+      const employeeData = {
         userId: user._id,
         employeeCode,
         designation: employee.designation,
@@ -300,24 +285,26 @@ export const createUserWizard = asyncHandler(async (req, res) => {
         joiningDate: employee.joiningDate,
         employmentType: employee.employmentType,
         districtIds: employee.districtIds,
-        assignedAtmIds,
+        assignedAtmIds: [],
         regionIds: employee.regionIds,
         salary: employee.salary,
         createdBy: req.user._id,
-      });
+      };
 
       if (assignedAtmIds.length > 0) {
-        await Employee.updateMany(
-          {
-            _id: { $ne: newEmployee._id },
-            assignedAtmIds: { $in: assignedAtmIds },
-          },
-          { $pull: { assignedAtmIds: { $in: assignedAtmIds } } },
-        );
-        await ATM.updateMany(
-          { _id: { $in: assignedAtmIds } },
-          { $set: { assignedEmployeeId: [newEmployee._id] } },
-        );
+        await withEmployeeAssignmentTransaction(async (session) => {
+          const [newEmployee] = await Employee.create([employeeData], {
+            session,
+          });
+          return replaceEmployeeATMAssignmentsInTransaction({
+            employeeId: newEmployee._id,
+            assignedAtmIds,
+            updatedBy: req.user._id,
+            session,
+          });
+        });
+      } else {
+        await Employee.create(employeeData);
       }
     }
 
@@ -328,7 +315,7 @@ export const createUserWizard = asyncHandler(async (req, res) => {
         customerEmail: customer.customerEmail,
         customerPhone: customer.customerPhone,
         bankName: customer.bankName,
-        atmIds: customer.atmIds,
+        atmIds: [],
         districtIds: customer.districtIds,
         createdBy: req.user._id,
       });

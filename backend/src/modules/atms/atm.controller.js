@@ -10,7 +10,15 @@ import { AMC_STATUS } from "../amc/amc.config.js";
 import Job from "../jobs/jobs.model.js";
 import { JOB_STATUS } from "../../utils/jobStatus.js";
 import RecurringMaintenancePlan from "../jobs/recurringMaintenancePlan.model.js";
-import User from "../users/user.model.js";
+import {
+  assignATMCustomerInTransaction,
+  softDeleteATMAndUnlinkCustomer,
+  withCustomerAssignmentTransaction,
+} from "../customers/customerAssignment.service.js";
+import {
+  replaceATMEmployeeAssignmentInTransaction,
+  setATMEmployeeAssignment,
+} from "../employees/employeeAssignment.service.js";
 import ATM from "./atm.model.js";
 import { generateATMId } from "./atm.utils.js";
 import {
@@ -35,27 +43,6 @@ const validateActiveEmployee = async (employeeId) => {
   }
 
   return employee;
-};
-
-const syncATMEmployeeAssignment = async (atm, employeeId, updatedBy) => {
-  atm.assignedEmployeeId = employeeId ? [employeeId] : [];
-  atm.updatedBy = updatedBy;
-  await atm.save();
-
-  await Employee.updateMany(
-    { assignedAtmIds: atm._id },
-    { $pull: { assignedAtmIds: atm._id } },
-  );
-
-  if (employeeId) {
-    await Employee.updateOne(
-      { _id: employeeId },
-      {
-        $addToSet: { assignedAtmIds: atm._id },
-        $set: { updatedBy },
-      },
-    );
-  }
 };
 
 const validateActiveATMGeography = async (districtId, regionId) => {
@@ -166,18 +153,9 @@ export const createATM = asyncHandler(async (req, res) => {
   }
 
   const resolvedCustomerId = customerId;
-  if (resolvedCustomerId) {
-    const cust = await Customer.findOne({
-      _id: resolvedCustomerId,
-      isActive: true,
-      isDeleted: false,
-    });
-
-    if (!cust) throw new ApiError(404, "Customer not found...");
-  }
   const atmId = await generateATMId();
 
-  const atm = await ATM.create({
+  const atmData = {
     atmId,
     bankId,
     customer: resolvedCustomerId,
@@ -188,13 +166,29 @@ export const createATM = asyncHandler(async (req, res) => {
     installationType,
     location,
     status,
-    assignedEmployeeId: assignedEmployeeIds,
+    assignedEmployeeId: [],
     createdBy: req.user._id,
-  });
+  };
+  const atm = await withCustomerAssignmentTransaction(async (session) => {
+    const [createdATM] = await ATM.create([atmData], { session });
+    await assignATMCustomerInTransaction({
+      atm: createdATM,
+      atmId: createdATM._id,
+      customerId: resolvedCustomerId,
+      updatedBy: req.user._id,
+      session,
+    });
 
-  if (assignedEmployeeIds.length > 0) {
-    await syncATMEmployeeAssignment(atm, assignedEmployeeIds[0], req.user._id);
-  }
+    if (assignedEmployeeIds.length > 0) {
+      return replaceATMEmployeeAssignmentInTransaction({
+        atmId: createdATM._id,
+        employeeId: assignedEmployeeIds[0],
+        updatedBy: req.user._id,
+        session,
+      });
+    }
+    return createdATM;
+  });
 
   return res
     .status(201)
@@ -450,46 +444,57 @@ export const updateATM = asyncHandler(async (req, res) => {
     delete updatePayload.assignedEmployeeId;
   }
 
-  if (Object.prototype.hasOwnProperty.call(updatePayload, "customerId")) {
-    const customerId = updatePayload.customerId || updatePayload.customer;
-
-    if (customerId) {
-      const cust = await Customer.findOne({
-        _id: customerId,
-        isActive: true,
-        isDeleted: false,
-      });
-      if (!cust) throw new ApiError(404, "Customer not found");
-    }
-
-    if (customerId) {
-      updatePayload.customer = customerId;
-    }
+  const hasCustomerUpdate = Object.prototype.hasOwnProperty.call(
+    updatePayload,
+    "customerId",
+  );
+  const customerId = updatePayload.customerId;
+  if (hasCustomerUpdate) {
     delete updatePayload.customerId;
   }
 
-  const updatedATM = await ATM.findByIdAndUpdate(
-    req.params.id,
-    {
-      ...updatePayload,
-      updatedBy: req.user._id,
-    },
-    {
-      new: true,
-      runValidators: true,
-    },
-  );
+  let updatedATM;
+  if (hasCustomerUpdate) {
+    updatedATM = await withCustomerAssignmentTransaction(async (session) => {
+      const currentATM = await ATM.findOne({
+        _id: req.params.id,
+        isDeleted: false,
+      }).session(session);
+      if (!currentATM) throw new ApiError(404, "ATM not found");
+      Object.assign(currentATM, updatePayload);
+      currentATM.updatedBy = req.user._id;
+      return assignATMCustomerInTransaction({
+        atm: currentATM,
+        atmId: currentATM._id,
+        customerId,
+        updatedBy: req.user._id,
+        session,
+      });
+    });
+  } else {
+    updatedATM = await ATM.findByIdAndUpdate(
+      req.params.id,
+      {
+        ...updatePayload,
+        updatedBy: req.user._id,
+      },
+      {
+        new: true,
+        runValidators: true,
+      },
+    );
+  }
 
   if (!updatedATM || updatedATM.isDeleted) {
     throw new ApiError(404, "ATM not found");
   }
 
   if (assignedEmployeeIds !== undefined) {
-    await syncATMEmployeeAssignment(
-      updatedATM,
-      assignedEmployeeIds[0] || null,
-      req.user._id,
-    );
+    updatedATM = await setATMEmployeeAssignment({
+      atmId: updatedATM._id,
+      employeeId: assignedEmployeeIds[0] || null,
+      updatedBy: req.user._id,
+    });
   }
 
   return res
@@ -499,16 +504,10 @@ export const updateATM = asyncHandler(async (req, res) => {
 
 // delete atm (soft delete)
 export const deleteATM = asyncHandler(async (req, res) => {
-  const atm = await ATM.findById(req.params.id);
-
-  if (!atm || atm.isDeleted) {
-    throw new ApiError(404, "ATM not found");
-  }
-
-  atm.isDeleted = true;
-  atm.updatedBy = req.user._id;
-
-  await atm.save();
+  const atm = await softDeleteATMAndUnlinkCustomer({
+    atmId: req.params.id,
+    updatedBy: req.user._id,
+  });
 
   return res
     .status(200)
@@ -524,13 +523,11 @@ export const assignEmployeeToATM = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Invalid ATM ID");
   }
 
-  const atm = await ATM.findById(atmId);
-  if (!atm || atm.isDeleted) {
-    throw new ApiError(404, "ATM not found");
-  }
-
-  await validateActiveEmployee(employeeId);
-  await syncATMEmployeeAssignment(atm, employeeId, req.user._id);
+  const atm = await setATMEmployeeAssignment({
+    atmId,
+    employeeId,
+    updatedBy: req.user._id,
+  });
 
   return res
     .status(200)

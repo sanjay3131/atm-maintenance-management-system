@@ -152,14 +152,36 @@ export default function ATMDetailsPage() {
   const handleAssignEmployee = () => {
     if (!atm || !selectedEmployeeId) return;
 
+    saveEmployeeAssignment(selectedEmployeeId);
+  };
+
+  const handleUnassignEmployee = () => {
+    if (!atm) return;
+    saveEmployeeAssignment(null);
+  };
+
+  const saveEmployeeAssignment = (employeeId: string | null) => {
+    if (!atm) return;
     assignEmployee.mutate(
-      { atmId: atm._id, employeeId: selectedEmployeeId },
+      { atmId: atm._id, employeeId },
       {
         onSuccess: () => {
-          toast.success("Maintenance employee updated successfully.");
-          void queryClient.invalidateQueries({ queryKey: ["atm", atm._id] });
-          void queryClient.invalidateQueries({ queryKey: ["atms"] });
-          void queryClient.invalidateQueries({ queryKey: ["employees"] });
+          toast.success(
+            employeeId
+              ? "Maintenance employee updated successfully."
+              : "Maintenance employee unassigned successfully.",
+          );
+          [
+            ["atm", atm._id],
+            ["atms"],
+            ["employees"],
+            ["district-atms"],
+            ["region-atms"],
+            ["district-employees"],
+            ["region-employees"],
+          ].forEach((queryKey) => {
+            void queryClient.invalidateQueries({ queryKey });
+          });
           setAssignDialogOpen(false);
         },
         onError: (error) => {
@@ -358,6 +380,15 @@ export default function ATMDetailsPage() {
             </p>
           )}
           <div className="mt-6 flex justify-end gap-2">
+            {assignment && (
+              <Button
+                variant="outline"
+                onClick={handleUnassignEmployee}
+                disabled={assignEmployee.isPending}
+              >
+                {assignEmployee.isPending ? "Saving..." : "Unassign"}
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => setAssignDialogOpen(false)}

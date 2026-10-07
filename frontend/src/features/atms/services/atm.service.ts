@@ -49,7 +49,7 @@ export const updateATM = async (
 
 export const assignEmployeeToATM = async (
   atmId: string,
-  employeeId: string,
+  employeeId: string | null,
 ): Promise<ATM> => {
   const response = await api.patch(`/atm/assignEmployee/${atmId}`, {
     employeeId,

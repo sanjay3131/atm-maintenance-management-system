@@ -41,8 +41,6 @@ const customerSchema = z.object({
 
   bankName: z.string().trim().optional(),
 
-  atmIds: z.array(objectIdSchema).default([]),
-
   districtIds: z.array(objectIdSchema).default([]),
 });
 

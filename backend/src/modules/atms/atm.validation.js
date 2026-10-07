@@ -84,7 +84,7 @@ export const updateAtmSchema = z.object({
 });
 
 export const assignATMEmployeeSchema = z.object({
-  employeeId: objectIdSchema,
+  employeeId: objectIdSchema.nullable(),
 });
 export const validateRequest = (schema) => {
   return asyncHandler(async (req, res, next) => {

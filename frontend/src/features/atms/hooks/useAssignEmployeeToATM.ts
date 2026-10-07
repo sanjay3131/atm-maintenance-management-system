@@ -4,7 +4,7 @@ import type { ATM } from "../types/atm.types";
 
 interface AssignEmployeeVariables {
   atmId: string;
-  employeeId: string;
+  employeeId: string | null;
 }
 
 export const useAssignEmployeeToATM = () => {

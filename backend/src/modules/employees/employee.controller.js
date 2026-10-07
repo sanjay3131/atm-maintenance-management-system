@@ -12,42 +12,12 @@ import {
   escapeRegex,
   parsePagination,
 } from "../../utils/geographicQuery.js";
-
-const ensureATMsAvailableForEmployee = async (atmIds, employeeId = null) => {
-  if (atmIds.length === 0) return;
-
-  const atms = await ATM.find({ _id: { $in: atmIds } }).select(
-    "_id atmId assignedEmployeeId",
-  );
-  const conflictingATM = atms.find((atm) =>
-    (atm.assignedEmployeeId || []).some(
-      (assignedId) => assignedId.toString() !== employeeId?.toString(),
-    ),
-  );
-
-  if (conflictingATM) {
-    throw new ApiError(
-      409,
-      `ATM ${conflictingATM.atmId} is already assigned to another employee. Reassign it from ATM management.`,
-    );
-  }
-};
-
-const syncEmployeeATMAssignments = async (atmIds, employeeId) => {
-  if (atmIds.length === 0) return;
-
-  await Employee.updateMany(
-    {
-      _id: { $ne: employeeId },
-      assignedAtmIds: { $in: atmIds },
-    },
-    { $pull: { assignedAtmIds: { $in: atmIds } } },
-  );
-  await ATM.updateMany(
-    { _id: { $in: atmIds } },
-    { $set: { assignedEmployeeId: [employeeId] } },
-  );
-};
+import {
+  addEmployeeATMAssignments,
+  replaceEmployeeATMAssignments,
+  replaceEmployeeATMAssignmentsInTransaction,
+  withEmployeeAssignmentTransaction,
+} from "./employeeAssignment.service.js";
 
 export const createEmployee = asyncHandler(async (req, res) => {
   const isAdmin =
@@ -112,19 +82,8 @@ export const createEmployee = asyncHandler(async (req, res) => {
   } = req.body;
   const uniqueAssignedAtmIds = [...new Set((assignedAtmIds || []).map(String))];
 
-  if (uniqueAssignedAtmIds.length > 0) {
-    const atms = await ATM.find({
-      _id: { $in: uniqueAssignedAtmIds },
-    }).select("_id");
-    if (atms.length !== uniqueAssignedAtmIds.length) {
-      throw new ApiError(404, "One or more ATMs not found");
-    }
-    await ensureATMsAvailableForEmployee(uniqueAssignedAtmIds);
-  }
-
   const employeeCode = await generateEmployeeCode();
-
-  const newEmployee = await Employee.create({
+  const employeeData = {
     userId: user._id,
     employeeCode,
     designation,
@@ -132,17 +91,23 @@ export const createEmployee = asyncHandler(async (req, res) => {
     joiningDate,
     employmentType,
     districtIds,
-    assignedAtmIds: uniqueAssignedAtmIds,
+    assignedAtmIds: [],
     salary,
     createdBy: req.user._id,
-  });
-
-  if (uniqueAssignedAtmIds.length > 0) {
-    await syncEmployeeATMAssignments(
-      uniqueAssignedAtmIds,
-      newEmployee._id,
-    );
-  }
+  };
+  const newEmployee = uniqueAssignedAtmIds.length
+    ? await withEmployeeAssignmentTransaction(async (session) => {
+        const [createdEmployee] = await Employee.create([employeeData], {
+          session,
+        });
+        return replaceEmployeeATMAssignmentsInTransaction({
+          employeeId: createdEmployee._id,
+          assignedAtmIds: uniqueAssignedAtmIds,
+          updatedBy: req.user._id,
+          session,
+        });
+      })
+    : await Employee.create(employeeData);
 
   return res
     .status(201)
@@ -153,7 +118,24 @@ export const createEmployee = asyncHandler(async (req, res) => {
 
 export const updateEmployee = asyncHandler(async (req, res) => {
   const { employeeId } = req.params;
-  const employee = await Employee.findById(employeeId);
+  const updatePayload = { ...req.body };
+  const hasATMUpdate = Object.prototype.hasOwnProperty.call(
+    updatePayload,
+    "assignedAtmIds",
+  );
+  let employee;
+  if (hasATMUpdate) {
+    const assignedAtmIds = [...new Set(updatePayload.assignedAtmIds || [])];
+    delete updatePayload.assignedAtmIds;
+    employee = await replaceEmployeeATMAssignments({
+      employeeId,
+      assignedAtmIds,
+      updatedBy: req.user._id,
+      employeeUpdates: updatePayload,
+    });
+  } else {
+    employee = await Employee.findById(employeeId);
+  }
 
   if (!employee) {
     return res
@@ -161,59 +143,9 @@ export const updateEmployee = asyncHandler(async (req, res) => {
       .json(new ApiResponse(404, "Employee not found", null));
   }
 
-  const updatePayload = { ...req.body };
-  let assignedAtmIds;
-  let previousAtmIds;
-  if (Object.prototype.hasOwnProperty.call(updatePayload, "assignedAtmIds")) {
-    assignedAtmIds = [
-      ...new Set((updatePayload.assignedAtmIds || []).map(String)),
-    ];
-    previousAtmIds = (employee.assignedAtmIds || []).map((id) => id.toString());
-
-    if (assignedAtmIds.length > 0) {
-      const atms = await ATM.find({ _id: { $in: assignedAtmIds } }).select(
-        "_id atmId assignedEmployeeId",
-      );
-      if (atms.length !== assignedAtmIds.length) {
-        throw new ApiError(404, "One or more ATMs not found");
-      }
-      const resultingEmployeeStatus =
-        updatePayload.status ?? employee.status;
-      if (resultingEmployeeStatus !== "active") {
-        throw new ApiError(400, "Employee is inactive");
-      }
-      const employeeUser = await User.findById(employee.userId).select(
-        "status userType",
-      );
-      if (
-        employeeUser?.status !== "active" ||
-        employeeUser?.userType !== "employee"
-      ) {
-        throw new ApiError(400, "Employee is inactive");
-      }
-      await ensureATMsAvailableForEmployee(assignedAtmIds, employee._id);
-    }
-
-    employee.assignedAtmIds = assignedAtmIds;
-    delete updatePayload.assignedAtmIds;
-  }
-
-  Object.assign(employee, updatePayload);
-  await employee.save();
-
-  if (assignedAtmIds) {
-    const removedAtmIds = previousAtmIds.filter(
-      (atmId) => !assignedAtmIds.includes(atmId),
-    );
-    if (removedAtmIds.length > 0) {
-      await ATM.updateMany(
-        { _id: { $in: removedAtmIds } },
-        { $pull: { assignedEmployeeId: employee._id } },
-      );
-    }
-    if (assignedAtmIds.length > 0) {
-      await syncEmployeeATMAssignments(assignedAtmIds, employee._id);
-    }
+  if (!hasATMUpdate) {
+    Object.assign(employee, updatePayload);
+    await employee.save();
   }
 
   await employee.populate("userId", "firstName lastName email userType");
@@ -463,32 +395,15 @@ export const assignAtms = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Employee is inactive");
   }
 
-  // Verify all ATMs exist
-  const atms = await ATM.find({
-    _id: { $in: uniqueAtmIds },
-  }).select("_id atmId assignedEmployeeId");
-
-  if (atms.length !== uniqueAtmIds.length) {
-    throw new ApiError(404, "One or more ATMs not found");
-  }
-  await ensureATMsAvailableForEmployee(uniqueAtmIds, employee._id);
-
-  // Add ATMs to employee
-  employee.assignedAtmIds = [
-    ...new Set([
-      ...(employee.assignedAtmIds || []).map(String),
-      ...uniqueAtmIds,
-    ]),
-  ];
-
-  await employee.save();
-
-  // Add employee to all ATMs
-  await syncEmployeeATMAssignments(uniqueAtmIds, employee._id);
+  const updatedEmployee = await addEmployeeATMAssignments({
+    employeeId: employee._id,
+    assignedAtmIds: uniqueAtmIds,
+    updatedBy: req.user._id,
+  });
 
   return res
     .status(200)
-    .json(new ApiResponse(200, employee, "ATMs assigned successfully"));
+    .json(new ApiResponse(200, updatedEmployee, "ATMs assigned successfully"));
 });
 
 // assign district to employee (admin and superAdmin)
