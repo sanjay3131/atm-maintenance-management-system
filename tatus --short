@@ -1,0 +1,10 @@
+ .../modules/complaints/complaints.controller.js    |  43 [32m++++[m[31m--[m
+ backend/src/modules/complaints/complaints.model.js |   2 [32m+[m[31m-[m
+ .../src/modules/customers/customer.controller.js   | 141 [32m+++++++++++++[m[31m-------[m
+ backend/src/modules/customers/customer.routes.js   |  55 [32m++++[m[31m----[m
+ .../src/modules/customers/customer.validation.js   |   8 [32m+[m[31m-[m
+ .../test/geographicWorkspaceControllers.test.js    |  22 [32m+[m[31m--[m
+ frontend/src/App.tsx                               |  21 [32m++[m[31m-[m
+ .../customers/services/customer.service.ts         |  79 [32m+++++++++++[m
+ frontend/src/layouts/AdminSidebar.tsx              |   6 [32m+[m
+ 9 files changed, 281 insertions(+), 96 deletions(-)

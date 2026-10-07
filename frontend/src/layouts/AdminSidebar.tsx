@@ -9,6 +9,7 @@ import {
   Repeat,
   Landmark,
   MapPinned,
+  UserRound,
 } from "lucide-react";
 
 const navItems = [
@@ -21,6 +22,11 @@ const navItems = [
     label: "Employees",
     path: "/admin/employees",
     icon: Users,
+  },
+  {
+    label: "Customers",
+    path: "/admin/customers",
+    icon: UserRound,
   },
   {
     label: "ATMs",

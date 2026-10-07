@@ -117,10 +117,10 @@ test("scoped ATM list returns an empty paginated result and complete-scope summa
   }
 });
 
-test("scoped customer aggregation deduplicates ATM links and excludes unresolved or deleted customers", async () => {
-  const originalAggregate = ATM.aggregate;
+test("scoped customer aggregation counts each Customer and filters geographic ATM assignments", async () => {
+  const originalAggregate = Customer.aggregate;
   let pipeline;
-  ATM.aggregate = async (value) => {
+  Customer.aggregate = async (value) => {
     pipeline = value;
     return [
       {
@@ -144,16 +144,22 @@ test("scoped customer aggregation deduplicates ATM links and excludes unresolved
     assert.deepEqual(body.data.summary, { total: 2, active: 1, inactive: 1 });
     assert.equal(pipeline.filter((stage) => stage.$facet).length, 1);
     assert.equal(hasNestedFacet(pipeline), false);
+    assert.ok(pipeline.some((stage) => stage.$match?.isDeleted === false));
     assert.ok(
-      pipeline.some((stage) => stage.$group?._id === "$customer"),
-      "customer IDs must be grouped to deduplicate multiple ATMs",
+      pipeline.some(
+        (stage) =>
+          stage.$lookup?.from === ATM.collection.name &&
+          stage.$lookup.let?.customerId === "$_id",
+      ),
+      "linked ATMs must be looked up from each Customer",
     );
-    assert.ok(pipeline.some((stage) => stage.$unwind === "$customer"));
+    assert.ok(pipeline.some((stage) => stage.$addFields?.linkedATMCount));
     assert.ok(
-      pipeline.some((stage) => stage.$match?.["customer.isDeleted"] === false),
+      pipeline.some((stage) => stage.$match?.linkedATMCount?.$gt === 0),
+      "geographic scopes must include customers only when an ATM matches",
     );
   } finally {
-    ATM.aggregate = originalAggregate;
+    Customer.aggregate = originalAggregate;
   }
 });
 

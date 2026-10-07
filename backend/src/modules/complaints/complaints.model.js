@@ -16,7 +16,7 @@ const complaintsSchema = new mongoose.Schema(
     },
     customerId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Customer",
       index: true,
     },
     reportedBy: {

@@ -3,6 +3,7 @@ import ApiResponse from "../../utils/ApiResponse.js";
 import ApiError from "../../utils/ApiError.js";
 import Complaint from "./complaints.model.js";
 import ATM from "../atms/atm.model.js";
+import Customer from "../customers/customer.model.js";
 import User from "../users/user.model.js";
 import Job from "../jobs/jobs.model.js";
 
@@ -23,13 +24,16 @@ const generateComplaintId = async () => {
   return `COMP-${dateStr}-${String(count + 1).padStart(3, "0")}`;
 };
 
+const isValidObjectId = (value) =>
+  typeof value === "string" && /^[0-9a-fA-F]{24}$/.test(value);
+
 const populateComplaint = (query) => {
   return query
     .populate(
       "atmId",
       "atmId locationName bank address districtId regionId location installationType",
     )
-    .populate("customerId", "firstName lastName email phoneNumber")
+    .populate("customerId", "customerName")
     .populate("jobId", "jobId status title assignedEmployeeId")
     .populate("createdBy", "firstName lastName email")
     .populate("updatedBy", "firstName lastName email")
@@ -71,14 +75,14 @@ export const createComplaint = asyncHandler(async (req, res) => {
     throw new ApiError(404, "ATM not found or has been removed");
   }
 
-  if (customerId) {
-    const customer = await User.findOne({
-      _id: customerId,
-      userType: "customer",
-      status: "active",
-    });
+  if (customerId != null) {
+    if (!isValidObjectId(customerId)) {
+      throw new ApiError(400, "Invalid customer ID");
+    }
+
+    const customer = await Customer.findById(customerId);
     if (!customer) {
-      throw new ApiError(404, "Customer not found or inactive");
+      throw new ApiError(404, "Customer not found");
     }
   }
 
@@ -140,7 +144,17 @@ export const getAllComplaints = asyncHandler(async (req, res) => {
   if (status) query.status = status;
   if (priority) query.priority = priority;
   if (atmId) query.atmId = atmId;
-  if (customerId) query.customerId = customerId;
+  if (customerId) {
+    if (!isValidObjectId(customerId)) {
+      throw new ApiError(400, "Invalid customer ID");
+    }
+
+    const customer = await Customer.findById(customerId);
+    if (!customer) {
+      throw new ApiError(404, "Customer not found");
+    }
+    query.customerId = customer._id;
+  }
 
   if (fromDate || toDate) {
     query.createdAt = {};
@@ -621,7 +635,16 @@ export const getComplaintsByCustomer = asyncHandler(async (req, res) => {
   const { customerId } = req.params;
   const { status, page = 1, limit = 10 } = req.query;
 
-  const query = { customerId, isDeleted: false };
+  if (!isValidObjectId(customerId)) {
+    throw new ApiError(400, "Invalid customer ID");
+  }
+
+  const customer = await Customer.findById(customerId);
+  if (!customer) {
+    throw new ApiError(404, "Customer not found");
+  }
+
+  const query = { customerId: customer._id, isDeleted: false };
   if (status) query.status = status;
 
   const pageNum = Math.max(1, parseInt(page));

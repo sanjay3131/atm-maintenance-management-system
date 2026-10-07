@@ -221,6 +221,7 @@ export interface ApproveJobData {
 export interface JobsQueryParams {
   page: number;
   limit: number;
+  customerId?: string;
   bankId?: string;
   districtId?: string;
   regionId?: string;

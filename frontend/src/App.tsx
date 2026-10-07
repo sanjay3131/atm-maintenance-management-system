@@ -21,6 +21,8 @@ import BankDetailPage from "@/pages/admin/BankDetailPage";
 import DistrictsPage from "@/pages/admin/DistrictsPage";
 import DistrictDetailPage from "@/pages/admin/DistrictDetailPage";
 import RegionDetailPage from "@/pages/admin/RegionDetailPage";
+import CustomersPage from "@/pages/admin/CustomersPage";
+import CustomerDetailsPage from "@/pages/admin/CustomerDetailsPage";
 
 export default function App() {
   return (
@@ -34,6 +36,11 @@ export default function App() {
           <Route element={<AdminLayout />}>
             <Route path="/admin" element={<AdminDashboardPage />} />
             <Route path="/admin/employees" element={<EmployeesPage />} />
+            <Route path="/admin/customers" element={<CustomersPage />} />
+            <Route
+              path="/admin/customers/:id"
+              element={<CustomerDetailsPage />}
+            />
             <Route path="/admin/banks" element={<BanksPage />} />
             <Route path="/admin/banks/:bankId" element={<BankDetailPage />} />
             <Route path="/admin/districts" element={<DistrictsPage />} />

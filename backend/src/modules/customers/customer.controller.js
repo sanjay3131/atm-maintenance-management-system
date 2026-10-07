@@ -1,9 +1,11 @@
+import mongoose from "mongoose";
 import asyncHandler from "../../utils/asyncHandler.js";
 import ApiResponse from "../../utils/ApiResponse.js";
 import ApiError from "../../utils/ApiError.js";
 import User from "../users/user.model.js";
 import Customer from "./customer.model.js";
 import ATM from "../atms/atm.model.js";
+import Bank from "../banks/bank.model.js";
 import Job from "../jobs/jobs.model.js";
 import { sanitizeUser } from "../../utils/sanitizeUser.js";
 import { hashPassword } from "../auth/auth.utils.js";
@@ -13,6 +15,26 @@ import {
   parsePagination,
 } from "../../utils/geographicQuery.js";
 import { softDeleteCustomerIfUnassigned } from "./customerAssignment.service.js";
+
+const customerATMFields =
+  "atmId locationName bankId districtId regionId address installationType status";
+
+const populateCustomerATMs = (query) =>
+  query.populate({
+    path: "atmIds",
+    select: customerATMFields,
+    populate: [
+      { path: "bankId", select: "bankName" },
+      { path: "districtId", select: "districtName" },
+      { path: "regionId", select: "name" },
+    ],
+  });
+
+const validateCustomerId = (id) => {
+  if (!/^[0-9a-fA-F]{24}$/.test(id)) {
+    throw new ApiError(400, "Invalid customer ID");
+  }
+};
 
 // ============================================
 // ADMIN APIs: Customer Management
@@ -99,19 +121,59 @@ export const getAllCustomers = asyncHandler(async (req, res) => {
     throw new ApiError(403, "Access denied");
   }
 
-  const { districtId, regionId, bankId, status, search, page, limit } =
-    req.query;
+  const {
+    districtId,
+    regionId,
+    bankId,
+    bankName,
+    status,
+    search,
+    page,
+    limit,
+  } = req.query;
+  const hasGeographicScope = Boolean(districtId || regionId);
   const isScoped =
     districtId !== undefined ||
     regionId !== undefined ||
     bankId !== undefined ||
+    bankName !== undefined ||
     status !== undefined ||
     search !== undefined ||
     page !== undefined ||
     limit !== undefined;
 
   if (isScoped) {
-    const atmQuery = buildATMGeographicQuery({ districtId, regionId, bankId });
+    let atmQuery = { isDeleted: false };
+    let customerBankNames;
+
+    if (bankName !== undefined) {
+      if (typeof bankName !== "string" || !bankName.trim()) {
+        throw new ApiError(400, "Invalid bankName");
+      }
+      const selectedBank = await Bank.findOne({
+        $or: [
+          { bankCode: bankName.trim() },
+          { bankName: bankName.trim() },
+        ],
+      }).select("bankCode bankName");
+      customerBankNames = selectedBank
+        ? [...new Set([selectedBank.bankCode, selectedBank.bankName])]
+        : [bankName.trim()];
+    } else if (bankId !== undefined && !hasGeographicScope) {
+      if (!/^[0-9a-fA-F]{24}$/.test(bankId)) {
+        throw new ApiError(400, "Invalid bankId");
+      }
+      const selectedBank = await Bank.findById(bankId).select(
+        "bankCode bankName",
+      );
+      customerBankNames = selectedBank
+        ? [...new Set([selectedBank.bankCode, selectedBank.bankName])]
+        : [];
+    }
+
+    if (hasGeographicScope) {
+      atmQuery = buildATMGeographicQuery({ districtId, regionId, bankId });
+    }
     const pagination = parsePagination(page, limit);
     if (
       status !== undefined &&
@@ -131,26 +193,29 @@ export const getAllCustomers = asyncHandler(async (req, res) => {
           : undefined;
     const normalizedSearch = search?.trim();
     const customerFilter = {
+      ...(customerBankNames
+        ? { bankName: { $in: customerBankNames } }
+        : {}),
       ...(normalizedStatus === undefined
         ? {}
-        : { "customer.isActive": normalizedStatus }),
+        : { isActive: normalizedStatus }),
       ...(normalizedSearch
         ? {
             $or: [
               {
-                "customer.customerName": {
+                customerName: {
                   $regex: escapeRegex(normalizedSearch),
                   $options: "i",
                 },
               },
               {
-                "customer.customerEmail": {
+                customerEmail: {
                   $regex: escapeRegex(normalizedSearch),
                   $options: "i",
                 },
               },
               {
-                "customer.customerPhone": {
+                customerPhone: {
                   $regex: escapeRegex(normalizedSearch),
                   $options: "i",
                 },
@@ -160,40 +225,52 @@ export const getAllCustomers = asyncHandler(async (req, res) => {
         : {}),
     };
 
-    const [result] = await ATM.aggregate([
-      { $match: atmQuery },
-      { $match: { customer: { $ne: null } } },
+    const [result] = await Customer.aggregate([
       {
-        $group: {
-          _id: "$customer",
-          linkedAtmIds: { $addToSet: "$_id" },
+        $match: {
+          isDeleted: false,
+          ...(customerBankNames
+            ? { bankName: { $in: customerBankNames } }
+            : {}),
         },
       },
       {
         $lookup: {
-          from: Customer.collection.name,
-          localField: "_id",
-          foreignField: "_id",
-          as: "customer",
+          from: ATM.collection.name,
+          let: { customerId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                ...atmQuery,
+                $expr: { $eq: ["$customer", "$$customerId"] },
+              },
+            },
+            { $project: { _id: 1 } },
+          ],
+          as: "linkedATMs",
         },
       },
-      { $unwind: "$customer" },
-      { $match: { "customer.isDeleted": false } },
+      {
+        $addFields: {
+          linkedATMCount: { $size: "$linkedATMs" },
+        },
+      },
+      ...(hasGeographicScope
+        ? [{ $match: { linkedATMCount: { $gt: 0 } } }]
+        : []),
       {
         $facet: {
           total: [{ $count: "count" }],
-          statusCounts: [
-            { $group: { _id: "$customer.isActive", count: { $sum: 1 } } },
-          ],
+          statusCounts: [{ $group: { _id: "$isActive", count: { $sum: 1 } } }],
           matchingCustomers: [
             { $match: customerFilter },
-            { $sort: { "customer.createdAt": -1, _id: 1 } },
+            { $sort: { createdAt: -1, _id: 1 } },
             { $skip: pagination.skip },
             { $limit: pagination.limit },
             {
               $lookup: {
                 from: User.collection.name,
-                localField: "customer.userId",
+                localField: "userId",
                 foreignField: "_id",
                 pipeline: [
                   {
@@ -211,25 +288,47 @@ export const getAllCustomers = asyncHandler(async (req, res) => {
               },
             },
             {
+              $lookup: {
+                from: Bank.collection.name,
+                let: { customerBankName: "$bankName" },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $or: [
+                          { $eq: ["$bankCode", "$$customerBankName"] },
+                          { $eq: ["$bankName", "$$customerBankName"] },
+                        ],
+                      },
+                    },
+                  },
+                  { $project: { bankName: 1 } },
+                ],
+                as: "bank",
+              },
+            },
+            {
               $project: {
-                _id: "$customer._id",
+                _id: 1,
                 userId: { $arrayElemAt: ["$user", 0] },
-                customerName: "$customer.customerName",
-                customerEmail: "$customer.customerEmail",
-                customerPhone: "$customer.customerPhone",
-                bankName: "$customer.bankName",
-                isActive: "$customer.isActive",
-                isDeleted: "$customer.isDeleted",
-                createdAt: "$customer.createdAt",
-                updatedAt: "$customer.updatedAt",
-                linkedATMCount: { $size: "$linkedAtmIds" },
+                customerName: 1,
+                customerEmail: 1,
+                customerPhone: 1,
+                bankName: {
+                  $ifNull: [
+                    { $arrayElemAt: ["$bank.bankName", 0] },
+                    "$bankName",
+                  ],
+                },
+                isActive: 1,
+                isDeleted: 1,
+                createdAt: 1,
+                updatedAt: 1,
+                linkedATMCount: 1,
               },
             },
           ],
-          matchingTotal: [
-            { $match: customerFilter },
-            { $count: "count" },
-          ],
+          matchingTotal: [{ $match: customerFilter }, { $count: "count" }],
         },
       },
     ]);
@@ -263,9 +362,12 @@ export const getAllCustomers = asyncHandler(async (req, res) => {
     );
   }
 
-  const customers = await Customer.find({ isDeleted: false })
-    .populate("userId", "firstName lastName email phoneNumber status userType")
-    .populate("atmIds", "atmId locationName bank")
+  const customers = await populateCustomerATMs(
+    Customer.find({ isDeleted: false }).populate(
+      "userId",
+      "firstName lastName email phoneNumber status userType",
+    ),
+  )
     .populate("districtIds", "districtName")
     .sort({ createdAt: -1 });
 
@@ -279,11 +381,12 @@ export const getAllCustomers = asyncHandler(async (req, res) => {
  */
 export const getCustomerById = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  validateCustomerId(id);
 
-  const customer = await Customer.findById(id)
-    .populate("userId", "firstName lastName email phoneNumber status")
-    .populate("atmIds", "atmId locationName bank address")
-    .populate("districtIds", "districtName");
+  const customer = await Customer.findById(id).populate(
+    "userId",
+    "firstName lastName email phoneNumber status",
+  );
 
   if (!customer || customer.isDeleted) {
     throw new ApiError(404, "Customer not found");
@@ -297,9 +400,43 @@ export const getCustomerById = asyncHandler(async (req, res) => {
     throw new ApiError(403, "You can only view your own profile");
   }
 
+  const [assignedATMs, bank] = await Promise.all([
+    ATM.find({ customer: customer._id, isDeleted: false })
+      .select(customerATMFields)
+      .populate("bankId", "bankName")
+      .populate("districtId", "districtName")
+      .populate("regionId", "name"),
+    customer.bankName
+      ? Bank.findOne({
+          $or: [
+            { bankCode: customer.bankName },
+            { bankName: customer.bankName },
+          ],
+        }).select("bankName")
+      : null,
+  ]);
+  const customerData =
+    typeof customer.toObject === "function" ? customer.toObject() : customer;
+  const districts = new Map();
+  assignedATMs.forEach((atm) => {
+    const district = atm.districtId;
+    if (district && typeof district === "object" && district._id) {
+      districts.set(String(district._id), district);
+    }
+  });
+  const customerResponse = {
+    ...customerData,
+    bankName: bank?.bankName ?? customer.bankName,
+    atmIds: assignedATMs,
+    linkedATMCount: assignedATMs.length,
+    districtIds: [...districts.values()],
+  };
+
   return res
     .status(200)
-    .json(new ApiResponse(200, customer, "Customer fetched successfully"));
+    .json(
+      new ApiResponse(200, customerResponse, "Customer fetched successfully"),
+    );
 });
 
 /**
@@ -307,6 +444,7 @@ export const getCustomerById = asyncHandler(async (req, res) => {
  */
 export const updateCustomer = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  validateCustomerId(id);
   const isAdmin =
     req.user.userType === "admin" || req.user.userType === "superAdmin";
 
@@ -352,12 +490,12 @@ export const updateCustomer = asyncHandler(async (req, res) => {
 
   updates.updatedBy = req.user._id;
 
-  const updatedCustomer = await Customer.findByIdAndUpdate(id, updates, {
-    new: true,
-    runValidators: true,
-  })
-    .populate("userId", "firstName lastName email phoneNumber status")
-    .populate("atmIds", "atmId locationName bank");
+  const updatedCustomer = await populateCustomerATMs(
+    Customer.findByIdAndUpdate(id, updates, {
+      new: true,
+      runValidators: true,
+    }).populate("userId", "firstName lastName email phoneNumber status"),
+  );
 
   return res
     .status(200)
@@ -378,6 +516,7 @@ export const deleteCustomer = asyncHandler(async (req, res) => {
   }
 
   const { id } = req.params;
+  validateCustomerId(id);
 
   await softDeleteCustomerIfUnassigned({
     customerId: id,

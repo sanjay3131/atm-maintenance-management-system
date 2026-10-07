@@ -308,6 +308,81 @@ test("Customer update rejects atmIds instead of mutating the reverse index", asy
   );
 });
 
+test("Customer update sends only editable fields and returns a serializable customer DTO", async () => {
+  const updatedCustomer = {
+    _id: customerBId,
+    customerName: "Updated Customer",
+    customerPhone: "1234567890",
+    bankName: "Example Bank",
+    isActive: true,
+  };
+  const mongoClient = {};
+  mongoClient.s = { sessionPool: { client: mongoClient } };
+  const mongoQuery = {
+    mongoClient,
+    populate() {
+      return this;
+    },
+    then(resolve, reject) {
+      return Promise.resolve(updatedCustomer).then(resolve, reject);
+    },
+  };
+  let capturedUpdate;
+  let capturedOptions;
+
+  await withOverrides(
+    [
+      [
+        Customer,
+        "findById",
+        async () => ({
+          _id: customerBId,
+          userId: "customer-user-id",
+          isDeleted: false,
+        }),
+      ],
+      [
+        Customer,
+        "findByIdAndUpdate",
+        (id, update, options) => {
+          assert.equal(id, customerBId);
+          capturedUpdate = update;
+          capturedOptions = options;
+          return mongoQuery;
+        },
+      ],
+    ],
+    async () => {
+      const { status, body } = await invoke(updateCustomer, {
+        params: { id: customerBId },
+        body: {
+          customerName: updatedCustomer.customerName,
+          customerPhone: updatedCustomer.customerPhone,
+          bankName: updatedCustomer.bankName,
+        },
+        user: { _id: "admin-id", userType: "admin" },
+      });
+
+      assert.equal(status, 200);
+      assert.deepEqual(body.data, updatedCustomer);
+      assert.doesNotThrow(() => JSON.stringify(body));
+      assert.deepEqual(capturedUpdate, {
+        customerName: updatedCustomer.customerName,
+        customerPhone: updatedCustomer.customerPhone,
+        bankName: updatedCustomer.bankName,
+        updatedBy: "admin-id",
+      });
+      assert.deepEqual(capturedOptions, {
+        new: true,
+        runValidators: true,
+      });
+      assert.equal("atmIds" in capturedUpdate, false);
+      assert.equal("session" in capturedUpdate, false);
+      assert.equal("mongoClient" in capturedUpdate, false);
+    },
+  );
+});
+
 test("Customer creation and the user wizard ignore supplied ATM IDs", async () => {
   const createdCustomers = [];
   const user = {
