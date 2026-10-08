@@ -24,6 +24,7 @@ import DistrictDetailPage from "@/pages/admin/DistrictDetailPage";
 import RegionDetailPage from "@/pages/admin/RegionDetailPage";
 import CustomersPage from "@/pages/admin/CustomersPage";
 import CustomerDetailsPage from "@/pages/admin/CustomerDetailsPage";
+import ItemsPage from "@/pages/admin/ItemsPage";
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
             <Route path="/admin" element={<AdminDashboardPage />} />
             <Route path="/admin/employees" element={<EmployeesPage />} />
             <Route path="/admin/customers" element={<CustomersPage />} />
+            <Route path="/admin/items" element={<ItemsPage />} />
             <Route
               path="/admin/customers/:id"
               element={<CustomerDetailsPage />}

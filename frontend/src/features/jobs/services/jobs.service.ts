@@ -145,6 +145,13 @@ export const createJobMaterialUsage = async (
   await api.post(`/jobs/${jobId}/material-usage`, data);
 };
 
+export const deleteJobMaterialUsage = async (
+  jobId: string,
+  usageId: string,
+): Promise<void> => {
+  await api.delete(`/jobs/${jobId}/material-usage/${usageId}`);
+};
+
 export const createJob = async (data: CreateJobData): Promise<Job> => {
   const response = await api.post<{ data: Job }>("/jobs/", data);
 

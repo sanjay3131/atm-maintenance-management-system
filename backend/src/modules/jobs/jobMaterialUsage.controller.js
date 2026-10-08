@@ -152,3 +152,71 @@ export const getJobMaterialUsage = asyncHandler(async (req, res) => {
     .status(200)
     .json(new ApiResponse(200, response, "Material usage fetched"));
 });
+
+export const deleteJobMaterialUsage = asyncHandler(async (req, res) => {
+  const { id: jobId, usageId } = req.params;
+  if (
+    !mongoose.isValidObjectId(jobId) ||
+    !mongoose.isValidObjectId(usageId)
+  ) {
+    throw new ApiError(400, "Invalid Job or material usage ID");
+  }
+
+  const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
+  if (!isAdmin && req.user.userType !== "employee") {
+    throw new ApiError(403, "Access denied");
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const jobFilter = isAdmin
+        ? { _id: jobId, isDeleted: false }
+        : {
+            _id: jobId,
+            assignedEmployeeId: req.user._id,
+            status: JOB_STATUS.IN_PROGRESS,
+            isDeleted: false,
+          };
+      const jobUpdate = await Job.updateOne(
+        jobFilter,
+        { $inc: { materialUsageRevision: 1 } },
+        { session },
+      );
+
+      if (jobUpdate.matchedCount !== 1) {
+        const currentJob = await findJob(jobId, session);
+        if (!isAdmin) {
+          if (
+            currentJob.assignedEmployeeId?.toString() !==
+            req.user._id.toString()
+          ) {
+            throw new ApiError(403, "This job is not assigned to you");
+          }
+          if (currentJob.status !== JOB_STATUS.IN_PROGRESS) {
+            throw new ApiError(
+              400,
+              `Cannot remove material usage while Job status is ${currentJob.status}`,
+            );
+          }
+        }
+        throw new ApiError(409, "Job changed while removing material usage; please retry");
+      }
+
+      const usageQuery = JobMaterialUsage.findOneAndDelete({
+        _id: usageId,
+        jobId,
+      });
+      const deletedUsage = await withSession(usageQuery, session);
+      if (!deletedUsage) {
+        throw new ApiError(404, "Material usage entry not found");
+      }
+    });
+  } finally {
+    await session.endSession();
+  }
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, null, "Material usage removed"));
+});

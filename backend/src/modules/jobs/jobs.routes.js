@@ -18,6 +18,7 @@ import {
 import { createJobMaterialUsageSchema } from "./jobMaterialUsage.validation.js";
 import {
   createJobMaterialUsage,
+  deleteJobMaterialUsage,
   getJobMaterialUsage,
 } from "./jobMaterialUsage.controller.js";
 import {
@@ -162,7 +163,13 @@ router.put(
   validateRequest(completeJobSchema),
   completeJob,
 );
-router.put("/:id/hold", verifyAccessToken, authorizeRoles("employee"), holdJob);
+// Admin may stop a running Job using the same reversible hold transition.
+router.put(
+  "/:id/hold",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin", "employee"),
+  holdJob,
+);
 
 router.post(
   "/:id/material-usage",
@@ -170,6 +177,12 @@ router.post(
   authorizeRoles("employee"),
   validateRequest(createJobMaterialUsageSchema),
   createJobMaterialUsage,
+);
+router.delete(
+  "/:id/material-usage/:usageId",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin", "employee"),
+  deleteJobMaterialUsage,
 );
 router.get(
   "/:id/material-usage",

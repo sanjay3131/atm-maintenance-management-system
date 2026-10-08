@@ -64,7 +64,7 @@ export default function AssignJobDialog({
   } = useEmployees();
   const assignMutation = useAssignJob();
   const reassignMutation = useReassignJob();
-  const isRejected = job.status === "REJECTED";
+  const isInitialAssignment = job.status === "PENDING";
   const isPending = assignMutation.isPending || reassignMutation.isPending;
   const [reason, setReason] = useState("");
   const atm =
@@ -130,20 +130,25 @@ export default function AssignJobDialog({
       )
     : defaultEmployee;
   const selectedEmployeeId = selectedEmployee?.userId._id ?? "";
+  const isUnchangedAssignment =
+    !isInitialAssignment &&
+    job.status !== "REJECTED" &&
+    selectedEmployeeId === jobAssignedUserId;
 
   const handleAssign = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (
       !selectedEmployee ||
       isPending ||
-      (isRejected && reason.trim().length < 5)
+      isUnchangedAssignment ||
+      (!isInitialAssignment && reason.trim().length < 5)
     ) {
       return;
     }
 
     const handleSuccess = () => {
       toast.success(
-        isRejected
+        !isInitialAssignment
           ? `Job ${job.jobNumber || job.jobId} reassigned successfully.`
           : `Job ${job.jobNumber || job.jobId} assigned successfully.`,
       );
@@ -151,7 +156,7 @@ export default function AssignJobDialog({
     };
     const handleError = (error: Error) => toast.error(getErrorMessage(error));
 
-    if (isRejected) {
+    if (!isInitialAssignment) {
       reassignMutation.mutate(
         {
           jobId: job._id,
@@ -176,10 +181,12 @@ export default function AssignJobDialog({
       }}
     >
       <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
-        <DialogTitle>{isRejected ? "Reassign Job" : "Assign Job"}</DialogTitle>
+        <DialogTitle>
+          {isInitialAssignment ? "Assign Job" : "Reassign Job"}
+        </DialogTitle>
         <DialogDescription className="mt-1">
-          {isRejected
-            ? "Choose an employee and provide a reason to return this rejected job to the assigned workflow."
+          {!isInitialAssignment
+            ? "Choose an active employee linked to this ATM. The current employee is selected by default when eligible."
             : "Select an employee for this pending job."}
         </DialogDescription>
 
@@ -287,7 +294,7 @@ export default function AssignJobDialog({
             </p>
           )}
 
-          {isRejected && (
+          {!isInitialAssignment && (
             <div>
               <label
                 htmlFor="job-reassignment-reason"
@@ -309,6 +316,11 @@ export default function AssignJobDialog({
               {reason.trim().length > 0 && reason.trim().length < 5 && (
                 <p className="mt-1 text-sm text-destructive">
                   Enter at least 5 characters.
+                </p>
+              )}
+              {isUnchangedAssignment && (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Choose a different eligible employee to change the assignment.
                 </p>
               )}
             </div>
@@ -361,16 +373,17 @@ export default function AssignJobDialog({
                 !selectedEmployee ||
                 isPending ||
                 !assignmentDataReady ||
-                (isRejected && reason.trim().length < 5)
-              }
-            >
+                  isUnchangedAssignment ||
+                  (!isInitialAssignment && reason.trim().length < 5)
+                }
+              >
               {isPending
-                ? isRejected
-                  ? "Reassigning..."
-                  : "Assigning..."
-                : isRejected
-                  ? "Reassign job"
-                  : "Assign job"}
+                  ? !isInitialAssignment
+                    ? "Reassigning..."
+                    : "Assigning..."
+                  : !isInitialAssignment
+                    ? "Reassign job"
+                    : "Assign job"}
             </Button>
           </div>
         </form>

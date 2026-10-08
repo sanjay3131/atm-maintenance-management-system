@@ -696,8 +696,17 @@ export const reassignJob = asyncHandler(async (req, res) => {
 
   const job = await Job.findById(id);
   if (!job || job.isDeleted) throw new ApiError(404, "Job not found");
-  if (job.status === JOB_STATUS.CLOSED)
-    throw new ApiError(400, "Cannot reassign a closed job");
+  const reassignableStatuses = [
+    JOB_STATUS.PENDING,
+    JOB_STATUS.ASSIGNED,
+    JOB_STATUS.ACCEPTED,
+    JOB_STATUS.IN_PROGRESS,
+    JOB_STATUS.ON_HOLD,
+    JOB_STATUS.REJECTED,
+  ];
+  if (!reassignableStatuses.includes(job.status)) {
+    throw new ApiError(400, `Cannot reassign job with status: ${job.status}`);
+  }
 
   await findEmployeeEligibleForJob(job, employeeId);
   if (
@@ -1121,10 +1130,14 @@ export const deleteJob = asyncHandler(async (req, res) => {
 export const holdJob = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { reason } = req.body;
+  const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
 
   const job = await Job.findById(id);
   if (!job || job.isDeleted) throw new ApiError(404, "Job not found");
-  if (job.assignedEmployeeId?.toString() !== req.user._id.toString())
+  if (
+    !isAdmin &&
+    job.assignedEmployeeId?.toString() !== req.user._id.toString()
+  )
     throw new ApiError(403, "Not your job");
 
   if (job.status !== JOB_STATUS.IN_PROGRESS)

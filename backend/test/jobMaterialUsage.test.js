@@ -10,6 +10,7 @@ import JobHistory from "../src/modules/jobs/jobHistory.model.js";
 import JobMaterialUsage from "../src/modules/jobs/jobMaterialUsage.model.js";
 import {
   createJobMaterialUsage,
+  deleteJobMaterialUsage,
   getJobMaterialUsage,
 } from "../src/modules/jobs/jobMaterialUsage.controller.js";
 import { updateItem } from "../src/modules/items/item.controller.js";
@@ -55,7 +56,7 @@ const makeItem = (updates = {}) => ({
 
 const makeUsage = (data) => ({
   ...data,
-  _id: "64b000000000000000000088",
+  _id: data._id ?? "64b000000000000000000088",
   createdAt: new Date("2026-10-08T10:00:00.000Z"),
   updatedAt: new Date("2026-10-08T10:00:00.000Z"),
   toObject() {
@@ -172,6 +173,68 @@ async function withCreateMocks(
   }
 }
 
+async function withDeleteMocks({ job = makeJob(), usageEntries }, callback) {
+  const originals = [
+    [mongoose, "startSession", mongoose.startSession],
+    [Job, "updateOne", Job.updateOne],
+    [Job, "findById", Job.findById],
+    [JobMaterialUsage, "findOneAndDelete", JobMaterialUsage.findOneAndDelete],
+  ];
+  const session = {
+    ended: false,
+    async withTransaction(operation) {
+      return operation(this);
+    },
+    async endSession() {
+      this.ended = true;
+    },
+  };
+  let deleteCalls = 0;
+
+  mongoose.startSession = async () => session;
+  Job.updateOne = async (filter, update, options) => {
+    assert.deepEqual(update, { $inc: { materialUsageRevision: 1 } });
+    assert.equal(options.session, session);
+    const matches =
+      job &&
+      !job.isDeleted &&
+      String(filter._id) === jobId &&
+      (filter.assignedEmployeeId === undefined ||
+        String(filter.assignedEmployeeId) ===
+          String(job.assignedEmployeeId)) &&
+      (filter.status === undefined || filter.status === job.status);
+    return { matchedCount: matches ? 1 : 0 };
+  };
+  Job.findById = () => makeQuery(job);
+  JobMaterialUsage.findOneAndDelete = (filter) => {
+    deleteCalls += 1;
+    assert.deepEqual(filter, { _id: usageEntries[0]?._id, jobId });
+    const query = {
+      session() {
+        return this;
+      },
+      then(resolve, reject) {
+        const index = usageEntries.findIndex(
+          (entry) =>
+            entry._id === filter._id &&
+            entry.jobId === filter.jobId,
+        );
+        const [deleted] = index >= 0 ? usageEntries.splice(index, 1) : [];
+        return Promise.resolve(deleted ?? null).then(resolve, reject);
+      },
+    };
+    return query;
+  };
+
+  try {
+    await callback({ job, usageEntries, session, deleteCalls: () => deleteCalls });
+  } finally {
+    for (const [target, key, original] of originals.reverse()) {
+      target[key] = original;
+    }
+  }
+}
+
 async function withOverrides(overrides, callback) {
   const originals = overrides.map(([target, key]) => [target, key, target[key]]);
   for (const [target, key, value] of overrides) target[key] = value;
@@ -232,7 +295,7 @@ test("usage schema snapshots are immutable and allow repeated same-item entries"
   );
 });
 
-test("material usage routes' role convention permits employee writes and admin reads only", () => {
+test("material usage routes authorize Employee writes and Admin/Employee corrections", () => {
   for (const role of ["admin", "superAdmin"]) {
     assert.throws(
       () =>
@@ -257,6 +320,22 @@ test("material usage routes' role convention permits employee writes and admin r
       {},
       () => {},
     ),
+  );
+  assert.doesNotThrow(() =>
+    authorizeRoles("admin", "superAdmin", "employee")(
+      { user: { userType: "employee" } },
+      {},
+      () => {},
+    ),
+  );
+  assert.throws(
+    () =>
+      authorizeRoles("admin", "superAdmin")(
+        { user: { userType: "employee" } },
+        {},
+        () => {},
+      ),
+    { statusCode: 403 },
   );
 });
 
@@ -395,6 +474,56 @@ test("usage is not inserted when a Job status transition wins before the atomic 
   );
 });
 
+test("Admin can stop an in-progress Job through the existing hold transition", async () => {
+  const job = makeJob();
+  await withOverrides(
+    [
+      [Job, "findById", async () => job],
+      [JobHistory, "create", async () => ({})],
+    ],
+    async () => {
+      const result = await invoke(holdJob, {
+        params: { id: jobId },
+        body: { reason: "Operations requested a pause" },
+        user: { _id: adminId, userType: "admin" },
+        headers: {},
+      });
+      assert.equal(result.status, 200);
+      assert.equal(job.status, "ON_HOLD");
+      assert.equal(job.employeeRemarks, "Operations requested a pause");
+    },
+  );
+});
+
+test("Admin cannot stop a Job after it leaves progress", async () => {
+  const job = makeJob({ status: "COMPLETED" });
+  let historyCalls = 0;
+  await withOverrides(
+    [
+      [Job, "findById", async () => job],
+      [
+        JobHistory,
+        "create",
+        async () => {
+          historyCalls += 1;
+          return {};
+        },
+      ],
+    ],
+    async () => {
+      const error = await captureError(holdJob, {
+        params: { id: jobId },
+        body: {},
+        user: { _id: adminId, userType: "admin" },
+        headers: {},
+      });
+      assert.equal(error.statusCode, 400);
+      assert.equal(job.status, "COMPLETED");
+      assert.equal(historyCalls, 0);
+    },
+  );
+});
+
 test("usage is not inserted when Job deletion wins before the atomic check", async () => {
   await withCreateMocks(
     {
@@ -515,6 +644,96 @@ test("former assignee cannot read usage entries", async () => {
     Job.findById = originalJobFindById;
     JobMaterialUsage.find = originalUsageFind;
   }
+});
+
+test("employee can remove one usage entry while the Job is in progress", async () => {
+  const selected = makeUsage({
+    _id: "64b000000000000000000089",
+    jobId,
+    itemNameSnapshot: "Air filter",
+    unitCostSnapshot: 12.345,
+    lineCostSnapshot: 24.69,
+  });
+  const remaining = makeUsage({
+    _id: "64b000000000000000000090",
+    jobId,
+    itemNameSnapshot: "Cleaning cloth",
+    unitCostSnapshot: 4.5,
+    lineCostSnapshot: 9,
+  });
+  const entries = [selected, remaining];
+
+  await withDeleteMocks({ usageEntries: entries }, async ({ session }) => {
+    const result = await invoke(
+      deleteJobMaterialUsage,
+      {
+        ...request(),
+        params: { id: jobId, usageId: selected._id },
+      },
+    );
+    assert.equal(result.status, 200);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0], remaining);
+    assert.equal(entries[0].unitCostSnapshot, 4.5);
+    assert.equal(entries[0].lineCostSnapshot, 9);
+    assert.equal(session.ended, true);
+  });
+});
+
+test("employee cannot remove material usage after the Job leaves progress", async () => {
+  const entry = makeUsage({
+    _id: "64b000000000000000000089",
+    jobId,
+  });
+  const entries = [entry];
+  await withDeleteMocks(
+    { job: makeJob({ status: "COMPLETED" }), usageEntries: entries },
+    async ({ deleteCalls }) => {
+      const error = await captureError(deleteJobMaterialUsage, {
+        ...request(),
+        params: { id: jobId, usageId: entry._id },
+      });
+      assert.equal(error.statusCode, 400);
+      assert.match(error.message, /Cannot remove material usage/);
+      assert.equal(entries.length, 1);
+      assert.equal(deleteCalls(), 0);
+    },
+  );
+});
+
+test("admin can remove an accidental entry without changing other snapshots or the Item", async () => {
+  const item = makeItem();
+  const selected = makeUsage({
+    _id: "64b000000000000000000089",
+    jobId,
+  });
+  const remaining = makeUsage({
+    _id: "64b000000000000000000090",
+    jobId,
+    itemNameSnapshot: "Cleaning cloth",
+    unitCostSnapshot: 4.5,
+    lineCostSnapshot: 9,
+  });
+  const entries = [selected, remaining];
+  const job = makeJob({ status: "COMPLETED" });
+
+  await withDeleteMocks({ job, usageEntries: entries }, async () => {
+    const result = await invoke(deleteJobMaterialUsage, {
+      ...request({ _id: adminId, userType: "admin" }),
+      params: { id: jobId, usageId: selected._id },
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.data, null);
+    assert.equal(job.status, "COMPLETED");
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0], remaining);
+    assert.equal(entries[0].itemNameSnapshot, "Cleaning cloth");
+    assert.equal(entries[0].unitCostSnapshot, 4.5);
+    assert.equal(entries[0].lineCostSnapshot, 9);
+    assert.equal(item.itemName, "Air filter");
+    assert.equal(item.currentUnitCost, 12.345);
+    assert.equal(item.isActive, true);
+  });
 });
 
 test("ordinary reassignment preserves existing usage records", async () => {

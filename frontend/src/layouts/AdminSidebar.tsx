@@ -10,6 +10,7 @@ import {
   Landmark,
   MapPinned,
   UserRound,
+  Package,
 } from "lucide-react";
 
 const navItems = [
@@ -47,6 +48,11 @@ const navItems = [
     label: "Jobs",
     path: "/admin/jobs",
     icon: ClipboardList,
+  },
+  {
+    label: "Item Master",
+    path: "/admin/items",
+    icon: Package,
   },
   {
     label: "Recurring Maintenance",

@@ -2,6 +2,7 @@ import { isAxiosError } from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createJobMaterialUsage,
+  deleteJobMaterialUsage,
   getActiveMaterialItems,
   getJobMaterialUsage,
 } from "../services/jobs.service";
@@ -60,6 +61,30 @@ export const useCreateJobMaterialUsage = () => {
         ...(error.response?.status === 404
           ? [queryClient.invalidateQueries({ queryKey: ["items", "active"] })]
           : []),
+      ]);
+    },
+  });
+};
+
+interface DeleteUsageVariables {
+  jobId: string;
+  usageId: string;
+}
+
+export const useDeleteJobMaterialUsage = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, DeleteUsageVariables>({
+    mutationFn: ({ jobId, usageId }) =>
+      deleteJobMaterialUsage(jobId, usageId),
+    onSuccess: async (_response, { jobId }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: jobMaterialUsageQueryKey(jobId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["admin-job-material-usage", jobId],
+        }),
       ]);
     },
   });

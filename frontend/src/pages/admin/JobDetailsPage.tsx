@@ -44,16 +44,18 @@ import type {
 } from "@/features/jobs/types/job.types";
 
 const NOT_AVAILABLE = "Not available";
+const REASSIGNABLE_STATUSES: JobStatus[] = [
+  "ASSIGNED",
+  "ACCEPTED",
+  "IN_PROGRESS",
+  "ON_HOLD",
+  "REJECTED",
+];
 
 interface JobDetailsPageProps {
   readOnly?: boolean;
   backPath?: string;
 }
-
-const assignmentTransition: Partial<Record<JobStatus, JobStatus>> = {
-  PENDING: "ASSIGNED",
-  REJECTED: "ASSIGNED",
-};
 
 function formatValue(value: string | number | null | undefined) {
   return value === null || value === undefined || value === ""
@@ -367,7 +369,6 @@ export default function JobDetailsPage({
     typeof job.complaintId === "object" ? job.complaintId : null;
   const customer = typeof job.customerId === "object" ? job.customerId : null;
   const customerName = customer?.customerName || NOT_AVAILABLE;
-  const availableAssignmentStatus = assignmentTransition[job.status];
   const reassignmentHistory = job.reassignmentHistory ?? [];
   const lifecycleMutationPending =
     acceptMutation.isPending ||
@@ -509,10 +510,31 @@ export default function JobDetailsPage({
         </div>
         {!readOnly && (
           <div className="flex flex-wrap items-center gap-2">
-            {availableAssignmentStatus && (
+            {job.status === "PENDING" ||
+            REASSIGNABLE_STATUSES.includes(job.status) ? (
               <Button type="button" onClick={() => setIsAssignDialogOpen(true)}>
                 <UserRoundPlus />
-                {job.status === "REJECTED" ? "Reassign Job" : "Assign Job"}
+                {job.status === "PENDING" ? "Assign Job" : "Reassign Job"}
+              </Button>
+            ) : null}
+            {job.status === "IN_PROGRESS" && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={lifecycleMutationPending}
+                onClick={() =>
+                  runLifecycleAction(
+                    holdMutation,
+                    "Job stopped and put on hold.",
+                  )
+                }
+              >
+                {holdMutation.isPending ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <Pause />
+                )}
+                Stop (Put On Hold)
               </Button>
             )}
             {job.status === "COMPLETED" && (

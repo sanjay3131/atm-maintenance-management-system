@@ -1,8 +1,12 @@
+import { useState } from "react";
 import { isAxiosError } from "axios";
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import ConfirmMaterialUsageRemovalDialog from "./ConfirmMaterialUsageRemovalDialog";
 import { useAdminJobMaterialUsage } from "../hooks/useAdminJobMaterialUsage";
+import { useDeleteJobMaterialUsage } from "../hooks/useJobMaterialUsage";
 
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -33,7 +37,12 @@ export default function AdminMaterialUsageSection({
 }: {
   jobId: string;
 }) {
+  const [usageToRemove, setUsageToRemove] = useState<{
+    _id: string;
+    itemNameSnapshot: string;
+  } | null>(null);
   const usageQuery = useAdminJobMaterialUsage(jobId);
+  const deleteMutation = useDeleteJobMaterialUsage();
   const entries = usageQuery.data ?? [];
   const totalExpense =
     entries.reduce(
@@ -41,6 +50,27 @@ export default function AdminMaterialUsageSection({
         totalCents + Math.round(entry.lineCostSnapshot * 100),
       0,
     ) / 100;
+
+  const confirmRemove = () => {
+    if (!usageToRemove || deleteMutation.isPending) return;
+
+    deleteMutation.mutate(
+      { jobId, usageId: usageToRemove._id },
+      {
+        onSuccess: () => {
+          setUsageToRemove(null);
+          toast.success("Material usage removed.");
+        },
+        onError: (error) => {
+          if (isAxiosError(error) && error.response?.status === 404) {
+            toast.error("This material usage entry is no longer available.");
+          } else {
+            toast.error("Could not remove material usage. Refresh and try again.");
+          }
+        },
+      },
+    );
+  };
 
   return (
     <Card className="min-w-0 overflow-hidden lg:col-span-2">
@@ -71,9 +101,17 @@ export default function AdminMaterialUsageSection({
             </Button>
           </div>
         ) : entries.length === 0 ? (
-          <p className="rounded-md border border-dashed p-5 text-center text-sm text-muted-foreground">
-            No materials have been recorded for this Job.
-          </p>
+          <>
+            <p className="rounded-md border border-dashed p-5 text-center text-sm text-muted-foreground">
+              No materials have been recorded for this Job.
+            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/40 px-4 py-3">
+              <span className="font-semibold">Total material expense</span>
+              <span className="text-lg font-bold tabular-nums">
+                {formatCurrency(totalExpense)}
+              </span>
+            </div>
+          </>
         ) : (
           <>
             <div className="overflow-x-auto rounded-md border">
@@ -94,6 +132,9 @@ export default function AdminMaterialUsageSection({
                     </th>
                     <th scope="col" className="px-3 py-2.5 font-medium">
                       Recorded
+                    </th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">
+                      Actions
                     </th>
                   </tr>
                 </thead>
@@ -123,6 +164,23 @@ export default function AdminMaterialUsageSection({
                             "Not available"
                           )}
                         </td>
+                        <td className="px-3 py-3">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label={`Remove ${entry.itemNameSnapshot} usage`}
+                            onClick={() =>
+                              setUsageToRemove({
+                                _id: entry._id,
+                                itemNameSnapshot: entry.itemNameSnapshot,
+                              })
+                            }
+                            disabled={deleteMutation.isPending}
+                          >
+                            <Trash2 />
+                          </Button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -138,6 +196,15 @@ export default function AdminMaterialUsageSection({
           </>
         )}
       </CardContent>
+      <ConfirmMaterialUsageRemovalDialog
+        open={Boolean(usageToRemove)}
+        itemName={usageToRemove?.itemNameSnapshot ?? "material"}
+        isPending={deleteMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open) setUsageToRemove(null);
+        }}
+        onConfirm={confirmRemove}
+      />
     </Card>
   );
 }

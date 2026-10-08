@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
-import { LoaderCircle, PackagePlus } from "lucide-react";
+import { LoaderCircle, PackagePlus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import ConfirmMaterialUsageRemovalDialog from "./ConfirmMaterialUsageRemovalDialog";
 import {
   Select,
   SelectContent,
@@ -14,6 +15,7 @@ import {
 import {
   useActiveMaterialItems,
   useCreateJobMaterialUsage,
+  useDeleteJobMaterialUsage,
   useJobMaterialUsage,
 } from "../hooks/useJobMaterialUsage";
 import type { Job } from "../types/job.types";
@@ -67,10 +69,46 @@ export default function EmployeeMaterialUsageSection({
   const [itemId, setItemId] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [validationError, setValidationError] = useState("");
+  const [usageToRemove, setUsageToRemove] = useState<{
+    _id: string;
+    itemNameSnapshot: string;
+  } | null>(null);
   const usageQuery = useJobMaterialUsage(job._id);
   const itemsQuery = useActiveMaterialItems(canRecord);
   const createMutation = useCreateJobMaterialUsage();
+  const deleteMutation = useDeleteJobMaterialUsage();
   const usageEntries = usageQuery.data ?? [];
+  const selectedItem = itemsQuery.data?.find((item) => item._id === itemId);
+
+  const confirmRemove = () => {
+    if (!usageToRemove || deleteMutation.isPending) return;
+    if (!canRecord) {
+      setUsageToRemove(null);
+      toast.error("Material usage can only be removed while the Job is in progress.");
+      return;
+    }
+
+    deleteMutation.mutate(
+      { jobId: job._id, usageId: usageToRemove._id },
+      {
+        onSuccess: () => {
+          setUsageToRemove(null);
+          toast.success("Material usage removed.");
+        },
+        onError: (error) => {
+          if (isAxiosError(error) && error.response?.status === 403) {
+            toast.error("This Job is no longer assigned to you.");
+          } else if (isAxiosError(error) && error.response?.status === 400) {
+            toast.error(
+              "Material usage can only be removed while the Job is in progress.",
+            );
+          } else {
+            toast.error("Could not remove material usage. Refresh and try again.");
+          }
+        },
+      },
+    );
+  };
 
   const recordMaterial = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -164,7 +202,11 @@ export default function EmployeeMaterialUsageSection({
                           ? "Select an Item"
                           : "No active Items available"
                       }
-                    />
+                    >
+                      {selectedItem
+                        ? `${selectedItem.itemName} (${selectedItem.unit})`
+                        : undefined}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {(itemsQuery.data ?? []).map((item) => (
@@ -271,7 +313,7 @@ export default function EmployeeMaterialUsageSection({
                 return (
                   <li
                     key={entry._id}
-                    className="flex min-w-0 flex-col gap-1 p-3 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex min-w-0 flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <p className="min-w-0 break-words text-sm font-medium">
                       {entry.itemNameSnapshot}
@@ -283,6 +325,23 @@ export default function EmployeeMaterialUsageSection({
                       {recordedAt && (
                         <time dateTime={entry.createdAt}>{recordedAt}</time>
                       )}
+                      {canRecord && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Remove ${entry.itemNameSnapshot} usage`}
+                          onClick={() =>
+                            setUsageToRemove({
+                              _id: entry._id,
+                              itemNameSnapshot: entry.itemNameSnapshot,
+                            })
+                          }
+                          disabled={deleteMutation.isPending}
+                        >
+                          <Trash2 />
+                        </Button>
+                      )}
                     </div>
                   </li>
                 );
@@ -291,6 +350,15 @@ export default function EmployeeMaterialUsageSection({
           )}
         </section>
       </CardContent>
+      <ConfirmMaterialUsageRemovalDialog
+        open={Boolean(usageToRemove)}
+        itemName={usageToRemove?.itemNameSnapshot ?? "material"}
+        isPending={deleteMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open) setUsageToRemove(null);
+        }}
+        onConfirm={confirmRemove}
+      />
     </Card>
   );
 }

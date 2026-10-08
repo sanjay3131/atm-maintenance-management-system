@@ -262,6 +262,54 @@ test("reassignment succeeds for an active employee assigned to the Job ATM and r
   );
 });
 
+test("rejected Job can be explicitly reassigned to another eligible ATM employee", async () => {
+  await withMocks(
+    { status: "REJECTED", assignedEmployeeIds: [employeeId] },
+    async ({ job, call, historyEntries }) => {
+      const originalATM = job.atmId;
+      job.assignedEmployeeId = "64b000000000000000000057";
+
+      const result = await call(reassignJob, "REJECTED");
+
+      assert.equal(result.error, undefined);
+      assert.equal(job.assignedEmployeeId, employeeUserId);
+      assert.equal(job.atmId, originalATM);
+      assert.equal(job.status, "ASSIGNED");
+      assert.equal(historyEntries[0].action, "reassigned");
+    },
+  );
+});
+
+test("reassignment rejects a closed Job", async () => {
+  await withMocks(
+    { status: "CLOSED" },
+    async ({ job, call, historyEntries }) => {
+      job.assignedEmployeeId = "64b000000000000000000057";
+      const result = await call(reassignJob, "CLOSED");
+      assert.equal(result.error?.statusCode, 400);
+      assert.equal(job.assignedEmployeeId, "64b000000000000000000057");
+      assert.equal(job.saveCalls, 0);
+      assert.equal(historyEntries.length, 0);
+    },
+  );
+});
+
+test("reassignment is rejected after the Job enters review or approval", async (t) => {
+  for (const status of ["COMPLETED", "VERIFIED", "APPROVED"]) {
+    await t.test(status, async () => {
+      await withMocks({ status }, async ({ job, call, historyEntries }) => {
+        const originalAssignee = "64b000000000000000000057";
+        job.assignedEmployeeId = originalAssignee;
+        const result = await call(reassignJob, status);
+        assert.equal(result.error?.statusCode, 400);
+        assert.equal(job.assignedEmployeeId, originalAssignee);
+        assert.equal(job.saveCalls, 0);
+        assert.equal(historyEntries.length, 0);
+      });
+    });
+  }
+});
+
 test("reassignment rejects an active employee unrelated to the Job ATM", async () => {
   await withMocks(
     { status: "IN_PROGRESS", assignedEmployeeIds: [] },
