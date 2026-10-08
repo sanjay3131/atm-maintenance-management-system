@@ -23,10 +23,13 @@ import {
 import api from "@/lib/axios";
 import { useDeleteATM } from "@/features/atms/hooks/useDeleteATM";
 import { useAssignEmployeeToATM } from "@/features/atms/hooks/useAssignEmployeeToATM";
+import { useUpdateATM } from "@/features/atms/hooks/useUpdateATM";
+import { useSetATMAMCResponsibleEmployee } from "@/features/atms/hooks/useSetATMAMCResponsibleEmployee";
 import { useATM } from "@/features/atms/hooks/useATM";
 import type { ATMEmployee, ATMStatus } from "@/features/atms/types/atm.types";
 
 const NOT_AVAILABLE = "Not available";
+const NOT_ASSIGNED = "not-assigned";
 
 interface EmployeeOption extends ATMEmployee {
   status?: string;
@@ -106,14 +109,20 @@ export default function ATMDetailsPage() {
   const queryClient = useQueryClient();
   const deleteATM = useDeleteATM();
   const assignEmployee = useAssignEmployeeToATM();
+  const updateATM = useUpdateATM();
+  const setAMCResponsibleEmployee = useSetATMAMCResponsibleEmployee();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
+  const [amcResponsibleDraft, setAMCResponsibleDraft] = useState<
+    string | undefined
+  >();
   const { data: atm, isLoading, isError, refetch, isFetching } = useATM(id);
   const {
     data: availableEmployees = [],
     isLoading: employeesLoading,
     isError: employeesError,
+    refetch: refetchEmployees,
   } = useQuery({
     queryKey: ["employees"],
     queryFn: async () => {
@@ -127,10 +136,32 @@ export default function ATMDetailsPage() {
           employee.userId?.status === "active" &&
           employee.userId.userType === "employee",
       ),
-    enabled: assignDialogOpen,
   });
-  const selectedEmployee = availableEmployees.find(
+  const assignedEmployeeIds = (atm?.assignedEmployeeId ?? []).flatMap(
+    (employee) =>
+      typeof employee === "string"
+        ? [employee]
+        : employee
+          ? [employee._id]
+          : [],
+  );
+  const employeesAvailableForAssignment = availableEmployees.filter(
+    (employee) => !assignedEmployeeIds.includes(employee._id),
+  );
+  const selectedEmployee = employeesAvailableForAssignment.find(
     (employee) => employee._id === selectedEmployeeId,
+  );
+  const eligibleAssignedEmployees = availableEmployees.filter((employee) =>
+    assignedEmployeeIds.includes(employee._id),
+  );
+  const currentAMCResponsibleId =
+    typeof atm?.amcResponsibleEmployeeId === "string"
+      ? atm.amcResponsibleEmployeeId
+      : (atm?.amcResponsibleEmployeeId?._id ?? null);
+  const displayedAMCResponsibleDraft =
+    amcResponsibleDraft ?? currentAMCResponsibleId ?? NOT_ASSIGNED;
+  const selectedAMCResponsibleEmployee = eligibleAssignedEmployees.find(
+    (employee) => employee._id === displayedAMCResponsibleDraft,
   );
 
   const handleDelete = () => {
@@ -152,36 +183,12 @@ export default function ATMDetailsPage() {
   const handleAssignEmployee = () => {
     if (!atm || !selectedEmployeeId) return;
 
-    saveEmployeeAssignment(selectedEmployeeId);
-  };
-
-  const handleUnassignEmployee = () => {
-    if (!atm) return;
-    saveEmployeeAssignment(null);
-  };
-
-  const saveEmployeeAssignment = (employeeId: string | null) => {
-    if (!atm) return;
     assignEmployee.mutate(
-      { atmId: atm._id, employeeId },
+      { atmId: atm._id, employeeId: selectedEmployeeId },
       {
         onSuccess: () => {
-          toast.success(
-            employeeId
-              ? "Maintenance employee updated successfully."
-              : "Maintenance employee unassigned successfully.",
-          );
-          [
-            ["atm", atm._id],
-            ["atms"],
-            ["employees"],
-            ["district-atms"],
-            ["region-atms"],
-            ["district-employees"],
-            ["region-employees"],
-          ].forEach((queryKey) => {
-            void queryClient.invalidateQueries({ queryKey });
-          });
+          toast.success("Employee added to this ATM.");
+          invalidateAssignmentQueries(atm._id);
           setAssignDialogOpen(false);
         },
         onError: (error) => {
@@ -189,6 +196,92 @@ export default function ATMDetailsPage() {
             ? error.response?.data?.message
             : undefined;
           toast.error(message || "Employee assignment failed.");
+        },
+      },
+    );
+  };
+
+  const invalidateAssignmentQueries = (atmId: string) => {
+    [
+      ["atm", atmId],
+      ["atms"],
+      ["employees"],
+      ["district-atms"],
+      ["region-atms"],
+      ["district-employees"],
+      ["region-employees"],
+    ].forEach((queryKey) => {
+      void queryClient.invalidateQueries({ queryKey });
+    });
+  };
+
+  const handleRemoveEmployee = (employeeId: string) => {
+    if (!atm) return;
+    const remainingEmployeeIds = assignedEmployeeIds.filter(
+      (id) => id !== employeeId,
+    );
+    updateATM.mutate(
+      {
+        atmId: atm._id,
+        data: {
+          bankId: atm.bankId._id,
+          ...(atm.customer
+            ? {
+                customerId:
+                  typeof atm.customer === "string"
+                    ? atm.customer
+                    : atm.customer._id,
+              }
+            : {}),
+          districtId: atm.districtId._id,
+          regionId: atm.regionId?._id ?? null,
+          locationName: atm.locationName,
+          address: atm.address,
+          installationType: atm.installationType,
+          status: atm.status,
+          assignedEmployeeId: remainingEmployeeIds,
+        },
+      },
+      {
+        onSuccess: () => {
+          toast.success("Employee removed from this ATM.");
+          invalidateAssignmentQueries(atm._id);
+        },
+        onError: (error) => {
+          const message = isAxiosError<{ message?: string }>(error)
+            ? error.response?.data?.message
+            : undefined;
+          toast.error(message || "Employee removal failed.");
+          void refetch();
+        },
+      },
+    );
+  };
+
+  const handleSaveAMCResponsible = () => {
+    if (!atm) return;
+    const employeeId =
+      displayedAMCResponsibleDraft === NOT_ASSIGNED
+        ? null
+        : displayedAMCResponsibleDraft;
+    setAMCResponsibleEmployee.mutate(
+      { atmId: atm._id, employeeId },
+      {
+        onSuccess: () => {
+          setAMCResponsibleDraft(undefined);
+          toast.success(
+            employeeId
+              ? "AMC responsible employee updated."
+              : "AMC responsibility cleared.",
+          );
+        },
+        onError: (error) => {
+          setAMCResponsibleDraft(undefined);
+          const message = isAxiosError<{ message?: string }>(error)
+            ? error.response?.data?.message
+            : undefined;
+          toast.error(message || "AMC responsibility could not be updated.");
+          void refetch();
         },
       },
     );
@@ -224,11 +317,14 @@ export default function ATMDetailsPage() {
   }
 
   const coordinates = atm.location?.coordinates;
-  const assignedEmployees = atm.assignedEmployeeId.filter(
-    (employee): employee is ATMEmployee =>
-      employee !== null && typeof employee === "object",
+  const assignedEmployees = (atm.assignedEmployeeId ?? []).filter(
+    (employee): employee is string | ATMEmployee => employee !== null,
   );
-  const assignment = assignedEmployees[0];
+  const currentAMCResponsibleIsEligible =
+    currentAMCResponsibleId === null ||
+    eligibleAssignedEmployees.some(
+      (employee) => employee._id === currentAMCResponsibleId,
+    );
 
   return (
     <div className="space-y-6 p-6">
@@ -256,11 +352,11 @@ export default function ATMDetailsPage() {
           <Button
             variant="outline"
             onClick={() => {
-              setSelectedEmployeeId(assignment?._id || "");
+              setSelectedEmployeeId("");
               setAssignDialogOpen(true);
             }}
           >
-            {assignment ? "Change Employee" : "Assign Employee"}
+            Add Employee
           </Button>
           <Button onClick={() => navigate(`/admin/atms/${atm._id}/edit`)}>
             <Pencil />
@@ -322,11 +418,10 @@ export default function ATMDetailsPage() {
       >
         <DialogContent>
           <div className="space-y-2">
-            <DialogTitle>
-              {assignment ? "Change Maintenance Employee" : "Assign Employee"}
-            </DialogTitle>
+            <DialogTitle>Add Employee</DialogTitle>
             <DialogDescription>
-              Choose the one employee responsible for maintenance at this ATM.
+              Add an employee without changing the other employees assigned to
+              this ATM.
             </DialogDescription>
           </div>
           <p className="mt-4 text-sm">
@@ -357,7 +452,7 @@ export default function ATMDetailsPage() {
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {availableEmployees.map((employee) => (
+              {employeesAvailableForAssignment.map((employee) => (
                 <SelectItem key={employee._id} value={employee._id}>
                   {employee.employeeCode} —{" "}
                   {`${employee.userId?.firstName || ""} ${
@@ -372,23 +467,16 @@ export default function ATMDetailsPage() {
               Failed to load employees. Close and reopen the dialog to retry.
             </p>
           )}
-          {availableEmployees.length === 0 &&
+          {employeesAvailableForAssignment.length === 0 &&
             !employeesLoading &&
             !employeesError && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              No active employees are available.
-            </p>
-          )}
-          <div className="mt-6 flex justify-end gap-2">
-            {assignment && (
-              <Button
-                variant="outline"
-                onClick={handleUnassignEmployee}
-                disabled={assignEmployee.isPending}
-              >
-                {assignEmployee.isPending ? "Saving..." : "Unassign"}
-              </Button>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {availableEmployees.length === 0
+                  ? "No active employees are available."
+                  : "All active employees are already assigned."}
+              </p>
             )}
+          <div className="mt-6 flex justify-end gap-2">
             <Button
               variant="outline"
               onClick={() => setAssignDialogOpen(false)}
@@ -509,42 +597,155 @@ export default function ATMDetailsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Maintenance Employee</CardTitle>
+            <CardTitle>Assigned Employees</CardTitle>
           </CardHeader>
           <CardContent>
             {assignedEmployees.length === 0 ? (
               <p className="text-sm text-muted-foreground">Not Assigned</p>
             ) : (
               <div className="space-y-3">
-                {assignedEmployees.map((employee) => (
-                  <div
-                    key={employee._id}
-                    className="flex items-center gap-3 rounded-md border p-3"
-                  >
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                      {getEmployeeInitials(employee)}
+                {assignedEmployees.map((employee) => {
+                  const employeeId =
+                    typeof employee === "string" ? employee : employee._id;
+                  return (
+                    <div
+                      key={employeeId}
+                      className="flex items-center justify-between gap-3 rounded-md border p-3"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                          {typeof employee === "string"
+                            ? "?"
+                            : getEmployeeInitials(employee)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">
+                            {typeof employee === "string"
+                              ? "Employee details unavailable"
+                              : getEmployeeName(employee)}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {typeof employee === "string"
+                              ? `ID: ${employee}`
+                              : `Code: ${formatValue(employee.employeeCode)}`}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveEmployee(employeeId)}
+                        disabled={updateATM.isPending}
+                      >
+                        Remove
+                      </Button>
                     </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">
-                        {getEmployeeName(employee)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Code: {formatValue(employee.employeeCode)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-                {assignedEmployees.length > 1 && (
-                  <p className="text-sm text-destructive">
-                    Multiple employee assignments were found in existing data.
-                    Use Change Employee to replace them with one assignment.
-                  </p>
-                )}
+                  );
+                })}
               </div>
             )}
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>AMC Responsible</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <Select
+              value={displayedAMCResponsibleDraft}
+              onValueChange={(value) =>
+                setAMCResponsibleDraft(value ?? NOT_ASSIGNED)
+              }
+              disabled={
+                employeesLoading ||
+                employeesError ||
+                setAMCResponsibleEmployee.isPending
+              }
+            >
+              <SelectTrigger className="w-full sm:max-w-md">
+                <SelectValue
+                  placeholder={
+                    employeesLoading
+                      ? "Loading assigned employees..."
+                      : "Select AMC responsible employee"
+                  }
+                >
+                  {displayedAMCResponsibleDraft === NOT_ASSIGNED
+                    ? "Not assigned"
+                    : selectedAMCResponsibleEmployee
+                      ? `${formatValue(
+                          selectedAMCResponsibleEmployee.employeeCode,
+                        )} — ${[
+                          selectedAMCResponsibleEmployee.userId?.firstName,
+                          selectedAMCResponsibleEmployee.userId?.lastName,
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}`
+                      : undefined}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NOT_ASSIGNED}>Not assigned</SelectItem>
+                {eligibleAssignedEmployees.map((employee) => (
+                  <SelectItem key={employee._id} value={employee._id}>
+                    {employee.employeeCode} —{" "}
+                    {`${employee.userId?.firstName || ""} ${
+                      employee.userId?.lastName || ""
+                    }`.trim()}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              onClick={handleSaveAMCResponsible}
+              disabled={
+                employeesLoading ||
+                employeesError ||
+                setAMCResponsibleEmployee.isPending ||
+                ((displayedAMCResponsibleDraft === NOT_ASSIGNED
+                  ? null
+                  : displayedAMCResponsibleDraft) === currentAMCResponsibleId &&
+                  currentAMCResponsibleIsEligible)
+              }
+            >
+              {setAMCResponsibleEmployee.isPending ? "Saving..." : "Save"}
+            </Button>
+          </div>
+          {employeesError && (
+            <div className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+              <span>Could not load employee eligibility.</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void refetchEmployees()}
+              >
+                Retry
+              </Button>
+            </div>
+          )}
+          {!employeesLoading &&
+            !employeesError &&
+            eligibleAssignedEmployees.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                Assign an active employee to this ATM before setting AMC
+                responsibility.
+              </p>
+            )}
+          {!currentAMCResponsibleIsEligible && (
+            <p className="text-sm text-destructive">
+              The configured AMC responsible employee is no longer eligible or
+              assigned. Select an eligible assigned employee or clear the
+              responsibility.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {!atm.locationConfigured && atm.location && (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">

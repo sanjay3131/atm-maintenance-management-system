@@ -17,9 +17,7 @@ export const createATMFormSchema = z.object({
 
   status: z.enum(["ACTIVE", "INACTIVE", "UNDER_MAINTENANCE", "REMOVED"]),
 
-  assignedEmployeeId: z
-    .array(z.string())
-    .max(1, "Select only one maintenance employee"),
+  assignedEmployeeId: z.array(z.string()),
   location: z
     .object({
       type: z.literal("Point"),

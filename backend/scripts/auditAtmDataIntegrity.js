@@ -16,6 +16,7 @@ const loadModelCollections = async () => {
     ["districts", "../src/modules/districts/district.models.js"],
     ["regions", "../src/modules/region/region.model.js"],
     ["employees", "../src/modules/employees/employee.model.js"],
+    ["users", "../src/modules/users/user.model.js"],
     ["customers", "../src/modules/customers/customer.model.js"],
     ["jobs", "../src/modules/jobs/jobs.model.js"],
     ["amcs", "../src/modules/amc/amc.model.js"],
@@ -35,10 +36,18 @@ const loadModelCollections = async () => {
 };
 
 const projection = {
-  atms: { _id: 1, districtId: 1, regionId: 1, assignedEmployeeId: 1, customer: 1 },
+  atms: {
+    _id: 1,
+    districtId: 1,
+    regionId: 1,
+    assignedEmployeeId: 1,
+    amcResponsibleEmployeeId: 1,
+    customer: 1,
+  },
   districts: { _id: 1 },
   regions: { _id: 1, districtId: 1, isActive: 1 },
-  employees: { _id: 1, assignedAtmIds: 1 },
+  employees: { _id: 1, assignedAtmIds: 1, userId: 1, status: 1 },
+  users: { _id: 1, status: 1, userType: 1 },
   customers: { _id: 1, atmIds: 1 },
   jobs: { _id: 1, atmId: 1 },
   amcs: { _id: 1, atmId: 1 },

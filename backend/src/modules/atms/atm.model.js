@@ -92,6 +92,11 @@ const atmSchema = new mongoose.Schema(
         default: null,
       },
     ],
+    amcResponsibleEmployeeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Employee",
+      default: null,
+    },
 
     isDeleted: {
       type: Boolean,
@@ -123,9 +128,13 @@ atmSchema.path("assignedEmployeeId").validate({
     ) {
       return true;
     }
-    return !employeeIds || employeeIds.length <= 1;
+    if (!employeeIds?.every(Boolean)) return false;
+    const normalizedIds = (employeeIds || []).map((employeeId) =>
+      employeeId.toString().toLowerCase(),
+    );
+    return new Set(normalizedIds).size === normalizedIds.length;
   },
-  message: "An ATM can have only one assigned employee",
+  message: "ATM employee assignments cannot contain duplicate Employees",
 });
 
 // Indexes

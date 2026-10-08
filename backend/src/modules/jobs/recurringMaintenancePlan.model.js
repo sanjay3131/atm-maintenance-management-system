@@ -7,6 +7,11 @@ const recurringMaintenancePlanSchema = new mongoose.Schema(
       ref: "ATM",
       required: true,
     },
+    assignedEmployeeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Employee",
+      default: null,
+    },
     maintenanceType: {
       type: String,
       enum: ["DAILY_CLEANING", "WEEKLY_MOPPING"],

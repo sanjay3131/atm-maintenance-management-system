@@ -6,6 +6,7 @@ const dateSchema = z.coerce.date();
 export const createRecurringMaintenancePlanSchema = z
   .object({
     atmId: objectIdSchema,
+    assignedEmployeeId: objectIdSchema,
     maintenanceType: z.enum(["DAILY_CLEANING", "WEEKLY_MOPPING"]),
     dayOfWeek: z.number().int().min(0).max(6).optional(),
     startDate: dateSchema.optional(),
@@ -32,6 +33,7 @@ export const createRecurringMaintenancePlanSchema = z
 
 export const updateRecurringMaintenancePlanSchema = z
   .object({
+    assignedEmployeeId: objectIdSchema.optional(),
     dayOfWeek: z.number().int().min(0).max(6).nullable().optional(),
     startDate: dateSchema.optional(),
     isActive: z.boolean().optional(),

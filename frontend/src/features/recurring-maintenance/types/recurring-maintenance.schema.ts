@@ -3,6 +3,7 @@ import { z } from "zod";
 export const recurringMaintenanceFormSchema = z
   .object({
     atmId: z.string().min(1, "Select an ATM"),
+    assignedEmployeeId: z.string().min(1, "Select an eligible employee"),
     maintenanceType: z.enum(["DAILY_CLEANING", "WEEKLY_MOPPING"]),
     startDate: z.string().min(1, "Start date is required"),
     dayOfWeek: z.string(),

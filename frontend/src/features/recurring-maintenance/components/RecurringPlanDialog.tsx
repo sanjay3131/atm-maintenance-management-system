@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useATMs } from "@/features/atms/hooks/useATMs";
+import { useEmployees } from "@/features/employees/hooks/useEmployees";
 import { useCreateRecurringPlan } from "../hooks/useCreateRecurringPlan";
 import { useUpdateRecurringPlan } from "../hooks/useUpdateRecurringPlan";
 import {
@@ -70,6 +71,23 @@ function getPlanATMId(plan: RecurringMaintenancePlan) {
   return typeof plan.atmId === "string" ? plan.atmId : plan.atmId._id;
 }
 
+function getPlanEmployeeId(plan?: RecurringMaintenancePlan | null) {
+  if (!plan?.assignedEmployeeId) return "";
+  return typeof plan.assignedEmployeeId === "string"
+    ? plan.assignedEmployeeId
+    : plan.assignedEmployeeId._id;
+}
+
+function getEmployeeName(employee: {
+  userId?: { firstName?: string; lastName?: string } | null;
+}) {
+  return (
+    [employee.userId?.firstName, employee.userId?.lastName]
+      .filter(Boolean)
+      .join(" ") || "Employee name unavailable"
+  );
+}
+
 interface RecurringPlanDialogProps {
   open: boolean;
   plan?: RecurringMaintenancePlan | null;
@@ -90,6 +108,13 @@ export default function RecurringPlanDialog({
     refetch: refetchATMs,
     isFetching: atmsFetching,
   } = useATMs();
+  const {
+    data: employees = [],
+    isLoading: employeesLoading,
+    isError: employeesError,
+    refetch: refetchEmployees,
+    isFetching: employeesFetching,
+  } = useEmployees(open);
   const createMutation = useCreateRecurringPlan();
   const updateMutation = useUpdateRecurringPlan();
   const isPending = createMutation.isPending || updateMutation.isPending;
@@ -105,6 +130,7 @@ export default function RecurringPlanDialog({
     resolver: zodResolver(recurringMaintenanceFormSchema),
     defaultValues: {
       atmId: "",
+      assignedEmployeeId: "",
       maintenanceType: "DAILY_CLEANING",
       startDate: getIndiaDateInputValue(),
       dayOfWeek: "",
@@ -115,6 +141,7 @@ export default function RecurringPlanDialog({
     if (!open) return;
     reset({
       atmId: plan ? getPlanATMId(plan) : "",
+      assignedEmployeeId: getPlanEmployeeId(plan),
       maintenanceType: plan?.maintenanceType ?? "DAILY_CLEANING",
       startDate: getIndiaDateInputValue(plan?.startDate) || getIndiaDateInputValue(),
       dayOfWeek:
@@ -127,6 +154,7 @@ export default function RecurringPlanDialog({
 
   const selectedType = watch("maintenanceType");
   const selectedAtmId = watch("atmId");
+  const selectedEmployeeId = watch("assignedEmployeeId");
   const eligibleATMs = useMemo(
     () =>
       atms.filter(
@@ -142,12 +170,35 @@ export default function RecurringPlanDialog({
       .filter(Boolean)
       .some((value) => value?.toLowerCase().includes(normalizedSearch)),
   );
-  const selectedATM = eligibleATMs.find((atm) => atm._id === selectedAtmId);
+  const selectedATM = atms.find((atm) => atm._id === selectedAtmId);
+  const assignedEmployeeIds = new Set(
+    (selectedATM?.assignedEmployeeId ?? [])
+      .map((assignment) =>
+        typeof assignment === "string" ? assignment : assignment?._id,
+      )
+      .filter((id): id is string => Boolean(id))
+      .map((id) => id.toLowerCase()),
+  );
+  const eligibleEmployees = employees.filter(
+    (employee) =>
+      employee.status === "active" &&
+      employee.userId?.status === "active" &&
+      employee.userId.userType === "employee" &&
+      Boolean(employee.userId._id) &&
+      assignedEmployeeIds.has(employee._id.toLowerCase()),
+  );
+  const selectedEmployee = eligibleEmployees.find(
+    (employee) =>
+      employee._id.toLowerCase() === selectedEmployeeId.toLowerCase(),
+  );
 
   const onSubmit = async (values: RecurringMaintenanceFormValues) => {
     try {
       if (plan) {
         const data: UpdateRecurringMaintenancePlanData = {};
+        if (values.assignedEmployeeId !== getPlanEmployeeId(plan)) {
+          data.assignedEmployeeId = values.assignedEmployeeId;
+        }
         if (values.startDate !== getIndiaDateInputValue(plan.startDate)) {
           data.startDate = values.startDate;
         }
@@ -162,6 +213,7 @@ export default function RecurringPlanDialog({
       } else {
         const data: CreateRecurringMaintenancePlanData = {
           atmId: values.atmId,
+          assignedEmployeeId: values.assignedEmployeeId,
           maintenanceType: values.maintenanceType,
           startDate: values.startDate,
           ...(values.maintenanceType === "WEEKLY_MOPPING"
@@ -237,7 +289,13 @@ export default function RecurringPlanDialog({
               ) : (
                 <select
                   id="recurring-atm"
-                  {...register("atmId")}
+                  {...register("atmId", {
+                    onChange: () =>
+                      setValue("assignedEmployeeId", "", {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      }),
+                  })}
                   aria-invalid={Boolean(errors.atmId)}
                   className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                 >
@@ -305,6 +363,123 @@ export default function RecurringPlanDialog({
               </select>
             </div>
           )}
+
+          <div>
+            <label
+              htmlFor="recurring-assigned-employee"
+              className="mb-2 block text-sm font-medium"
+            >
+              Responsible Employee
+            </label>
+            <select
+              id="recurring-assigned-employee"
+              {...register("assignedEmployeeId")}
+              aria-invalid={Boolean(errors.assignedEmployeeId)}
+              disabled={
+                !selectedATM ||
+                !Array.isArray(selectedATM.assignedEmployeeId) ||
+                employeesLoading ||
+                employeesError ||
+                eligibleEmployees.length === 0
+              }
+              className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option value="">
+                {!selectedAtmId
+                  ? "Select an ATM first"
+                  : !selectedATM
+                    ? "ATM details unavailable"
+                    : employeesLoading
+                      ? "Loading employees..."
+                      : employeesError
+                        ? "Could not load employees"
+                        : !Array.isArray(selectedATM.assignedEmployeeId)
+                          ? "ATM assignment data unavailable"
+                          : eligibleEmployees.length === 0
+                            ? "No eligible employees assigned"
+                            : "Select a responsible employee"}
+              </option>
+              {eligibleEmployees.map((employee) => (
+                <option key={employee._id} value={employee._id}>
+                  {getEmployeeName(employee)}
+                  {employee.employeeCode ? ` · ${employee.employeeCode}` : ""}
+                </option>
+              ))}
+            </select>
+            {errors.assignedEmployeeId && (
+              <p className="mt-1 text-sm text-destructive">
+                {errors.assignedEmployeeId.message}
+              </p>
+            )}
+            {selectedAtmId && selectedATM && employeesLoading && (
+              <p className="mt-1 text-sm text-muted-foreground" role="status">
+                Loading assigned employees...
+              </p>
+            )}
+            {employeesError && (
+              <div className="mt-2 flex items-center justify-between gap-3 text-sm">
+                <span className="text-destructive">
+                  Could not load employee eligibility.
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={employeesFetching}
+                  onClick={() => void refetchEmployees()}
+                >
+                  {employeesFetching ? "Retrying..." : "Retry"}
+                </Button>
+              </div>
+            )}
+            {isEditing && atmsError && (
+              <div className="mt-2 flex items-center justify-between gap-3 text-sm">
+                <span className="text-destructive">
+                  Could not load ATM assignment data.
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={atmsFetching}
+                  onClick={() => void refetchATMs()}
+                >
+                  {atmsFetching ? "Retrying..." : "Retry"}
+                </Button>
+              </div>
+            )}
+            {isEditing && !atmsLoading && !atmsError && !selectedATM && (
+              <p className="mt-1 text-sm text-destructive">
+                This plan&apos;s ATM could not be loaded. Refresh before
+                changing its responsible employee.
+              </p>
+            )}
+            {selectedAtmId &&
+              selectedATM &&
+              !Array.isArray(selectedATM.assignedEmployeeId) && (
+                <p className="mt-1 text-sm text-destructive">
+                  ATM assignment data is unavailable. Refresh the ATM data
+                  before saving.
+                </p>
+              )}
+            {selectedAtmId &&
+              selectedATM &&
+              !employeesLoading &&
+              !employeesError &&
+              Array.isArray(selectedATM.assignedEmployeeId) &&
+              eligibleEmployees.length === 0 && (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Assign an active employee with an active employee account to
+                  this ATM before creating or updating its plan.
+                </p>
+              )}
+            {selectedEmployeeId && !selectedEmployee && (
+              <p className="mt-1 text-sm text-destructive">
+                The previously selected employee is no longer eligible for
+                this ATM. Choose another assigned employee.
+              </p>
+            )}
+          </div>
 
           <div>
             <label
@@ -381,6 +556,11 @@ export default function RecurringPlanDialog({
               type="submit"
               disabled={
                 isPending ||
+                !selectedEmployee ||
+                atmsLoading ||
+                atmsError ||
+                employeesLoading ||
+                employeesError ||
                 (isEditing && !isDirty) ||
                 (!isEditing &&
                   (atmsLoading || atmsError || eligibleATMs.length === 0))

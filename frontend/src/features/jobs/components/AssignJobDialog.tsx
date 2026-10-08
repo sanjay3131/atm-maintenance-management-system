@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
 import { toast } from "sonner";
 import { useATMs } from "@/features/atms/hooks/useATMs";
@@ -48,11 +48,12 @@ export default function AssignJobDialog({
   onClose,
 }: AssignJobDialogProps) {
   const [employeeId, setEmployeeId] = useState("");
-  const attemptedATMDefault = useRef(false);
   const {
     data: atms = [],
     isLoading: isATMsLoading,
     isError: isATMsError,
+    refetch: refetchATMs,
+    isFetching: isATMsFetching,
   } = useATMs();
   const {
     data: employees = [],
@@ -68,69 +69,72 @@ export default function AssignJobDialog({
   const [reason, setReason] = useState("");
   const atm =
     typeof job.atmId === "object" && job.atmId !== null ? job.atmId : null;
+  const jobATMId =
+    typeof job.atmId === "object" && job.atmId !== null
+      ? job.atmId._id
+      : job.atmId;
+  const assignedATM = atms.find((option) => option._id === jobATMId);
+  const hasATMEmployeeAssignmentData = Array.isArray(
+    assignedATM?.assignedEmployeeId,
+  );
+  const assignedEmployeeIds = new Set(
+    (hasATMEmployeeAssignmentData ? assignedATM.assignedEmployeeId : [])
+      .map((assignment) =>
+        typeof assignment === "string" ? assignment : assignment?._id,
+      )
+      .filter((id): id is string => Boolean(id))
+      .map((id) => id.toLowerCase()),
+  );
   const assignableEmployees = employees.filter(
     (employee) =>
       employee.status === "active" &&
       employee.userId?.status === "active" &&
       employee.userId.userType === "employee" &&
-      Boolean(employee.userId._id),
+      Boolean(employee.userId._id) &&
+      assignedEmployeeIds.has(employee._id.toLowerCase()),
   );
-  const jobATMId =
-    typeof job.atmId === "object" && job.atmId !== null
-      ? job.atmId._id
-      : job.atmId;
-
-  useEffect(() => {
-    if (
-      attemptedATMDefault.current ||
-      isATMsLoading ||
-      isEmployeesLoading ||
-      isATMsError ||
-      isEmployeesError
-    ) {
-      return;
-    }
-
-    attemptedATMDefault.current = true;
-    if (employeeId || !jobATMId) return;
-
-    const atm = atms.find((option) => option._id === jobATMId);
-    const atmEmployee = atm?.assignedEmployeeId.find(Boolean);
-    if (!atmEmployee) return;
-
-    const atmEmployeeId =
-      typeof atmEmployee === "string" ? atmEmployee : atmEmployee._id;
-    const assignedUserId = employees.find(
-      (employee) => employee._id === atmEmployeeId,
-    )?.userId._id;
-    if (
-      assignedUserId &&
-      assignableEmployees.some(
-        (employee) => employee.userId._id === assignedUserId,
+  const jobAssignedUserId =
+    typeof job.assignedEmployeeId === "object" &&
+    job.assignedEmployeeId !== null
+      ? job.assignedEmployeeId._id
+      : job.assignedEmployeeId;
+  const eligibilityDataLoaded =
+    !isATMsLoading &&
+    !isEmployeesLoading &&
+    !isATMsError &&
+    !isEmployeesError &&
+    Boolean(assignedATM);
+  const assignmentDataReady =
+    eligibilityDataLoaded && hasATMEmployeeAssignmentData;
+  const currentAssignee = assignableEmployees.find(
+    (employee) =>
+      employee.userId._id.toLowerCase() === jobAssignedUserId?.toLowerCase(),
+  );
+  const eligibleByEmployeeId = new Map(
+    assignableEmployees.map((employee) => [
+      employee._id.toLowerCase(),
+      employee,
+    ]),
+  );
+  const firstEligibleEmployee = (assignedATM?.assignedEmployeeId ?? [])
+    .map((assignment) =>
+      typeof assignment === "string" ? assignment : assignment?._id,
+    )
+    .map((id) => (id ? eligibleByEmployeeId.get(id.toLowerCase()) : undefined))
+    .find((employee) => employee !== undefined);
+  const defaultEmployee = currentAssignee ?? firstEligibleEmployee;
+  const selectedEmployee = employeeId
+    ? assignableEmployees.find(
+        (employee) =>
+          employee.userId._id.toLowerCase() === employeeId.toLowerCase(),
       )
-    ) {
-      setEmployeeId(assignedUserId);
-    }
-  }, [
-    assignableEmployees,
-    atms,
-    employees,
-    employeeId,
-    isATMsError,
-    isATMsLoading,
-    isEmployeesError,
-    isEmployeesLoading,
-    jobATMId,
-  ]);
-
-  const selectedEmployee = assignableEmployees.find(
-    (employee) => employee.userId._id === employeeId,
-  );
+    : defaultEmployee;
+  const selectedEmployeeId = selectedEmployee?.userId._id ?? "";
 
   const handleAssign = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (
-      !employeeId ||
+      !selectedEmployee ||
       isPending ||
       (isRejected && reason.trim().length < 5)
     ) {
@@ -149,12 +153,16 @@ export default function AssignJobDialog({
 
     if (isRejected) {
       reassignMutation.mutate(
-        { jobId: job._id, employeeId, reason: reason.trim() },
+        {
+          jobId: job._id,
+          employeeId: selectedEmployee.userId._id,
+          reason: reason.trim(),
+        },
         { onSuccess: handleSuccess, onError: handleError },
       );
     } else {
       assignMutation.mutate(
-        { jobId: job._id, employeeId },
+        { jobId: job._id, employeeId: selectedEmployee.userId._id },
         { onSuccess: handleSuccess, onError: handleError },
       );
     }
@@ -199,11 +207,14 @@ export default function AssignJobDialog({
           <div>
             <label className="mb-2 block text-sm font-medium">Employee</label>
             <Select
-              value={employeeId || null}
+              value={selectedEmployeeId || null}
               onValueChange={(value) => setEmployeeId(value ?? "")}
               disabled={
+                isATMsLoading ||
+                isATMsError ||
                 isEmployeesLoading ||
                 isEmployeesError ||
+                !assignedATM ||
                 assignableEmployees.length === 0 ||
                 isPending
               }
@@ -211,13 +222,15 @@ export default function AssignJobDialog({
               <SelectTrigger className="w-full">
                 <SelectValue
                   placeholder={
-                    isEmployeesLoading
+                    isATMsLoading || isEmployeesLoading
                       ? "Loading employees..."
-                      : isEmployeesError
-                        ? "Could not load employees"
-                        : assignableEmployees.length === 0
-                          ? "No employees available"
-                          : "Select an employee"
+                      : isATMsError || isEmployeesError
+                        ? "Could not load assignment eligibility"
+                        : !assignedATM
+                          ? "Could not find the Job ATM"
+                          : assignableEmployees.length === 0
+                            ? "No eligible ATM employees"
+                            : "Select an employee"
                   }
                 >
                   {selectedEmployee
@@ -239,6 +252,40 @@ export default function AssignJobDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {isATMsLoading && (
+            <p className="text-sm text-muted-foreground" role="status">
+              Loading ATM assignments...
+            </p>
+          )}
+
+          {isATMsError && (
+            <div className="flex items-center justify-between gap-3 text-sm text-destructive">
+              <span>Could not load the Job ATM assignment list.</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void refetchATMs()}
+                disabled={isATMsFetching}
+              >
+                {isATMsFetching ? "Retrying..." : "Retry"}
+              </Button>
+            </div>
+          )}
+
+          {!isATMsLoading && !isATMsError && !assignedATM && (
+            <p className="text-sm text-destructive">
+              The Job ATM could not be found. Refresh the page before assigning.
+            </p>
+          )}
+
+          {eligibilityDataLoaded && !hasATMEmployeeAssignmentData && (
+            <p className="text-sm text-destructive">
+              ATM assignment data is unavailable. Refresh the ATM data before
+              assigning.
+            </p>
+          )}
 
           {isRejected && (
             <div>
@@ -292,9 +339,10 @@ export default function AssignJobDialog({
 
           {!isEmployeesLoading &&
             !isEmployeesError &&
+            assignmentDataReady &&
             assignableEmployees.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                No employees are available to assign.
+                No active, eligible employees are assigned to this ATM.
               </p>
             )}
 
@@ -310,8 +358,9 @@ export default function AssignJobDialog({
             <Button
               type="submit"
               disabled={
-                !employeeId ||
+                !selectedEmployee ||
                 isPending ||
+                !assignmentDataReady ||
                 (isRejected && reason.trim().length < 5)
               }
             >

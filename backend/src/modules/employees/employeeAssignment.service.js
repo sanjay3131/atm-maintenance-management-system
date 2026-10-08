@@ -3,12 +3,23 @@ import ApiError from "../../utils/ApiError.js";
 import ATM from "../atms/atm.model.js";
 import Employee from "./employee.model.js";
 import User from "../users/user.model.js";
+import {
+  assertATMEmployeeAssignmentsPreserveAMCResponsibility,
+  guardEmployeeEligibilityChange,
+} from "../amc/amcResponsibility.service.js";
+
+const idValue = (id) => id?._id ?? id;
+const idKey = (id) => {
+  const value = idValue(id);
+  return value == null ? "" : String(value).toLowerCase();
+};
 
 const uniqueIds = (ids = []) => [
   ...new Map(
     ids
       .filter(Boolean)
-      .map((id) => [String(id?._id ?? id), id?._id ?? id]),
+      .map((id) => [idKey(id), idValue(id)])
+      .filter(([key]) => key),
   ).values(),
 ];
 
@@ -63,48 +74,160 @@ export const findActiveEmployeeByUserId = async (userId) => {
   return employee;
 };
 
-export const replaceATMEmployeeAssignmentInTransaction = async ({
-  atmId,
-  employeeId,
-  updatedBy,
-  session,
-}) => {
+const loadATM = async (atmId, session) => {
   const atm = await withSession(
     ATM.findOne({ _id: atmId, isDeleted: false }),
     session,
   );
   if (!atm) throw new ApiError(404, "ATM not found");
-  const employee = await loadActiveEmployee(employeeId, session);
+  return atm;
+};
 
-  const employeeFilter = employee
-    ? { _id: { $ne: employee._id }, assignedAtmIds: atm._id }
-    : { assignedAtmIds: atm._id };
-  await Employee.updateMany(
-    employeeFilter,
-    { $pull: { assignedAtmIds: atm._id } },
-    { session },
-  );
-
-  if (employee) {
-    employee.assignedAtmIds = uniqueIds([
-      ...(employee.assignedAtmIds ?? []),
-      atm._id,
-    ]);
-    employee.updatedBy = updatedBy;
-    await employee.save({ session });
-  }
-
-  atm.assignedEmployeeId = employee ? [employee._id] : [];
+const saveATM = async (atm, updatedBy, session) => {
   atm.updatedBy = updatedBy;
   await atm.save({ session });
   return atm;
 };
 
-export const setATMEmployeeAssignment = async (options) => {
-  return withEmployeeAssignmentTransaction((session) =>
-    replaceATMEmployeeAssignmentInTransaction({ ...options, session }),
-  );
+export const addEmployeeToATMInTransaction = async ({
+  atmId,
+  employeeId,
+  updatedBy,
+  session,
+}) => {
+  const atm = await loadATM(atmId, session);
+  const employee = await loadActiveEmployee(employeeId, session);
+
+  atm.assignedEmployeeId = uniqueIds([
+    ...(atm.assignedEmployeeId ?? []),
+    employee._id,
+  ]);
+  employee.assignedAtmIds = uniqueIds([
+    ...(employee.assignedAtmIds ?? []),
+    atm._id,
+  ]);
+  employee.updatedBy = updatedBy;
+
+  await employee.save({ session });
+  await saveATM(atm, updatedBy, session);
+  return atm;
 };
+
+export const removeEmployeeFromATMInTransaction = async ({
+  atmId,
+  employeeId,
+  updatedBy,
+  session,
+}) => {
+  const atm = await loadATM(atmId, session);
+  const employee = await withSession(Employee.findById(employeeId), session);
+  if (!employee) throw new ApiError(404, "Employee not found");
+
+  assertATMEmployeeAssignmentsPreserveAMCResponsibility(
+    atm,
+    (atm.assignedEmployeeId ?? []).filter(
+      (id) => idKey(id) !== idKey(employee._id),
+    ),
+  );
+  atm.assignedEmployeeId = uniqueIds(atm.assignedEmployeeId).filter(
+    (id) => idKey(id) !== idKey(employee._id),
+  );
+  employee.assignedAtmIds = uniqueIds(employee.assignedAtmIds).filter(
+    (id) => idKey(id) !== idKey(atm._id),
+  );
+  employee.updatedBy = updatedBy;
+
+  await Promise.all([
+    employee.save({ session }),
+    saveATM(atm, updatedBy, session),
+  ]);
+  return atm;
+};
+
+export const replaceATMEmployeeAssignmentsInTransaction = async ({
+  atmId,
+  employeeIds = [],
+  updatedBy,
+  session,
+}) => {
+  const atm = await loadATM(atmId, session);
+  const desiredEmployeeIds = uniqueIds(employeeIds);
+  const employees = await Promise.all(
+    desiredEmployeeIds.map((employeeId) =>
+      loadActiveEmployee(employeeId, session),
+    ),
+  );
+  const desiredById = new Map(
+    employees.map((employee) => [idKey(employee._id), employee]),
+  );
+  const previousEmployeeIds = uniqueIds(atm.assignedEmployeeId);
+  assertATMEmployeeAssignmentsPreserveAMCResponsibility(
+    atm,
+    desiredEmployeeIds,
+  );
+
+  const removedRecords = [];
+  for (const id of previousEmployeeIds) {
+    if (!desiredById.has(idKey(id))) {
+      removedRecords.push(
+        await withSession(Employee.findById(id), session),
+      );
+    }
+  }
+  for (const employee of removedRecords) {
+    if (!employee) continue;
+    employee.assignedAtmIds = uniqueIds(employee.assignedAtmIds).filter(
+      (id) => idKey(id) !== idKey(atm._id),
+    );
+    employee.updatedBy = updatedBy;
+  }
+  for (const employee of employees) {
+    employee.assignedAtmIds = uniqueIds([
+      ...(employee.assignedAtmIds ?? []),
+      atm._id,
+    ]);
+    employee.updatedBy = updatedBy;
+  }
+
+  atm.assignedEmployeeId = employees.map((employee) => employee._id);
+  for (const employee of removedRecords.filter(Boolean)) {
+    await employee.save({ session });
+  }
+  for (const employee of employees) {
+    await employee.save({ session });
+  }
+  await saveATM(atm, updatedBy, session);
+  return atm;
+};
+
+export const replaceATMEmployeeAssignments = async (options) =>
+  withEmployeeAssignmentTransaction((session) =>
+    replaceATMEmployeeAssignmentsInTransaction({ ...options, session }),
+  );
+
+export const addEmployeeToATM = async (options) =>
+  withEmployeeAssignmentTransaction((session) =>
+    addEmployeeToATMInTransaction({ ...options, session }),
+  );
+
+export const removeEmployeeFromATM = async (options) =>
+  withEmployeeAssignmentTransaction((session) =>
+    removeEmployeeFromATMInTransaction({ ...options, session }),
+  );
+
+export const replaceATMEmployeeAssignmentInTransaction = ({
+  employeeId,
+  ...options
+}) =>
+  replaceATMEmployeeAssignmentsInTransaction({
+    ...options,
+    employeeIds: employeeId ? [employeeId] : [],
+  });
+
+export const setATMEmployeeAssignment = ({ employeeId, ...options }) =>
+  employeeId
+    ? addEmployeeToATM({ ...options, employeeId })
+    : replaceATMEmployeeAssignments({ ...options, employeeIds: [] });
 
 export const replaceEmployeeATMAssignmentsInTransaction = async ({
   employeeId,
@@ -118,89 +241,67 @@ export const replaceEmployeeATMAssignmentsInTransaction = async ({
     (await withSession(Employee.findById(employeeId), session));
   if (!employee) throw new ApiError(404, "Employee not found");
 
+  if (
+    employeeUpdates.status !== undefined &&
+    employeeUpdates.status !== "active"
+  ) {
+    await guardEmployeeEligibilityChange({
+      employeeId: employee._id,
+      session,
+      updatedBy,
+    });
+  }
   Object.assign(employee, employeeUpdates);
-  const desiredAtmIds = uniqueIds(assignedAtmIds);
-  if (desiredAtmIds.length > 0) {
+  const desiredATMIds = uniqueIds(assignedAtmIds);
+  if (desiredATMIds.length > 0) {
     if (employee.status !== "active") {
       throw new ApiError(400, "Employee is inactive");
     }
     await loadActiveEmployee(employee._id, session);
   }
 
-  const previousAtmIds = uniqueIds(employee.assignedAtmIds ?? []);
-  const affectedAtmIds = uniqueIds([...previousAtmIds, ...desiredAtmIds]);
-  const atms = affectedAtmIds.length
-    ? await withSession(ATM.find({ _id: { $in: affectedAtmIds } }), session)
+  const previousATMIds = uniqueIds(employee.assignedAtmIds ?? []);
+  const affectedATMIds = uniqueIds([...previousATMIds, ...desiredATMIds]);
+  const atms = affectedATMIds.length
+    ? await withSession(ATM.find({ _id: { $in: affectedATMIds } }), session)
     : [];
-  const atmsById = new Map(atms.map((atm) => [String(atm._id), atm]));
-  if (desiredAtmIds.some((id) => !atmsById.has(String(id)))) {
+  const atmsById = new Map(atms.map((atm) => [idKey(atm._id), atm]));
+  if (desiredATMIds.some((id) => !atmsById.has(idKey(id)))) {
     throw new ApiError(404, "One or more ATMs not found");
   }
 
-  const conflictingATM = desiredAtmIds
-    .map((id) => atmsById.get(String(id)))
-    .find((atm) =>
-      (Array.isArray(atm.assignedEmployeeId)
-        ? atm.assignedEmployeeId
-        : [])
-        .filter(Boolean)
-        .some(
-          (assignedId) => String(assignedId) !== String(employee._id),
-      ),
-    );
-  if (conflictingATM) {
-    throw new ApiError(
-      409,
-      `ATM ${conflictingATM.atmId} is already assigned to another employee. Reassign it from ATM management.`,
-    );
+  const desiredATMKeys = new Set(desiredATMIds.map(idKey));
+  for (const atm of atms) {
+    const currentEmployeeIds = uniqueIds(atm.assignedEmployeeId ?? []);
+    if (!desiredATMKeys.has(idKey(atm._id))) {
+      assertATMEmployeeAssignmentsPreserveAMCResponsibility(
+        atm,
+        currentEmployeeIds.filter(
+          (id) => idKey(id) !== idKey(employee._id),
+        ),
+      );
+    }
+    atm.assignedEmployeeId = desiredATMKeys.has(idKey(atm._id))
+      ? uniqueIds([...currentEmployeeIds, employee._id])
+      : currentEmployeeIds.filter(
+          (id) => idKey(id) !== idKey(employee._id),
+        );
+    atm.updatedBy = updatedBy;
   }
 
-  const removedAtmIds = previousAtmIds.filter(
-    (id) => !desiredAtmIds.some((desiredId) => String(desiredId) === String(id)),
-  );
-  if (removedAtmIds.length > 0) {
-    await ATM.updateMany(
-      {
-        _id: { $in: removedAtmIds },
-        assignedEmployeeId: employee._id,
-      },
-      { $pull: { assignedEmployeeId: employee._id } },
-      { session },
-    );
-  }
-
-  if (desiredAtmIds.length > 0) {
-    await Employee.updateMany(
-      {
-        _id: { $ne: employee._id },
-        assignedAtmIds: { $in: desiredAtmIds },
-      },
-      { $pull: { assignedAtmIds: { $in: desiredAtmIds } } },
-      { session },
-    );
-    await ATM.updateMany(
-      { _id: { $in: desiredAtmIds } },
-      {
-        $set: {
-          assignedEmployeeId: [employee._id],
-          updatedBy,
-        },
-      },
-      { session },
-    );
-  }
-
-  employee.assignedAtmIds = desiredAtmIds;
+  employee.assignedAtmIds = desiredATMIds;
   if (updatedBy) employee.updatedBy = updatedBy;
   await employee.save({ session });
+  for (const atm of atms) {
+    await atm.save({ session });
+  }
   return employee;
 };
 
-export const replaceEmployeeATMAssignments = async (options) => {
-  return withEmployeeAssignmentTransaction((session) =>
+export const replaceEmployeeATMAssignments = async (options) =>
+  withEmployeeAssignmentTransaction((session) =>
     replaceEmployeeATMAssignmentsInTransaction({ ...options, session }),
   );
-};
 
 export const addEmployeeATMAssignments = async ({
   employeeId,

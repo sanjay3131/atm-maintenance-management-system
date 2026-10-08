@@ -54,6 +54,17 @@ function getATM(plan: RecurringMaintenancePlan) {
   return typeof plan.atmId === "string" ? null : plan.atmId;
 }
 
+function getResponsibleEmployee(plan: RecurringMaintenancePlan) {
+  const employee = plan.assignedEmployeeId;
+  if (!employee) return "Not configured";
+  if (typeof employee === "string") return "Employee details unavailable";
+  const name =
+    [employee.userId?.firstName, employee.userId?.lastName]
+      .filter(Boolean)
+      .join(" ") || "Employee name unavailable";
+  return `${name}${employee.employeeCode ? ` · ${employee.employeeCode}` : ""}`;
+}
+
 function getErrorMessage(error: unknown) {
   if (isAxiosError<{ message?: string }>(error)) {
     return (
@@ -212,7 +223,7 @@ export default function RecurringMaintenancePage() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[850px] text-sm">
+              <table className="w-full min-w-[1000px] text-sm">
                 <thead className="border-y bg-muted/40">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium">ATM</th>
@@ -224,6 +235,9 @@ export default function RecurringMaintenancePage() {
                     </th>
                     <th className="px-4 py-3 text-left font-medium">
                       Schedule
+                    </th>
+                    <th className="px-4 py-3 text-left font-medium">
+                      Responsible Employee
                     </th>
                     <th className="px-4 py-3 text-left font-medium">
                       Start Date
@@ -247,6 +261,9 @@ export default function RecurringMaintenancePage() {
                           {getMaintenanceLabel(plan)}
                         </td>
                         <td className="px-4 py-3">{getScheduleLabel(plan)}</td>
+                        <td className="px-4 py-3">
+                          {getResponsibleEmployee(plan)}
+                        </td>
                         <td className="px-4 py-3">
                           {formatPlanDate(plan.startDate)}
                         </td>

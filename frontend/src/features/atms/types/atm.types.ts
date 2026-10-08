@@ -66,6 +66,7 @@ export interface ATM {
   } | null;
 
   assignedEmployeeId: Array<string | ATMEmployee | null>;
+  amcResponsibleEmployeeId?: string | ATMEmployee | null;
   customer?: string | ATMCustomer | null;
   location?: ATMLocation | null;
   locationConfigured?: boolean;

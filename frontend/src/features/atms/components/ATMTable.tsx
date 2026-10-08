@@ -21,7 +21,7 @@ export default function ATMTable({
             <th className="px-4 py-3 text-left font-medium">District</th>
             <th className="px-4 py-3 text-left font-medium">Region</th>
             <th className="px-4 py-3 text-left font-medium">
-              Maintenance Employee
+              Assigned Employees
             </th>
             <th className="px-4 py-3 text-left font-medium">Status</th>
           </tr>

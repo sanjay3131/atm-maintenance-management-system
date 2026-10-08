@@ -51,6 +51,7 @@ export const classifyATMDataIntegrity = ({
   districts,
   regions,
   employees,
+  users = [],
   customers,
   jobs,
   amcs,
@@ -61,6 +62,7 @@ export const classifyATMDataIntegrity = ({
     districts,
     regions,
     employees,
+    users,
     customers,
     jobs,
     amcs,
@@ -92,6 +94,7 @@ export const classifyATMDataIntegrity = ({
   const districtById = mapById(districts);
   const regionById = mapById(regions);
   const employeeById = mapById(employees);
+  const userById = mapById(users);
   const customerById = mapById(customers);
   const atmById = mapById(atms);
   const activeRegionCounts = new Map();
@@ -180,9 +183,6 @@ export const classifyATMDataIntegrity = ({
     );
     const employeeKeys = refsForCompare(employeeValues);
     atmEmployeeRefs.set(atmKey, new Set(employeeKeys));
-    if (new Set(employeeKeys).size > 1) {
-      report("atm_has_multiple_employee_assignments", atm, employeeValues);
-    }
     if (new Set(employeeKeys).size !== employeeKeys.length) {
       report("atm_has_duplicate_employee_refs", atm, employeeValues);
     }
@@ -198,6 +198,68 @@ export const classifyATMDataIntegrity = ({
         ).includes(atmKey)
       ) {
         report("atm_employee_missing_reciprocal", atm, [value]);
+      }
+    }
+
+    const amcResponsibleValues = references(
+      atm,
+      "amcResponsibleEmployeeId",
+      report,
+      "atm_amc_responsible_ref",
+      true,
+      false,
+    );
+    const responsibleValue = amcResponsibleValues[0];
+    if (responsibleValue != null) {
+      const responsibleKey = keyOf(responsibleValue);
+      if (!responsibleKey) {
+        report("atm_amc_responsible_ref_malformed", atm);
+      } else {
+        const employee = employeeById.get(responsibleKey);
+        if (!employee) {
+          report("atm_amc_responsible_ref_dangling", atm, [
+            responsibleValue,
+          ]);
+        } else {
+          if (!employeeKeys.includes(responsibleKey)) {
+            report("atm_amc_responsible_not_assigned", atm, [
+              responsibleValue,
+            ]);
+          }
+          if (employee.status !== "active") {
+            report("atm_amc_responsible_employee_inactive", atm, [
+              responsibleValue,
+            ]);
+          }
+
+          const userKey = keyOf(employee.userId);
+          if (!userKey) {
+            report("atm_amc_responsible_user_ref_malformed", atm, [
+              responsibleValue,
+            ]);
+          } else {
+            const user = userById.get(userKey);
+            if (!user) {
+              report("atm_amc_responsible_user_ref_dangling", atm, [
+                responsibleValue,
+                employee.userId,
+              ]);
+            } else {
+              if (user.status !== "active") {
+                report("atm_amc_responsible_user_inactive", atm, [
+                  responsibleValue,
+                  employee.userId,
+                ]);
+              }
+              if (user.userType !== "employee") {
+                report("atm_amc_responsible_user_not_employee", atm, [
+                  responsibleValue,
+                  employee.userId,
+                ]);
+              }
+            }
+          }
+        }
       }
     }
 

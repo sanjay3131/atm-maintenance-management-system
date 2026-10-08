@@ -18,6 +18,7 @@ import {
   replaceEmployeeATMAssignmentsInTransaction,
   withEmployeeAssignmentTransaction,
 } from "./employeeAssignment.service.js";
+import { guardEmployeeEligibilityChange } from "../amc/amcResponsibility.service.js";
 
 export const createEmployee = asyncHandler(async (req, res) => {
   const isAdmin =
@@ -134,7 +135,24 @@ export const updateEmployee = asyncHandler(async (req, res) => {
       employeeUpdates: updatePayload,
     });
   } else {
-    employee = await Employee.findById(employeeId);
+    if (updatePayload.status && updatePayload.status !== "active") {
+      employee = await withEmployeeAssignmentTransaction(async (session) => {
+        const currentEmployee = await Employee.findById(employeeId).session(
+          session,
+        );
+        if (!currentEmployee) return null;
+        await guardEmployeeEligibilityChange({
+          employeeId: currentEmployee._id,
+          session,
+          updatedBy: req.user._id,
+        });
+        Object.assign(currentEmployee, updatePayload);
+        await currentEmployee.save({ session });
+        return currentEmployee;
+      });
+    } else {
+      employee = await Employee.findById(employeeId);
+    }
   }
 
   if (!employee) {
@@ -143,7 +161,10 @@ export const updateEmployee = asyncHandler(async (req, res) => {
       .json(new ApiResponse(404, "Employee not found", null));
   }
 
-  if (!hasATMUpdate) {
+  if (
+    !hasATMUpdate &&
+    !(updatePayload.status && updatePayload.status !== "active")
+  ) {
     Object.assign(employee, updatePayload);
     await employee.save();
   }

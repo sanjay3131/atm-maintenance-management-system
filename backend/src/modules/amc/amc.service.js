@@ -37,27 +37,67 @@ export const generateMonthlyAMC = async (month, year, createdBy) => {
   const atms = await ATM.find({
     isDeleted: false,
     status: { $in: ["ACTIVE", "UNDER_MAINTENANCE"] },
-    assignedEmployeeId: { $exists: true, $ne: [] },
   })
     .populate("customer", "firstName lastName")
     .populate("bankId", "bankName")
     .populate("districtId", "districtName")
     .populate({
-      path: "assignedEmployeeId",
+      path: "amcResponsibleEmployeeId",
       select: "employeeCode status supervisorId userId",
-      populate: { path: "userId", select: "status userType" },
+      populate: {
+        path: "userId",
+        select: "status userType",
+      },
     });
 
   for (const atm of atms) {
-    const employee =
-      atm.assignedEmployeeId?.length === 1
-        ? atm.assignedEmployeeId[0]
-        : null;
+    const employee = atm.amcResponsibleEmployeeId;
 
     if (!employee) {
+      results.skipped++;
       results.errors.push({
         atmId: atm.atmId,
-        error: "ATM must have exactly one assigned employee to generate AMC",
+        error: "No AMC responsible employee is assigned to this ATM",
+      });
+      continue;
+    }
+
+    const isAssignedToATM = (atm.assignedEmployeeId ?? []).some(
+      (assignedEmployee) =>
+        String(assignedEmployee?._id ?? assignedEmployee).toLowerCase() ===
+        String(employee._id).toLowerCase(),
+    );
+    if (!isAssignedToATM) {
+      results.skipped++;
+      results.errors.push({
+        atmId: atm.atmId,
+        employee: employee.employeeCode,
+        error: "AMC responsible employee is not assigned to this ATM",
+      });
+      continue;
+    }
+
+    if (!employee.userId) {
+      results.skipped++;
+      results.errors.push({
+        atmId: atm.atmId,
+        error: "AMC responsible employee or linked User was not found",
+      });
+      continue;
+    }
+
+    if (typeof employee.userId === "string") {
+      const user = await User.findById(employee.userId).select(
+        "status userType",
+      );
+      employee.userId = user;
+    }
+
+    if (!employee.userId) {
+      results.skipped++;
+      results.errors.push({
+        atmId: atm.atmId,
+        error: "AMC responsible employee's linked User was not found",
       });
       continue;
     }
@@ -68,6 +108,11 @@ export const generateMonthlyAMC = async (month, year, createdBy) => {
       employee.userId?.userType !== "employee"
     ) {
       results.skipped++;
+      results.errors.push({
+        atmId: atm.atmId,
+        employee: employee.employeeCode,
+        error: "AMC responsible employee is inactive or ineligible",
+      });
       continue;
     }
 

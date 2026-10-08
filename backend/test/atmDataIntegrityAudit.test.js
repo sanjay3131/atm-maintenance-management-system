@@ -11,10 +11,79 @@ const emptyInput = () => ({
   districts: [],
   regions: [],
   employees: [],
+  users: [],
   customers: [],
   jobs: [],
   amcs: [],
   recurringPlans: [],
+});
+
+test("valid AMC responsibility belongs to an assigned active eligible Employee", () => {
+  const input = emptyInput();
+  const atm = record(1);
+  const user = record(2, { status: "active", userType: "employee" });
+  const employeeA = record(3, {
+    userId: user._id,
+    status: "active",
+    assignedAtmIds: [atm._id],
+  });
+  const employeeB = record(4, {
+    userId: record(5)._id,
+    status: "active",
+    assignedAtmIds: [atm._id],
+  });
+  atm.assignedEmployeeId = [employeeA._id, employeeB._id];
+  atm.amcResponsibleEmployeeId = employeeB._id;
+  input.atms.push(atm);
+  input.employees.push(employeeA, employeeB);
+  input.users.push(record(5, { status: "active", userType: "employee" }), user);
+
+  const { issues } = classifyATMDataIntegrity(input);
+  assert.equal(
+    issues.some((issue) => issue.category.startsWith("atm_amc_responsible_")),
+    false,
+  );
+});
+
+test("reports invalid AMC responsibility membership, reference, and eligibility", () => {
+  const input = emptyInput();
+  const atm = record(1, {
+    assignedEmployeeId: [],
+    amcResponsibleEmployeeId: id(2),
+  });
+  const inactiveUser = record(4, { status: "inactive", userType: "employee" });
+  const employee = record(2, {
+    status: "inactive",
+    userId: inactiveUser._id,
+    assignedAtmIds: [],
+  });
+  const nonEmployeeUser = record(6, { status: "active", userType: "admin" });
+  const wrongTypeEmployee = record(7, {
+    status: "active",
+    userId: nonEmployeeUser._id,
+  });
+  const malformedATM = record(8, { amcResponsibleEmployeeId: "invalid-id" });
+  const danglingATM = record(9, {
+    amcResponsibleEmployeeId: id(99),
+  });
+  const missingUserATM = record(10, {
+    assignedEmployeeId: [wrongTypeEmployee._id],
+    amcResponsibleEmployeeId: wrongTypeEmployee._id,
+  });
+  input.atms.push(atm, malformedATM, danglingATM, missingUserATM);
+  input.employees.push(employee, wrongTypeEmployee);
+  input.users.push(inactiveUser, nonEmployeeUser);
+
+  const { issues } = classifyATMDataIntegrity(input);
+  const counts = Object.fromEntries(
+    issues.map(({ category, count }) => [category, count]),
+  );
+  assert.equal(counts.atm_amc_responsible_not_assigned, 1);
+  assert.equal(counts.atm_amc_responsible_employee_inactive, 1);
+  assert.equal(counts.atm_amc_responsible_user_inactive, 1);
+  assert.equal(counts.atm_amc_responsible_user_not_employee, 1);
+  assert.equal(counts.atm_amc_responsible_ref_malformed, 1);
+  assert.equal(counts.atm_amc_responsible_ref_dangling, 1);
 });
 
 test("classifies missing, malformed, dangling, and inconsistent geography", () => {
@@ -49,27 +118,57 @@ test("classifies missing, malformed, dangling, and inconsistent geography", () =
   assert.equal(counts.atm_has_region_but_district_has_no_active_regions, 1);
 });
 
-test("classifies one-sided, duplicate, multiple, and dangling employee assignments", () => {
+test("accepts multiple distinct Employees when both sides are reciprocal", () => {
   const input = emptyInput();
-  const employee = record(1, {
-    assignedAtmIds: [id(2), id(2), id(5), id(99)],
+  const atm = record(1);
+  const employeeA = record(2, { assignedAtmIds: [atm._id] });
+  const employeeB = record(3, { assignedAtmIds: [atm._id] });
+  const employeeC = record(4, { assignedAtmIds: [atm._id] });
+  atm.assignedEmployeeId = [employeeA._id, employeeB._id, employeeC._id];
+  input.atms.push(atm);
+  input.employees.push(employeeA, employeeB, employeeC);
+
+  const { issues } = classifyATMDataIntegrity(input);
+  assert.equal(
+    issues.some((issue) => issue.category === "atm_has_multiple_employee_assignments"),
+    false,
+  );
+  assert.equal(
+    issues.some((issue) => issue.category.startsWith("atm_employee_")),
+    false,
+  );
+  assert.equal(
+    issues.some((issue) => issue.category.startsWith("employee_atm_")),
+    false,
+  );
+});
+
+test("classifies duplicate, one-sided, dangling, and malformed employee assignments", () => {
+  const input = emptyInput();
+  const employeeA = record(1, {
+    assignedAtmIds: [id(2), id(2), id(5), id(99), "invalid-id", null],
   });
-  input.employees.push(employee);
+  const employeeB = record(6, { assignedAtmIds: [id(2)] });
+  input.employees.push(employeeA, employeeB);
   input.atms.push(
-    record(2, { assignedEmployeeId: [employee._id, employee._id] }),
-    record(3, { assignedEmployeeId: [employee._id, id(4)] }),
+    record(2, {
+      assignedEmployeeId: [employeeA._id, employeeB._id, employeeA._id],
+    }),
+    record(3, { assignedEmployeeId: [employeeA._id, id(4), "invalid-id", null] }),
     record(5, { assignedEmployeeId: [] }),
   );
 
   const { issues } = classifyATMDataIntegrity(input);
   const counts = Object.fromEntries(issues.map(({ category, count }) => [category, count]));
-  assert.equal(counts.atm_has_multiple_employee_assignments, 1);
+  assert.equal(counts.atm_has_multiple_employee_assignments, undefined);
   assert.equal(counts.atm_has_duplicate_employee_refs, 1);
   assert.equal(counts.atm_employee_missing_reciprocal, 1);
   assert.equal(counts.atm_employee_ref_dangling, 1);
+  assert.equal(counts.atm_employee_ref_malformed, 1);
   assert.equal(counts.employee_has_duplicate_atm_refs, 1);
   assert.equal(counts.employee_atm_missing_reciprocal, 1);
   assert.equal(counts.employee_atm_ref_dangling, 1);
+  assert.equal(counts.employee_atm_ref_malformed, 1);
 });
 
 test("marks Customer reciprocal discrepancies for review and catches dangling operational ATM refs", () => {

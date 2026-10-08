@@ -57,6 +57,16 @@ export const assignEmployeeToATM = async (
   return response.data.data;
 };
 
+export const setATMAMCResponsibleEmployee = async (
+  atmId: string,
+  employeeId: string | null,
+): Promise<ATM> => {
+  const response = await api.patch(`/atm/${atmId}/amc-responsible`, {
+    employeeId,
+  });
+  return response.data.data;
+};
+
 export const setATMLocation = async (
   atmId: string,
   data: SetATMLocationData,

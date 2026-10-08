@@ -1,10 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { isAxiosError } from "axios";
 import {
   ArrowLeft,
   Check,
-  ChevronLeft,
-  ChevronRight,
   LoaderCircle,
   Pause,
   Play,
@@ -23,7 +21,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import AssignJobDialog from "@/features/jobs/components/AssignJobDialog";
+import AdminMaterialUsageSection from "@/features/jobs/components/AdminMaterialUsageSection";
 import EmployeeFieldWorkPanel from "@/features/jobs/components/EmployeeFieldWorkPanel";
+import EmployeeMaterialUsageSection from "@/features/jobs/components/EmployeeMaterialUsageSection";
+import JobPhotoGallery from "@/features/jobs/components/JobPhotoGallery";
 import {
   useAcceptJob,
   useApproveJob,
@@ -38,7 +39,6 @@ import { useATM } from "@/features/atms/hooks/useATM";
 import type {
   Job,
   JobHistoryEntry,
-  JobPhoto,
   JobStatus,
   JobUser,
 } from "@/features/jobs/types/job.types";
@@ -225,17 +225,6 @@ function formatGpsValue(value?: number) {
     : NOT_AVAILABLE;
 }
 
-function getPhotoUrl(photo?: JobPhoto | null) {
-  return photo?.url || photo?.thumbnailUrl || undefined;
-}
-
-interface ReviewPhoto {
-  pairIndex: number;
-  side: "before" | "after";
-  photo: JobPhoto;
-  src: string;
-}
-
 function getStatusVariant(status: JobStatus) {
   if (status === "REJECTED") return "destructive" as const;
   if (status === "PENDING" || status === "ON_HOLD") return "secondary" as const;
@@ -267,66 +256,6 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
         {value}
       </dd>
     </div>
-  );
-}
-
-function PhotoSection({
-  title,
-  photos,
-  onPhotoClick,
-}: {
-  title: string;
-  photos?: Array<JobPhoto | null>;
-  onPhotoClick?: (index: number) => void;
-}) {
-  const availablePhotos = (photos ?? []).flatMap((photo, index) =>
-    photo && getPhotoUrl(photo) ? [{ photo, index }] : [],
-  );
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {availablePhotos.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No photos available.</p>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {availablePhotos.map(({ photo, index }) => (
-              <figure
-                key={photo._id}
-                className="overflow-hidden rounded-md border"
-              >
-                {onPhotoClick ? (
-                  <button
-                    type="button"
-                    aria-label={`Review ${title.toLowerCase()} ${index + 1}`}
-                    className="group block w-full cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    onClick={() => onPhotoClick(index)}
-                  >
-                    <img
-                      src={photo.thumbnailUrl || photo.url || undefined}
-                      alt={`${title} photo ${index + 1}`}
-                      className="aspect-square w-full object-cover transition-opacity group-hover:opacity-90"
-                    />
-                  </button>
-                ) : (
-                  <img
-                    src={photo.thumbnailUrl || photo.url || undefined}
-                    alt={`${title} photo ${index + 1}`}
-                    className="aspect-square w-full object-cover"
-                  />
-                )}
-                <figcaption className="p-2 text-xs text-muted-foreground">
-                  {formatDate(photo.uploadedAt)}
-                </figcaption>
-              </figure>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
   );
 }
 
@@ -372,18 +301,6 @@ export default function JobDetailsPage({
     "verify" | "approve" | null
   >(null);
   const [rejectionRemarks, setRejectionRemarks] = useState("");
-  const [activePhotoPairIndex, setActivePhotoPairIndex] = useState<
-    number | null
-  >(null);
-  const [activeFullImageIndex, setActiveFullImageIndex] = useState<
-    number | null
-  >(null);
-  const photoViewerStateRef = useRef({
-    activePhotoPairIndex,
-    activeFullImageIndex,
-    photoPairCount: 0,
-    reviewPhotos: [] as ReviewPhoto[],
-  });
   const acceptMutation = useAcceptJob();
   const startMutation = useStartJob();
   const holdMutation = useHoldJob();
@@ -403,122 +320,6 @@ export default function JobDetailsPage({
     getRawATMId(job),
     !readOnly,
   );
-  const beforePhotos = job?.beforePhotos ?? [];
-  const afterPhotos = job?.afterPhotos ?? [];
-  const photoPairCount = Math.max(beforePhotos.length, afterPhotos.length);
-  const reviewPhotos: ReviewPhoto[] = [];
-
-  for (let pairIndex = 0; pairIndex < photoPairCount; pairIndex += 1) {
-    const beforePhoto = beforePhotos[pairIndex];
-    const beforeSrc = getPhotoUrl(beforePhoto);
-    if (beforePhoto && beforeSrc) {
-      reviewPhotos.push({
-        pairIndex,
-        side: "before",
-        photo: beforePhoto,
-        src: beforeSrc,
-      });
-    }
-
-    const afterPhoto = afterPhotos[pairIndex];
-    const afterSrc = getPhotoUrl(afterPhoto);
-    if (afterPhoto && afterSrc) {
-      reviewPhotos.push({
-        pairIndex,
-        side: "after",
-        photo: afterPhoto,
-        src: afterSrc,
-      });
-    }
-  }
-  const photoViewerOpen =
-    activePhotoPairIndex !== null || activeFullImageIndex !== null;
-
-  useEffect(() => {
-    photoViewerStateRef.current = {
-      activePhotoPairIndex,
-      activeFullImageIndex,
-      photoPairCount,
-      reviewPhotos,
-    };
-  });
-
-  const openPhotoPair = (pairIndex: number) => {
-    setActivePhotoPairIndex(pairIndex);
-    setActiveFullImageIndex(null);
-  };
-
-  const openFullImage = (side: ReviewPhoto["side"], pairIndex: number) => {
-    const imageIndex = reviewPhotos.findIndex(
-      (photo) => photo.side === side && photo.pairIndex === pairIndex,
-    );
-    if (imageIndex < 0) return;
-    setActivePhotoPairIndex(pairIndex);
-    setActiveFullImageIndex(imageIndex);
-  };
-
-  const moveFullImage = (direction: -1 | 1) => {
-    if (activeFullImageIndex === null) return;
-    const nextIndex = activeFullImageIndex + direction;
-    if (nextIndex < 0 || nextIndex >= reviewPhotos.length) return;
-    setActiveFullImageIndex(nextIndex);
-    setActivePhotoPairIndex(reviewPhotos[nextIndex].pairIndex);
-  };
-
-  useEffect(() => {
-    if (!photoViewerOpen) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target;
-      if (
-        event.key !== "Escape" &&
-        target instanceof HTMLElement &&
-        (target.isContentEditable || target.closest("input, textarea, select"))
-      ) {
-        return;
-      }
-
-      const {
-        activePhotoPairIndex: pairIndex,
-        activeFullImageIndex: imageIndex,
-        photoPairCount: pairCount,
-        reviewPhotos: photos,
-      } = photoViewerStateRef.current;
-
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        if (imageIndex !== null) {
-          setActiveFullImageIndex(null);
-        } else {
-          setActivePhotoPairIndex(null);
-        }
-        return;
-      }
-
-      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-        event.preventDefault();
-        event.stopPropagation();
-        const direction = event.key === "ArrowLeft" ? -1 : 1;
-        if (imageIndex !== null) {
-          const nextIndex = imageIndex + direction;
-          if (nextIndex >= 0 && nextIndex < photos.length) {
-            setActiveFullImageIndex(nextIndex);
-            setActivePhotoPairIndex(photos[nextIndex].pairIndex);
-          }
-        } else if (pairIndex !== null) {
-          const nextIndex = pairIndex + direction;
-          if (nextIndex >= 0 && nextIndex < pairCount) {
-            setActivePhotoPairIndex(nextIndex);
-          }
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [photoViewerOpen]);
-
   if (isLoading) return <DetailsSkeleton />;
 
   if (isError || !job) {
@@ -684,15 +485,8 @@ export default function JobDetailsPage({
     );
   };
 
-  const activePairBefore =
-    activePhotoPairIndex === null ? null : beforePhotos[activePhotoPairIndex];
-  const activePairAfter =
-    activePhotoPairIndex === null ? null : afterPhotos[activePhotoPairIndex];
-  const activeFullPhoto =
-    activeFullImageIndex === null ? null : reviewPhotos[activeFullImageIndex];
-
   return (
-    <div className="space-y-6 p-6">
+    <div className="min-w-0 space-y-6 p-3 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <Button
@@ -847,6 +641,12 @@ export default function JobDetailsPage({
 
       {readOnly && job.status === "IN_PROGRESS" && (
         <EmployeeFieldWorkPanel job={job} />
+      )}
+
+      {readOnly ? (
+        <EmployeeMaterialUsageSection job={job} />
+      ) : (
+        <AdminMaterialUsageSection jobId={job._id} />
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -1137,16 +937,12 @@ export default function JobDetailsPage({
           </CardContent>
         </Card>
 
-        <PhotoSection
-          title="Before photos"
-          photos={job.beforePhotos}
-          onPhotoClick={readOnly ? undefined : openPhotoPair}
-        />
-        <PhotoSection
-          title="After photos"
-          photos={job.afterPhotos}
-          onPhotoClick={readOnly ? undefined : openPhotoPair}
-        />
+        {(!readOnly || job.status !== "IN_PROGRESS") && (
+          <JobPhotoGallery
+            beforePhotos={job.beforePhotos}
+            afterPhotos={job.afterPhotos}
+          />
+        )}
 
         {(job.employeeRemarks ||
           job.adminRemarks ||
@@ -1298,186 +1094,6 @@ export default function JobDetailsPage({
           job={job}
           onClose={() => setIsAssignDialogOpen(false)}
         />
-      )}
-
-      {!readOnly && (
-        <>
-          <Dialog
-            open={activePhotoPairIndex !== null}
-            onOpenChange={(open) => {
-              if (!open && activeFullImageIndex === null) {
-                setActivePhotoPairIndex(null);
-              }
-            }}
-          >
-            <DialogContent className="max-h-[95vh] max-w-6xl overflow-y-auto">
-              {activePhotoPairIndex !== null && (
-                <>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-1">
-                      <DialogTitle>Job Photos</DialogTitle>
-                      <DialogDescription>
-                        Before and after photos for this job.
-                      </DialogDescription>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Close photo review"
-                      onClick={() => setActivePhotoPairIndex(null)}
-                    >
-                      <X />
-                    </Button>
-                  </div>
-
-                  <div className="mt-4 grid gap-4 md:grid-cols-2">
-                    {[
-                      {
-                        side: "before" as const,
-                        label: "Before",
-                        photo: activePairBefore,
-                      },
-                      {
-                        side: "after" as const,
-                        label: "After",
-                        photo: activePairAfter,
-                      },
-                    ].map(({ side, label, photo }) => {
-                      const src = getPhotoUrl(photo);
-                      return (
-                        <section key={side} className="min-w-0 space-y-2">
-                          <h3 className="text-sm font-semibold">{label}</h3>
-                          {photo && src ? (
-                            <button
-                              type="button"
-                              aria-label={`Open ${label.toLowerCase()} photo ${activePhotoPairIndex + 1} full size`}
-                              className="flex aspect-[4/3] w-full cursor-zoom-in items-center justify-center overflow-hidden rounded-md border bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                              onClick={() =>
-                                openFullImage(side, activePhotoPairIndex)
-                              }
-                            >
-                              <img
-                                src={src}
-                                alt={`${label} photo ${activePhotoPairIndex + 1}`}
-                                className="max-h-full max-w-full object-contain"
-                              />
-                            </button>
-                          ) : (
-                            <div
-                              className="flex aspect-[4/3] items-center justify-center rounded-md border border-dashed bg-muted/20 text-sm text-muted-foreground"
-                              role="status"
-                            >
-                              No photo available
-                            </div>
-                          )}
-                        </section>
-                      );
-                    })}
-                  </div>
-
-                  <p className="mt-4 text-center text-sm text-muted-foreground">
-                    {activePhotoPairIndex + 1} / {photoPairCount}
-                  </p>
-                  <div className="mt-3 flex justify-between gap-3 border-t pt-4">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={activePhotoPairIndex <= 0}
-                      onClick={() =>
-                        setActivePhotoPairIndex((index) =>
-                          index === null ? null : Math.max(0, index - 1),
-                        )
-                      }
-                    >
-                      <ChevronLeft />
-                      Previous
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={activePhotoPairIndex >= photoPairCount - 1}
-                      onClick={() =>
-                        setActivePhotoPairIndex((index) =>
-                          index === null
-                            ? null
-                            : Math.min(photoPairCount - 1, index + 1),
-                        )
-                      }
-                    >
-                      Next
-                      <ChevronRight />
-                    </Button>
-                  </div>
-                </>
-              )}
-            </DialogContent>
-          </Dialog>
-
-          <Dialog
-            open={activeFullImageIndex !== null}
-            onOpenChange={(open) => {
-              if (!open) setActiveFullImageIndex(null);
-            }}
-          >
-            <DialogContent className="max-h-[95vh] max-w-7xl overflow-y-auto">
-              {activeFullPhoto && activeFullImageIndex !== null && (
-                <>
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <DialogTitle>Full-size photo</DialogTitle>
-                      <DialogDescription className="mt-1">
-                        {formatLabel(activeFullPhoto.side)} ·{" "}
-                        {activeFullPhoto.pairIndex + 1}
-                      </DialogDescription>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Close full-size photo"
-                      onClick={() => setActiveFullImageIndex(null)}
-                    >
-                      <X />
-                    </Button>
-                  </div>
-                  <div className="mt-4 flex min-h-[40vh] items-center justify-center rounded-md bg-black/90 p-2">
-                    <img
-                      src={activeFullPhoto.src}
-                      alt={`${formatLabel(activeFullPhoto.side)} photo ${activeFullPhoto.pairIndex + 1}`}
-                      className="max-h-[70vh] max-w-full object-contain"
-                    />
-                  </div>
-                  <p className="mt-3 text-center text-sm text-muted-foreground">
-                    {activeFullPhoto.side === "before" ? "Before" : "After"} ·{" "}
-                    {activeFullPhoto.pairIndex + 1} · {activeFullImageIndex + 1}{" "}
-                    / {reviewPhotos.length}
-                  </p>
-                  <div className="mt-3 flex justify-between gap-3 border-t pt-4">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={activeFullImageIndex <= 0}
-                      onClick={() => moveFullImage(-1)}
-                    >
-                      <ChevronLeft />
-                      Previous
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={activeFullImageIndex >= reviewPhotos.length - 1}
-                      onClick={() => moveFullImage(1)}
-                    >
-                      Next
-                      <ChevronRight />
-                    </Button>
-                  </div>
-                </>
-              )}
-            </DialogContent>
-          </Dialog>
-        </>
       )}
 
       <Dialog open={isRejectDialogOpen} onOpenChange={handleRejectDialogChange}>

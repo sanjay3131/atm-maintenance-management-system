@@ -174,20 +174,20 @@ function getRegionName(atm: ATM) {
 }
 
 function getEmployeeLabel(atm: ATM) {
-  const assigned = (atm.assignedEmployeeId ?? []).find(
-    (employee): employee is ATMEmployee =>
-      employee !== null && typeof employee === "object",
+  const assignedEmployees = (atm.assignedEmployeeId ?? []).filter(
+    (employee): employee is string | ATMEmployee => employee !== null,
   );
-  if (!assigned) {
-    return (atm.assignedEmployeeId ?? []).some((employee) => employee !== null)
-      ? "Assigned employee"
-      : "Not assigned";
-  }
+  if (assignedEmployees.length === 0) return "Not assigned";
 
-  const name = [assigned.userId?.firstName, assigned.userId?.lastName]
-    .filter(Boolean)
-    .join(" ");
-  return `${assigned.employeeCode || "Employee"}${name ? ` — ${name}` : ""}`;
+  return assignedEmployees
+    .map((employee) => {
+      if (typeof employee === "string") return "Assigned employee";
+      const name = [employee.userId?.firstName, employee.userId?.lastName]
+        .filter(Boolean)
+        .join(" ");
+      return `${employee.employeeCode || "Employee"}${name ? ` — ${name}` : ""}`;
+    })
+    .join(", ");
 }
 
 function getCustomerId(atm: ATM) {

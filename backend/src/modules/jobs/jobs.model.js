@@ -74,6 +74,11 @@ const jobSchema = new mongoose.Schema(
       ref: "User",
       index: true,
     },
+    materialUsageRevision: {
+      type: Number,
+      default: 0,
+      select: false,
+    },
     assignedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

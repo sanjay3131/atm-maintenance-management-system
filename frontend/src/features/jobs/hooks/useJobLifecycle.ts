@@ -6,7 +6,7 @@ import {
   completeJob,
   holdJob,
   startJob,
-  uploadJobPhoto,
+  uploadJobPhotos,
   verifyJob,
   type CompleteJobData,
   type JobPhotoType,
@@ -91,7 +91,7 @@ export const useCompleteJob = () => {
 
 interface UploadJobPhotoVariables {
   jobId: string;
-  file: File;
+  files: File[];
   photoType: JobPhotoType;
   onProgress?: (percent: number) => void;
 }
@@ -102,11 +102,11 @@ export const useUploadJobPhoto = () => {
   return useMutation({
     mutationFn: ({
       jobId,
-      file,
+      files,
       photoType,
       onProgress,
     }: UploadJobPhotoVariables) =>
-      uploadJobPhoto(jobId, file, photoType, onProgress),
+      uploadJobPhotos(jobId, files, photoType, onProgress),
     onSuccess: async (_response, { jobId }) => {
       await queryClient.invalidateQueries({ queryKey: ["job", jobId] });
     },

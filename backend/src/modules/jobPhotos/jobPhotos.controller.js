@@ -50,7 +50,13 @@ export const uploadPhotos = asyncHandler(async (req, res) => {
   }
 
   // Check photo limits: 3 per type, 6 total
+  const beforePhotoIds = job.beforePhotos || [];
+  const afterPhotoIds = job.afterPhotos || [];
+  const currentPhotoIds = [...beforePhotoIds, ...afterPhotoIds];
   const existingTypeCount = await JobPhoto.countDocuments({
+    _id: {
+      $in: photoType === "before" ? beforePhotoIds : afterPhotoIds,
+    },
     jobId,
     photoType,
     isExpired: false,
@@ -65,6 +71,7 @@ export const uploadPhotos = asyncHandler(async (req, res) => {
   }
 
   const totalExisting = await JobPhoto.countDocuments({
+    _id: { $in: currentPhotoIds },
     jobId,
     isExpired: false,
   });
@@ -77,63 +84,87 @@ export const uploadPhotos = asyncHandler(async (req, res) => {
 
   // Upload each file to Cloudinary
   const savedPhotos = [];
+  const uploadedPublicIds = [];
 
-  for (const file of req.files) {
-    // Upload to Cloudinary with folder structure
-    const uploadResult = await new Promise((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream(
-        {
-          folder: `atm-fsm/jobs/${jobId}/${photoType}`,
-          resource_type: "image",
-          transformation: [
-            { quality: "auto", fetch_format: "auto" }, // Auto-optimize
-          ],
-          tags: [`job_${jobId}`, `atm_${job.atmId}`, photoType],
-        },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
-        },
+  try {
+    for (const file of req.files) {
+      const uploadResult = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          {
+            folder: `atm-fsm/jobs/${jobId}/${photoType}`,
+            resource_type: "image",
+            transformation: [{ quality: "auto", fetch_format: "auto" }],
+            tags: [`job_${jobId}`, `atm_${job.atmId}`, photoType],
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          },
+        );
+        stream.end(file.buffer);
+      });
+      uploadedPublicIds.push(uploadResult.public_id);
+
+      const thumbnailUrl = cloudinary.url(uploadResult.public_id, {
+        width: 300,
+        height: 300,
+        crop: "fill",
+        quality: "auto",
+        fetch_format: "auto",
+      });
+
+      const photo = await JobPhoto.create({
+        jobId,
+        atmId: job.atmId,
+        photoType,
+        publicId: uploadResult.public_id,
+        url: uploadResult.secure_url,
+        thumbnailUrl,
+        originalName: file.originalname,
+        size: uploadResult.bytes || file.size,
+        mimeType: file.mimetype,
+        uploadedBy: req.user._id,
+        uploadedAt: new Date(),
+        gpsData: req.body.gpsData ? JSON.parse(req.body.gpsData) : undefined,
+      });
+
+      savedPhotos.push(photo);
+    }
+
+    const photoIds = savedPhotos.map((photo) => photo._id);
+    if (photoType === "before") {
+      job.beforePhotos = [...(job.beforePhotos || []), ...photoIds];
+    } else {
+      job.afterPhotos = [...(job.afterPhotos || []), ...photoIds];
+    }
+    await job.save();
+  } catch (error) {
+    const photoIds = savedPhotos.map((photo) => photo._id);
+    const cleanupOperations = [];
+    if (photoIds.length > 0) {
+      cleanupOperations.push(
+        Job.updateOne(
+          { _id: job._id },
+          { $pull: { [`${photoType}Photos`]: { $in: photoIds } } },
+        ),
+        JobPhoto.deleteMany({ _id: { $in: photoIds } }),
       );
-      stream.end(file.buffer);
+    }
+    cleanupOperations.push(
+      ...uploadedPublicIds.map(async (publicId) => {
+        if (!(await deleteSinglePhoto(publicId))) {
+          throw new Error(`Cloudinary rollback failed for ${publicId}`);
+        }
+      }),
+    );
+    const cleanupResults = await Promise.allSettled(cleanupOperations);
+    cleanupResults.forEach((result) => {
+      if (result.status === "rejected") {
+        console.error("[Job Photos] Upload rollback failed:", result.reason);
+      }
     });
-
-    // Create thumbnail URL (f_auto,q_auto,w_300,h_300,c_fill)
-    const thumbnailUrl = cloudinary.url(uploadResult.public_id, {
-      width: 300,
-      height: 300,
-      crop: "fill",
-      quality: "auto",
-      fetch_format: "auto",
-    });
-
-    // Save metadata to DB
-    const photo = await JobPhoto.create({
-      jobId,
-      atmId: job.atmId,
-      photoType,
-      publicId: uploadResult.public_id,
-      url: uploadResult.secure_url,
-      thumbnailUrl,
-      originalName: file.originalname,
-      size: uploadResult.bytes || file.size,
-      mimeType: file.mimetype,
-      uploadedBy: req.user._id,
-      uploadedAt: new Date(),
-      gpsData: req.body.gpsData ? JSON.parse(req.body.gpsData) : undefined,
-    });
-
-    savedPhotos.push(photo);
+    throw error;
   }
-
-  // Update job with photo references
-  const photoIds = savedPhotos.map((p) => p._id);
-  if (photoType === "before") {
-    job.beforePhotos = [...(job.beforePhotos || []), ...photoIds];
-  } else {
-    job.afterPhotos = [...(job.afterPhotos || []), ...photoIds];
-  }
-  await job.save();
 
   return res.status(201).json(
     new ApiResponse(

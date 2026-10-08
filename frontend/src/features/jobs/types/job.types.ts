@@ -70,6 +70,25 @@ export interface JobPhoto {
   uploadedAt?: string;
 }
 
+export interface JobMaterialItem {
+  _id: string;
+  itemName: string;
+  unit: string;
+}
+
+export interface JobMaterialUsage {
+  _id: string;
+  itemNameSnapshot: string;
+  quantity: number;
+  unitSnapshot: string;
+  createdAt?: string;
+}
+
+export interface AdminJobMaterialUsage extends JobMaterialUsage {
+  unitCostSnapshot: number;
+  lineCostSnapshot: number;
+}
+
 export interface RecurringMaintenanceJobMetadata {
   source: "RECURRING";
   planId: string;

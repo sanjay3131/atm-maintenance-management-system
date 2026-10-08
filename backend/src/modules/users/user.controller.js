@@ -11,6 +11,10 @@ import {
 } from "../employees/employeeAssignment.service.js";
 import Customer from "../customers/customer.model.js";
 import { generateEmployeeCode } from "../employees/employee.utils.js";
+import {
+  guardUserEligibilityChange,
+  withAMCResponsibilityTransaction,
+} from "../amc/amcResponsibility.service.js";
 
 export const getAllUsers = asyncHandler(async (req, res) => {
   const isAdmin =
@@ -129,7 +133,7 @@ export const assignRoleToUser = asyncHandler(async (req, res) => {
       );
   }
 
-  const user = await User.findById(id);
+  let user = await User.findById(id);
 
   if (!user) {
     return res
@@ -137,9 +141,29 @@ export const assignRoleToUser = asyncHandler(async (req, res) => {
       .json(new ApiResponse(404, "User not found", "User not found"));
   }
 
-  user.userType = role || user.userType;
+  if (role && role !== "employee") {
+    user = await withAMCResponsibilityTransaction(async (session) => {
+      const currentUser = await User.findById(id).session(session);
+      if (!currentUser) return null;
+      await guardUserEligibilityChange({
+        userId: currentUser._id,
+        session,
+        updatedBy: req.user._id,
+      });
+      currentUser.userType = role;
+      await currentUser.save({ session });
+      return currentUser;
+    });
+  } else {
+    user.userType = role || user.userType;
+    await user.save();
+  }
 
-  await user.save();
+  if (!user) {
+    return res
+      .status(404)
+      .json(new ApiResponse(404, "User not found", "User not found"));
+  }
 
   return res
     .status(200)
@@ -172,7 +196,7 @@ export const changeUserStatus = asyncHandler(async (req, res) => {
       );
   }
 
-  const user = await User.findById(id);
+  let user = await User.findById(id);
 
   if (!user) {
     return res
@@ -180,9 +204,29 @@ export const changeUserStatus = asyncHandler(async (req, res) => {
       .json(new ApiResponse(404, "User not found", "User not found"));
   }
 
-  user.status = status || user.status;
+  if (status && status !== "active") {
+    user = await withAMCResponsibilityTransaction(async (session) => {
+      const currentUser = await User.findById(id).session(session);
+      if (!currentUser) return null;
+      await guardUserEligibilityChange({
+        userId: currentUser._id,
+        session,
+        updatedBy: req.user._id,
+      });
+      currentUser.status = status;
+      await currentUser.save({ session });
+      return currentUser;
+    });
+  } else {
+    user.status = status || user.status;
+    await user.save();
+  }
 
-  await user.save();
+  if (!user) {
+    return res
+      .status(404)
+      .json(new ApiResponse(404, "User not found", "User not found"));
+  }
 
   return res
     .status(200)

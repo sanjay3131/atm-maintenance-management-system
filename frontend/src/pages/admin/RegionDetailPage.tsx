@@ -42,9 +42,10 @@ function getDistrictId(region: Region) {
     : region.districtId._id;
 }
 
-function getATMEmployee(atm: ATM) {
-  return (atm.assignedEmployeeId ?? []).find(
-    (employee) => employee && typeof employee !== "string",
+function getATMEmployees(atm: ATM) {
+  return (atm.assignedEmployeeId ?? []).filter(
+    (employee): employee is DistrictEmployee =>
+      employee !== null && typeof employee !== "string",
   );
 }
 
@@ -387,7 +388,7 @@ export default function RegionDetailPage() {
                                 Bank
                               </th>
                               <th className="px-4 py-3 text-left font-medium">
-                                Assigned Employee
+                                Assigned Employees
                               </th>
                               <th className="px-4 py-3 text-left font-medium">
                                 Status
@@ -396,16 +397,7 @@ export default function RegionDetailPage() {
                           </thead>
                           <tbody>
                             {atms.map((atm) => {
-                              const employee = getATMEmployee(atm);
-                              const employeeName =
-                                employee && typeof employee !== "string"
-                                  ? [
-                                      employee.userId?.firstName,
-                                      employee.userId?.lastName,
-                                    ]
-                                      .filter(Boolean)
-                                      .join(" ")
-                                  : "";
+                              const employees = getATMEmployees(atm);
                               return (
                                 <tr
                                   key={atm._id}
@@ -422,8 +414,20 @@ export default function RegionDetailPage() {
                                     {atm.bankId?.bankName || "Unavailable"}
                                   </td>
                                   <td className="px-4 py-3">
-                                    {employee
-                                      ? employeeName || "Assigned employee"
+                                    {employees.length > 0
+                                      ? employees
+                                          .map(
+                                            (employee) =>
+                                              [
+                                                employee.userId?.firstName,
+                                                employee.userId?.lastName,
+                                              ]
+                                                .filter(Boolean)
+                                                .join(" ") ||
+                                              employee.employeeCode ||
+                                              "Assigned employee",
+                                          )
+                                          .join(", ")
                                       : "Not assigned"}
                                   </td>
                                   <td className="px-4 py-3">

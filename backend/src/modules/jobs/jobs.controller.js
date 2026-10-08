@@ -5,6 +5,7 @@ import Customer from "../customers/customer.model.js";
 import Employee from "../employees/employee.model.js";
 import Job from "./jobs.model.js";
 import JobHistory from "./jobHistory.model.js";
+import JobPhoto from "../jobPhotos/jobPhotos.model.js";
 import ATM from "../atms/atm.model.js";
 import User from "../users/user.model.js";
 import Bank from "../banks/bank.model.js";
@@ -22,6 +23,147 @@ import {
 // ============================================
 // HELPERS
 // ============================================
+const REQUIRED_PHOTOS_PER_TYPE = 3;
+
+const assertCleaningEvidence = async (job) => {
+  const [beforeCount, afterCount] = await Promise.all([
+    JobPhoto.countDocuments({
+      _id: { $in: job.beforePhotos || [] },
+      jobId: job._id,
+      photoType: "before",
+      isExpired: false,
+      url: { $type: "string", $ne: "" },
+    }),
+    JobPhoto.countDocuments({
+      _id: { $in: job.afterPhotos || [] },
+      jobId: job._id,
+      photoType: "after",
+      isExpired: false,
+      url: { $type: "string", $ne: "" },
+    }),
+  ]);
+
+  const missingEvidence = [];
+  if (beforeCount < REQUIRED_PHOTOS_PER_TYPE) {
+    missingEvidence.push(
+      `At least ${REQUIRED_PHOTOS_PER_TYPE} before photos are required`,
+    );
+  }
+  if (afterCount < REQUIRED_PHOTOS_PER_TYPE) {
+    missingEvidence.push(
+      `At least ${REQUIRED_PHOTOS_PER_TYPE} after photos are required`,
+    );
+  }
+  if (missingEvidence.length > 0) {
+    throw new ApiError(400, missingEvidence.join(". "));
+  }
+};
+
+const getPreviousAttemptDetails = (job) => ({
+  completedAt: job.completedAt,
+  verifiedAt: job.verifiedAt,
+  approvedAt: job.approvedAt,
+  employeeGpsAtCompletion: job.employeeGpsAtCompletion,
+  gpsDistance: job.gpsDistance,
+  gpsValidated: job.gpsValidated,
+  employeeRemarks: job.employeeRemarks,
+  adminRemarks: job.adminRemarks,
+  beforePhotoIds: (job.beforePhotos || []).map(String),
+  afterPhotoIds: (job.afterPhotos || []).map(String),
+});
+
+const clearCurrentAttempt = (job) => {
+  job.acceptedAt = undefined;
+  job.startedAt = undefined;
+  job.completedAt = undefined;
+  job.verifiedAt = undefined;
+  job.approvedAt = undefined;
+  job.employeeGpsAtCompletion = undefined;
+  job.gpsDistance = undefined;
+  job.gpsValidated = false;
+  job.employeeRemarks = "";
+  job.adminRemarks = "";
+  job.beforePhotos = [];
+  job.afterPhotos = [];
+};
+
+const findEmployeeEligibleForJob = async (job, employeeUserId) => {
+  const employee = await findActiveEmployeeByUserId(employeeUserId);
+  const atm = await ATM.findById(job.atmId);
+  if (!atm || atm.isDeleted) throw new ApiError(404, "ATM not found");
+
+  const employeeId = employee._id.toString().toLowerCase();
+  const isAssignedToATM = (atm.assignedEmployeeId ?? []).some((assignment) => {
+    const assignedEmployeeId = assignment?._id ?? assignment;
+    return (
+      assignedEmployeeId != null &&
+      assignedEmployeeId.toString().toLowerCase() === employeeId
+    );
+  });
+  if (!isAssignedToATM) {
+    throw new ApiError(
+      400,
+      "Employee must be assigned to the Job's ATM",
+    );
+  }
+
+  return employee;
+};
+
+const rejectSubmissionForRework = async ({ job, req, remarks }) => {
+  const rejectedFromStatus = job.status;
+  const rejectionReason = remarks || "Rejected by admin";
+  const rejectedAt = new Date();
+  const previousAttempt = getPreviousAttemptDetails(job);
+
+  let assignedEmployeeEligible = false;
+  if (job.assignedEmployeeId) {
+    try {
+      await findActiveEmployeeByUserId(job.assignedEmployeeId);
+      assignedEmployeeEligible = true;
+    } catch (error) {
+      if (![400, 404].includes(error.statusCode)) throw error;
+    }
+  }
+
+  job.status = JOB_STATUS.REJECTED;
+  job.rejectedAt = rejectedAt;
+  job.rejectionReason = rejectionReason;
+  clearCurrentAttempt(job);
+
+  await logJobHistory({
+    jobId: job._id,
+    action: "rejected",
+    fromStatus: rejectedFromStatus,
+    toStatus: JOB_STATUS.REJECTED,
+    performedBy: req.user._id,
+    details: { rejectionReason, previousAttempt },
+    req,
+  });
+
+  if (assignedEmployeeEligible) {
+    job.status = JOB_STATUS.ASSIGNED;
+    job.assignedAt = new Date();
+    job.assignedBy = req.user._id;
+    await logJobHistory({
+      jobId: job._id,
+      action: "status_changed",
+      fromStatus: JOB_STATUS.REJECTED,
+      toStatus: JOB_STATUS.ASSIGNED,
+      performedBy: req.user._id,
+      details: {
+        reason: "Returned to the assigned employee for rework",
+        rejectionReason,
+      },
+      req,
+    });
+  }
+
+  job.updatedBy = req.user._id;
+  await job.save();
+  return assignedEmployeeEligible;
+};
+
 const generateJobId = async () => {
   const date = new Date();
   const dateStr = date.toISOString().slice(0, 10).replace(/-/g, "");
@@ -197,7 +339,7 @@ export const assignJob = asyncHandler(async (req, res) => {
   if (job.status !== JOB_STATUS.PENDING)
     throw new ApiError(400, `Cannot assign job with status: ${job.status}`);
 
-  await findActiveEmployeeByUserId(employeeId);
+  await findEmployeeEligibleForJob(job, employeeId);
 
   const oldStatus = job.status;
   job.assignedEmployeeId = employeeId;
@@ -313,6 +455,8 @@ export const completeJob = asyncHandler(async (req, res) => {
   if (job.status !== JOB_STATUS.IN_PROGRESS)
     throw new ApiError(400, `Cannot complete job with status: ${job.status}`);
 
+  await assertCleaningEvidence(job);
+
   const atm = await ATM.findById(job.atmId);
   if (!atm) throw new ApiError(404, "ATM not found");
 
@@ -403,8 +547,10 @@ export const verifyJob = asyncHandler(async (req, res) => {
     throw new ApiError(400, `Cannot verify job with status: ${job.status}`);
 
   const oldStatus = job.status;
+  let returnedForRework = false;
 
   if (action === "verify") {
+    await assertCleaningEvidence(job);
     job.status = JOB_STATUS.VERIFIED;
     job.verifiedAt = new Date();
     job.adminRemarks = remarks || "";
@@ -418,22 +564,17 @@ export const verifyJob = asyncHandler(async (req, res) => {
       req,
     });
   } else {
-    job.status = JOB_STATUS.REJECTED;
-    job.rejectedAt = new Date();
-    job.rejectionReason = remarks || "Rejected by admin";
-    await logJobHistory({
-      jobId: job._id,
-      action: "rejected",
-      fromStatus: oldStatus,
-      toStatus: JOB_STATUS.REJECTED,
-      performedBy: req.user._id,
-      details: { rejectionReason: remarks },
+    returnedForRework = await rejectSubmissionForRework({
+      job,
       req,
+      remarks,
     });
   }
 
-  job.updatedBy = req.user._id;
-  await job.save();
+  if (action === "verify") {
+    job.updatedBy = req.user._id;
+    await job.save();
+  }
 
   const populatedJob = await Job.findById(job._id)
     .populate("atmId", "atmId locationName bank address")
@@ -445,7 +586,11 @@ export const verifyJob = asyncHandler(async (req, res) => {
       new ApiResponse(
         200,
         populatedJob,
-        action === "verify" ? "Job verified" : "Job rejected",
+        action === "verify"
+          ? "Job verified"
+          : returnedForRework
+            ? "Job rejected and returned to the assigned employee for rework"
+            : "Job rejected; Admin reassignment is required",
       ),
     );
 });
@@ -466,6 +611,7 @@ export const approveJob = asyncHandler(async (req, res) => {
     throw new ApiError(400, `Cannot approve job with status: ${job.status}`);
 
   const oldStatus = job.status;
+  let returnedForRework = false;
 
   if (action === "approve") {
     job.status = JOB_STATUS.APPROVED;
@@ -481,22 +627,17 @@ export const approveJob = asyncHandler(async (req, res) => {
       req,
     });
   } else {
-    job.status = JOB_STATUS.REJECTED;
-    job.rejectedAt = new Date();
-    job.rejectionReason = remarks || "Rejected by admin";
-    await logJobHistory({
-      jobId: job._id,
-      action: "rejected",
-      fromStatus: oldStatus,
-      toStatus: JOB_STATUS.REJECTED,
-      performedBy: req.user._id,
-      details: { rejectionReason: remarks },
+    returnedForRework = await rejectSubmissionForRework({
+      job,
       req,
+      remarks,
     });
   }
 
-  job.updatedBy = req.user._id;
-  await job.save();
+  if (action === "approve") {
+    job.updatedBy = req.user._id;
+    await job.save();
+  }
 
   const populatedJob = await Job.findById(job._id)
     .populate("atmId", "atmId locationName bank address")
@@ -508,7 +649,11 @@ export const approveJob = asyncHandler(async (req, res) => {
       new ApiResponse(
         200,
         populatedJob,
-        action === "approve" ? "Job approved" : "Job rejected",
+        action === "approve"
+          ? "Job approved"
+          : returnedForRework
+            ? "Job rejected and returned to the assigned employee for rework"
+            : "Job rejected; Admin reassignment is required",
       ),
     );
 });
@@ -554,12 +699,20 @@ export const reassignJob = asyncHandler(async (req, res) => {
   if (job.status === JOB_STATUS.CLOSED)
     throw new ApiError(400, "Cannot reassign a closed job");
 
-  await findActiveEmployeeByUserId(employeeId);
-  if (job.assignedEmployeeId?.toString() === employeeId)
+  await findEmployeeEligibleForJob(job, employeeId);
+  if (
+    job.status !== JOB_STATUS.REJECTED &&
+    job.assignedEmployeeId?.toString() === employeeId
+  )
     throw new ApiError(400, "Job already assigned to this employee");
 
   const oldEmployeeId = job.assignedEmployeeId;
   const oldStatus = job.status;
+  const previousAttempt =
+    oldStatus === JOB_STATUS.REJECTED
+      ? getPreviousAttemptDetails(job)
+      : undefined;
+  if (oldStatus === JOB_STATUS.REJECTED) clearCurrentAttempt(job);
 
   job.reassignmentHistory.push({
     fromEmployee: oldEmployeeId,
@@ -584,7 +737,12 @@ export const reassignJob = asyncHandler(async (req, res) => {
     fromStatus: oldStatus,
     toStatus: JOB_STATUS.ASSIGNED,
     performedBy: req.user._id,
-    details: { fromEmployee: oldEmployeeId, toEmployee: employeeId, reason },
+    details: {
+      fromEmployee: oldEmployeeId,
+      toEmployee: employeeId,
+      reason,
+      ...(previousAttempt ? { previousAttempt } : {}),
+    },
     req,
   });
 

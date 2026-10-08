@@ -8,11 +8,13 @@ import {
   updateATM,
   setATMLocation,
   getATMLocationStatus,
+  setATMAMCResponsible,
 } from "./atm.controller.js";
 import {
   createAtmSchema,
   updateAtmSchema,
   assignATMEmployeeSchema,
+  setATMAMCResponsibleEmployeeSchema,
   validateRequest,
 } from "./atm.validation.js";
 import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
@@ -68,6 +70,14 @@ router.patch(
   authorizeRoles("admin", "superAdmin"),
   validateRequest(assignATMEmployeeSchema),
   assignEmployeeToATM,
+);
+
+router.patch(
+  "/:id/amc-responsible",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(setATMAMCResponsibleEmployeeSchema),
+  setATMAMCResponsible,
 );
 // Employee sets ATM location
 router.post(

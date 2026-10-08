@@ -27,6 +27,8 @@ import amcRouter from "./modules/amc/amc.routes.js";
 import amcPhotoRouter from "./modules/amcPhotos/amcPhoto.routes.js";
 import notificationRouter from "./modules/notification/notification.routes.js";
 import supervisorRouter from "./modules/supervisor/supervisor.routes.js";
+import itemRouter from "./modules/items/item.routes.js";
+import { initializeItemNameIndex } from "./modules/items/itemIndexReadiness.js";
 
 import errorMiddleware from "./middlewares/error.middleware.js";
 
@@ -128,6 +130,7 @@ app.use("/api/v1/amc", amcRouter);
 app.use("/api/v1/amc-photos", amcPhotoRouter);
 app.use("/api/v1/notifications", notificationRouter);
 app.use("/api/v1/supervisor", supervisorRouter);
+app.use("/api/v1/items", itemRouter);
 
 // Health check
 app.get("/health", (req, res) => {
@@ -152,7 +155,15 @@ app.use(errorMiddleware);
 const PORT = process.env.PORT || 5000;
 
 connectDb()
-  .then(() => {
+  .then(async () => {
+    try {
+      await initializeItemNameIndex();
+    } catch {
+      console.error(
+        "Item Master unique-name index initialization failed; Item writes will remain disabled.",
+      );
+    }
+
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
       initCronJobs();

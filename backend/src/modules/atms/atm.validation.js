@@ -7,6 +7,12 @@ const objectIdSchema = z
   .trim()
   .regex(/^[a-fA-F0-9]{24}$/, "Invalid MongoDB ObjectId");
 
+const uniqueObjectIds = (ids) => [
+  ...new Map(
+    ids.map((id) => [id.toLowerCase(), id.toLowerCase()]),
+  ).values(),
+];
+
 export const createAtmSchema = z.object({
   bankId: z.string().trim().min(1, "Bank ID is required"),
   customerId: z.string().trim().min(1, "Customer ID is required"),
@@ -37,10 +43,7 @@ export const createAtmSchema = z.object({
     })
     .optional(),
 
-  assignedEmployeeId: z
-    .array(objectIdSchema)
-    .max(1, "An ATM can have only one assigned employee")
-    .optional(),
+  assignedEmployeeId: z.array(objectIdSchema).transform(uniqueObjectIds).optional(),
 });
 // update atm schema
 export const updateAtmSchema = z.object({
@@ -77,13 +80,14 @@ export const updateAtmSchema = z.object({
       errorMap: () => ({ message: "Status must be either ACTIVE or INACTIVE" }),
     })
     .optional(),
-  assignedEmployeeId: z
-    .array(objectIdSchema)
-    .max(1, "An ATM can have only one assigned employee")
-    .optional(),
+  assignedEmployeeId: z.array(objectIdSchema).transform(uniqueObjectIds).optional(),
 });
 
 export const assignATMEmployeeSchema = z.object({
+  employeeId: objectIdSchema.nullable(),
+});
+
+export const setATMAMCResponsibleEmployeeSchema = z.object({
   employeeId: objectIdSchema.nullable(),
 });
 export const validateRequest = (schema) => {

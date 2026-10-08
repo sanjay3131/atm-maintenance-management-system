@@ -5,17 +5,30 @@ import ATM from "../src/modules/atms/atm.model.js";
 import Employee from "../src/modules/employees/employee.model.js";
 import User from "../src/modules/users/user.model.js";
 import {
+  addEmployeeToATM,
+  removeEmployeeFromATM,
+  replaceATMEmployeeAssignments,
   replaceEmployeeATMAssignments,
-  setATMEmployeeAssignment,
 } from "../src/modules/employees/employeeAssignment.service.js";
-import { assignATMEmployeeSchema } from "../src/modules/atms/atm.validation.js";
+import { setATMAMCResponsibleEmployeeSchema } from "../src/modules/atms/atm.validation.js";
+import {
+  assignATMEmployeeSchema,
+  createAtmSchema,
+  updateAtmSchema,
+} from "../src/modules/atms/atm.validation.js";
 
 const atmId = "64b000000000000000000001";
+const atm2Id = "64b000000000000000000005";
+const atm3Id = "64b000000000000000000006";
 const employeeAId = "64b000000000000000000002";
 const employeeBId = "64b000000000000000000003";
+const employeeCId = "64b000000000000000000007";
+const employeeDId = "64b000000000000000000008";
 const actorId = "64b000000000000000000004";
 
-const matchesId = (left, right) => String(left?._id ?? left) === String(right?._id ?? right);
+const matchesId = (left, right) =>
+  String(left?._id ?? left).toLowerCase() ===
+  String(right?._id ?? right).toLowerCase();
 
 const query = (result) => ({
   session: async () => result,
@@ -24,7 +37,12 @@ const query = (result) => ({
   },
 });
 
-function setup({ atms = [], employees = [], users = [] } = {}) {
+function setup({
+  atms = [],
+  employees = [],
+  users = [],
+  failATMSave = false,
+} = {}) {
   const state = { atms, employees, users, transactions: 0 };
   const originals = [];
   const override = (target, key, value) => {
@@ -36,7 +54,32 @@ function setup({ atms = [], employees = [], users = [] } = {}) {
   override(mongoose, "startSession", async () => ({
     withTransaction: async (operation) => {
       state.transactions += 1;
-      await operation({});
+      const atmSnapshot = state.atms.map((atm) => ({
+        atm,
+        assignedEmployeeId: [...(atm.assignedEmployeeId ?? [])],
+        amcResponsibleEmployeeId: atm.amcResponsibleEmployeeId ?? null,
+        updatedBy: atm.updatedBy,
+      }));
+      const employeeSnapshot = state.employees.map((employee) => ({
+        employee,
+        assignedAtmIds: [...(employee.assignedAtmIds ?? [])],
+        updatedBy: employee.updatedBy,
+      }));
+      try {
+        await operation({});
+      } catch (error) {
+        for (const snapshot of atmSnapshot) {
+          snapshot.atm.assignedEmployeeId = snapshot.assignedEmployeeId;
+          snapshot.atm.amcResponsibleEmployeeId =
+            snapshot.amcResponsibleEmployeeId;
+          snapshot.atm.updatedBy = snapshot.updatedBy;
+        }
+        for (const snapshot of employeeSnapshot) {
+          snapshot.employee.assignedAtmIds = snapshot.assignedAtmIds;
+          snapshot.employee.updatedBy = snapshot.updatedBy;
+        }
+        throw error;
+      }
     },
     endSession: async () => {},
   }));
@@ -57,71 +100,21 @@ function setup({ atms = [], employees = [], users = [] } = {}) {
       ),
     ),
   );
-  override(ATM, "updateMany", async (filter, update) => {
-    for (const atm of state.atms) {
-      if (
-        filter._id?.$in &&
-        !filter._id.$in.some((id) => matchesId(atm._id, id))
-      ) {
-        continue;
-      }
-      if (filter._id && !filter._id.$in && !matchesId(atm._id, filter._id)) {
-        continue;
-      }
-      const assigned = atm.assignedEmployeeId ?? [];
-      if (
-        filter.assignedEmployeeId &&
-        !assigned.some((id) =>
-          matchesId(id, filter.assignedEmployeeId),
-        )
-      ) {
-        continue;
-      }
-      if (update.$pull?.assignedEmployeeId) {
-        atm.assignedEmployeeId = assigned.filter(
-          (id) => !matchesId(id, update.$pull.assignedEmployeeId),
-        );
-      }
-      if (update.$set) Object.assign(atm, update.$set);
-    }
-    return { modifiedCount: 1 };
-  });
   override(ATM.prototype, "save", async function () {
+    if (failATMSave) throw new Error("ATM save failed");
     return this;
   });
 
-  override(Employee, "findById", (id) => query(find(state.employees, id) ?? null));
-  override(Employee, "updateMany", async (filter, update) => {
-    for (const employee of state.employees) {
-      if (filter._id?.$ne && matchesId(employee._id, filter._id.$ne)) continue;
-      const currentIds = employee.assignedAtmIds ?? [];
-      if (filter.assignedAtmIds) {
-        const expected = filter.assignedAtmIds;
-        const hasRef = expected.$in
-          ? currentIds.some((id) =>
-              expected.$in.some((expectedId) => matchesId(id, expectedId)),
-            )
-          : currentIds.some((id) => matchesId(id, expected));
-        if (!hasRef) continue;
-      }
-      if (update.$pull?.assignedAtmIds) {
-        const pull = update.$pull.assignedAtmIds;
-        employee.assignedAtmIds = currentIds.filter(
-          (id) =>
-            !(pull.$in
-              ? pull.$in.some((expectedId) => matchesId(id, expectedId))
-              : matchesId(id, pull)),
-        );
-      }
-    }
-    return { modifiedCount: 1 };
-  });
+  override(Employee, "findById", (id) =>
+    query(find(state.employees, id) ?? null),
+  );
+  override(Employee, "findOne", (filter) =>
+    query(state.employees.find((employee) => matchesId(employee.userId, filter.userId)) ?? null),
+  );
   override(Employee.prototype, "save", async function () {
     return this;
   });
-  override(User, "findById", (id) =>
-    query(find(state.users, id) ?? null),
-  );
+  override(User, "findById", (id) => query(find(state.users, id) ?? null));
 
   return {
     state,
@@ -145,24 +138,53 @@ function makeEmployee(_id, assignedAtmIds = []) {
   };
 }
 
-function makeATM(assignedEmployeeId = []) {
+function makeATM(_id = atmId, assignedEmployeeId = []) {
   return {
-    _id: atmId,
+    _id,
     atmId: "ATM0001",
     isDeleted: false,
     assignedEmployeeId,
-    save: async function () {
-      return this;
+    amcResponsibleEmployeeId: null,
+    save: async function (...args) {
+      return ATM.prototype.save.apply(this, args);
     },
   };
 }
 
+const employees = () => [
+  makeEmployee(employeeAId),
+  makeEmployee(employeeBId),
+  makeEmployee(employeeCId),
+  makeEmployee(employeeDId),
+];
+
 const users = () => [
   { _id: employeeAId, userType: "employee", status: "active" },
   { _id: employeeBId, userType: "employee", status: "active" },
+  { _id: employeeCId, userType: "employee", status: "active" },
+  { _id: employeeDId, userType: "employee", status: "active" },
 ];
 
-test("ATM assignment API accepts explicit null to unassign while validating Employee IDs", () => {
+test("ATM assignment validators accept multiple IDs and normalize duplicates", () => {
+  const employeeIdsValidator = ATM.schema
+    .path("assignedEmployeeId")
+    .validators.find((entry) => entry.message.includes("duplicate Employees"));
+  const shouldValidateAssignments = { isModified: () => true };
+  assert.equal(
+    employeeIdsValidator.validator.call(shouldValidateAssignments, [
+      new mongoose.Types.ObjectId(employeeAId),
+      new mongoose.Types.ObjectId(employeeBId),
+    ]),
+    true,
+  );
+  assert.equal(
+    employeeIdsValidator.validator.call(shouldValidateAssignments, [
+      new mongoose.Types.ObjectId(employeeAId),
+      new mongoose.Types.ObjectId(employeeAId),
+    ]),
+    false,
+  );
+
   assert.equal(
     assignATMEmployeeSchema.safeParse({ employeeId: null }).success,
     true,
@@ -175,156 +197,326 @@ test("ATM assignment API accepts explicit null to unassign while validating Empl
     assignATMEmployeeSchema.safeParse({ employeeId: "invalid" }).success,
     false,
   );
+  assert.equal(
+    setATMAMCResponsibleEmployeeSchema.safeParse({
+      employeeId: employeeAId,
+    }).success,
+    true,
+  );
+  assert.equal(
+    setATMAMCResponsibleEmployeeSchema.safeParse({ employeeId: null }).success,
+    true,
+  );
+  assert.equal(
+    setATMAMCResponsibleEmployeeSchema.safeParse({
+      employeeId: "invalid",
+    }).success,
+    false,
+  );
+
+  const payload = {
+    bankId: "bank",
+    customerId: "customer",
+    districtId: "64b000000000000000000010",
+    regionId: null,
+    locationName: "Location",
+    address: "Address",
+    installationType: "ONSITE",
+    assignedEmployeeId: [employeeAId, employeeBId, employeeAId.toUpperCase()],
+  };
+  assert.deepEqual(
+    createAtmSchema.parse(payload).assignedEmployeeId,
+    [employeeAId, employeeBId],
+  );
+  assert.deepEqual(
+    updateAtmSchema.parse({
+      assignedEmployeeId: [employeeAId, employeeAId.toUpperCase()],
+    }).assignedEmployeeId,
+    [employeeAId],
+  );
+  assert.equal(
+    updateAtmSchema.safeParse({ assignedEmployeeId: [employeeAId, "invalid"] })
+      .success,
+    false,
+  );
+  assert.equal(
+    updateAtmSchema.safeParse({ assignedEmployeeId: employeeAId }).success,
+    false,
+  );
 });
 
-test("assigns an unassigned ATM to an Employee and synchronizes both sides", async () => {
-  const db = setup({
-    atms: [makeATM()],
-    employees: [makeEmployee(employeeAId)],
-    users: users(),
+test("general ATM assignment cannot remove or clear its AMC responsible Employee", async (t) => {
+  await t.test("individual ATM-side removal", async () => {
+    const atm = makeATM(atmId, [employeeAId, employeeBId]);
+    atm.amcResponsibleEmployeeId = employeeBId;
+    const employeeA = makeEmployee(employeeAId, [atmId]);
+    const employeeB = makeEmployee(employeeBId, [atmId]);
+    const db = setup({ atms: [atm], employees: [employeeA, employeeB], users: users() });
+    try {
+      await assert.rejects(
+        removeEmployeeFromATM({
+          atmId,
+          employeeId: employeeBId,
+          updatedBy: actorId,
+        }),
+        /Change or clear AMC responsibility first/,
+      );
+      assert.deepEqual(atm.assignedEmployeeId, [employeeAId, employeeBId]);
+      assert.deepEqual(employeeB.assignedAtmIds, [atmId]);
+    } finally {
+      db.restore();
+    }
   });
+
+  await t.test("ATM-side full replacement", async () => {
+    const atm = makeATM(atmId, [employeeAId, employeeBId]);
+    atm.amcResponsibleEmployeeId = employeeBId;
+    const employeeA = makeEmployee(employeeAId, [atmId]);
+    const employeeB = makeEmployee(employeeBId, [atmId]);
+    const db = setup({ atms: [atm], employees: [employeeA, employeeB], users: users() });
+    try {
+      await assert.rejects(
+        replaceATMEmployeeAssignments({
+          atmId,
+          employeeIds: [employeeAId],
+          updatedBy: actorId,
+        }),
+        /Change or clear AMC responsibility first/,
+      );
+      assert.deepEqual(atm.assignedEmployeeId, [employeeAId, employeeBId]);
+      assert.deepEqual(employeeB.assignedAtmIds, [atmId]);
+    } finally {
+      db.restore();
+    }
+  });
+
+  await t.test("Employee-side ATM replacement", async () => {
+    const atm = makeATM(atmId, [employeeAId, employeeBId]);
+    atm.amcResponsibleEmployeeId = employeeBId;
+    const employeeA = makeEmployee(employeeAId, [atmId]);
+    const employeeB = makeEmployee(employeeBId, [atmId]);
+    const db = setup({ atms: [atm], employees: [employeeA, employeeB], users: users() });
+    try {
+      await assert.rejects(
+        replaceEmployeeATMAssignments({
+          employeeId: employeeBId,
+          assignedAtmIds: [],
+          updatedBy: actorId,
+        }),
+        /Change or clear AMC responsibility first/,
+      );
+      assert.deepEqual(atm.assignedEmployeeId, [employeeAId, employeeBId]);
+      assert.deepEqual(employeeB.assignedAtmIds, [atmId]);
+    } finally {
+      db.restore();
+    }
+  });
+});
+
+test("adding an Employee to an ATM preserves other assignees and synchronizes both sides", async () => {
+  const employeeA = makeEmployee(employeeAId, [atmId]);
+  const employeeB = makeEmployee(employeeBId);
+  const atm = makeATM(atmId, [employeeAId]);
+  const db = setup({ atms: [atm], employees: [employeeA, employeeB], users: users() });
   try {
-    const result = await setATMEmployeeAssignment({
+    const result = await addEmployeeToATM({
       atmId,
-      employeeId: employeeAId,
+      employeeId: employeeBId,
       updatedBy: actorId,
     });
-    assert.deepEqual(result.assignedEmployeeId, [employeeAId]);
-    assert.deepEqual(db.state.employees[0].assignedAtmIds, [atmId]);
+    assert.deepEqual(result.assignedEmployeeId, [employeeAId, employeeBId]);
+    assert.deepEqual(employeeA.assignedAtmIds, [atmId]);
+    assert.deepEqual(employeeB.assignedAtmIds, [atmId]);
     assert.equal(db.state.transactions, 1);
   } finally {
     db.restore();
   }
 });
 
-test("reassigns an ATM and removes it from the previous Employee", async () => {
+test("removing one Employee preserves unrelated ATM assignments", async () => {
+  const employeeA = makeEmployee(employeeAId, [atmId]);
+  const employeeB = makeEmployee(employeeBId, [atmId]);
+  const employeeC = makeEmployee(employeeCId, [atmId]);
+  const atm = makeATM(atmId, [employeeAId, employeeBId, employeeCId]);
   const db = setup({
-    atms: [makeATM([employeeAId])],
-    employees: [
-      makeEmployee(employeeAId, [atmId, atmId]),
-      makeEmployee(employeeBId),
-    ],
+    atms: [atm],
+    employees: [employeeA, employeeB, employeeC],
     users: users(),
   });
   try {
-    const result = await setATMEmployeeAssignment({
+    await removeEmployeeFromATM({
       atmId,
       employeeId: employeeBId,
       updatedBy: actorId,
     });
-    assert.deepEqual(result.assignedEmployeeId, [employeeBId]);
-    assert.deepEqual(db.state.employees[0].assignedAtmIds, []);
-    assert.deepEqual(db.state.employees[1].assignedAtmIds, [atmId]);
+    assert.deepEqual(atm.assignedEmployeeId, [employeeAId, employeeCId]);
+    assert.deepEqual(employeeA.assignedAtmIds, [atmId]);
+    assert.deepEqual(employeeB.assignedAtmIds, []);
+    assert.deepEqual(employeeC.assignedAtmIds, [atmId]);
   } finally {
     db.restore();
   }
 });
 
-test("unassigns an ATM from all Employee references", async () => {
+test("adding the same Employee repeatedly is idempotent", async () => {
+  const employeeA = makeEmployee(employeeAId, [atmId]);
+  const employeeB = makeEmployee(employeeBId, [atmId]);
+  const atm = makeATM(atmId, [employeeAId, employeeBId, employeeBId]);
+  const db = setup({ atms: [atm], employees: [employeeA, employeeB], users: users() });
+  try {
+    await addEmployeeToATM({ atmId, employeeId: employeeBId, updatedBy: actorId });
+    await addEmployeeToATM({ atmId, employeeId: employeeBId, updatedBy: actorId });
+    assert.deepEqual(atm.assignedEmployeeId, [employeeAId, employeeBId]);
+    assert.deepEqual(employeeA.assignedAtmIds, [atmId]);
+    assert.deepEqual(employeeB.assignedAtmIds, [atmId]);
+  } finally {
+    db.restore();
+  }
+});
+
+test("replacing an ATM employee list updates only removed and added reciprocals", async () => {
+  const employeeA = makeEmployee(employeeAId, [atmId]);
+  const employeeB = makeEmployee(employeeBId, [atmId]);
+  const employeeC = makeEmployee(employeeCId, [atmId]);
+  const employeeD = makeEmployee(employeeDId);
+  const atm = makeATM(atmId, [employeeAId, employeeBId, employeeCId]);
   const db = setup({
-    atms: [makeATM([employeeAId])],
-    employees: [
-      makeEmployee(employeeAId, [atmId, atmId]),
-      makeEmployee(employeeBId, [atmId]),
-    ],
+    atms: [atm],
+    employees: [employeeA, employeeB, employeeC, employeeD],
     users: users(),
   });
   try {
-    const result = await setATMEmployeeAssignment({
+    await replaceATMEmployeeAssignments({
       atmId,
-      employeeId: null,
+      employeeIds: [employeeAId, employeeDId],
       updatedBy: actorId,
     });
-    assert.deepEqual(result.assignedEmployeeId, []);
-    assert.deepEqual(db.state.employees[0].assignedAtmIds, []);
-    assert.deepEqual(db.state.employees[1].assignedAtmIds, []);
+    assert.deepEqual(atm.assignedEmployeeId, [employeeAId, employeeDId]);
+    assert.deepEqual(employeeA.assignedAtmIds, [atmId]);
+    assert.deepEqual(employeeB.assignedAtmIds, []);
+    assert.deepEqual(employeeC.assignedAtmIds, []);
+    assert.deepEqual(employeeD.assignedAtmIds, [atmId]);
   } finally {
     db.restore();
   }
 });
 
-test("rejects nonexistent Employees and ATMs", async (t) => {
+test("Employee-side replacement can share an ATM with existing employees", async () => {
+  const atm = makeATM(atmId, [employeeAId]);
+  const employeeA = makeEmployee(employeeAId, [atmId]);
+  const employeeB = makeEmployee(employeeBId);
+  const db = setup({ atms: [atm], employees: [employeeA, employeeB], users: users() });
+  try {
+    await replaceEmployeeATMAssignments({
+      employeeId: employeeBId,
+      assignedAtmIds: [atmId],
+      updatedBy: actorId,
+    });
+    assert.deepEqual(atm.assignedEmployeeId, [employeeAId, employeeBId]);
+    assert.deepEqual(employeeA.assignedAtmIds, [atmId]);
+    assert.deepEqual(employeeB.assignedAtmIds, [atmId]);
+  } finally {
+    db.restore();
+  }
+});
+
+test("Employee-side replacement removes and adds only that Employee's links", async () => {
+  const atm1 = makeATM(atmId, [employeeAId, employeeBId]);
+  const atm2 = makeATM(atm2Id, [employeeBId]);
+  const atm3 = makeATM(atm3Id, [employeeAId]);
+  const employeeA = makeEmployee(employeeAId, [atmId, atm3Id]);
+  const employeeB = makeEmployee(employeeBId, [atmId, atm2Id]);
+  const db = setup({
+    atms: [atm1, atm2, atm3],
+    employees: [employeeA, employeeB],
+    users: users(),
+  });
+  try {
+    await replaceEmployeeATMAssignments({
+      employeeId: employeeBId,
+      assignedAtmIds: [atm2Id, atm3Id],
+      updatedBy: actorId,
+    });
+    assert.deepEqual(employeeB.assignedAtmIds, [atm2Id, atm3Id]);
+    assert.deepEqual(atm1.assignedEmployeeId, [employeeAId]);
+    assert.deepEqual(atm2.assignedEmployeeId, [employeeBId]);
+    assert.deepEqual(atm3.assignedEmployeeId, [employeeAId, employeeBId]);
+    assert.deepEqual(employeeA.assignedAtmIds, [atmId, atm3Id]);
+  } finally {
+    db.restore();
+  }
+});
+
+test("transaction failure rolls back both sides of a reciprocal update", async () => {
+  const atm = makeATM(atmId, [employeeAId]);
+  const employeeA = makeEmployee(employeeAId, [atmId]);
+  const employeeB = makeEmployee(employeeBId);
+  const db = setup({
+    atms: [atm],
+    employees: [employeeA, employeeB],
+    users: users(),
+    failATMSave: true,
+  });
+  try {
+    await assert.rejects(
+      replaceEmployeeATMAssignments({
+        employeeId: employeeBId,
+        assignedAtmIds: [atmId],
+        updatedBy: actorId,
+      }),
+      /ATM save failed/,
+    );
+    assert.deepEqual(atm.assignedEmployeeId, [employeeAId]);
+    assert.deepEqual(employeeA.assignedAtmIds, [atmId]);
+    assert.deepEqual(employeeB.assignedAtmIds, []);
+  } finally {
+    db.restore();
+  }
+});
+
+test("rejects missing and inactive Employees without changing either side", async (t) => {
   await t.test("missing Employee", async () => {
-    const db = setup({ atms: [makeATM()], employees: [], users: [] });
+    const atm = makeATM();
+    const db = setup({ atms: [atm] });
     try {
       await assert.rejects(
-        setATMEmployeeAssignment({
-          atmId,
-          employeeId: employeeAId,
-          updatedBy: actorId,
-        }),
+        addEmployeeToATM({ atmId, employeeId: employeeAId, updatedBy: actorId }),
         (error) => error.statusCode === 404,
       );
+      assert.deepEqual(atm.assignedEmployeeId, []);
+    } finally {
+      db.restore();
+    }
+  });
+
+  await t.test("inactive Employee", async () => {
+    const atm = makeATM();
+    const employeeA = makeEmployee(employeeAId);
+    employeeA.status = "inactive";
+    const db = setup({ atms: [atm], employees: [employeeA], users: users() });
+    try {
+      await assert.rejects(
+        addEmployeeToATM({ atmId, employeeId: employeeAId, updatedBy: actorId }),
+        (error) => error.statusCode === 400,
+      );
+      assert.deepEqual(atm.assignedEmployeeId, []);
+      assert.deepEqual(employeeA.assignedAtmIds, []);
     } finally {
       db.restore();
     }
   });
 
   await t.test("missing ATM", async () => {
-    const db = setup({
-      atms: [],
-      employees: [makeEmployee(employeeAId)],
-      users: users(),
-    });
+    const employeeA = makeEmployee(employeeAId);
+    const db = setup({ employees: [employeeA], users: users() });
     try {
       await assert.rejects(
-        setATMEmployeeAssignment({
-          atmId,
-          employeeId: employeeAId,
-          updatedBy: actorId,
-        }),
+        addEmployeeToATM({ atmId, employeeId: employeeAId, updatedBy: actorId }),
         (error) => error.statusCode === 404,
       );
+      assert.deepEqual(employeeA.assignedAtmIds, []);
     } finally {
       db.restore();
     }
   });
-});
-
-test("repeated assignment is idempotent and prevents duplicate Employee ATM IDs", async () => {
-  const db = setup({
-    atms: [makeATM([employeeAId])],
-    employees: [makeEmployee(employeeAId, [atmId, atmId])],
-    users: users(),
-  });
-  try {
-    await setATMEmployeeAssignment({
-      atmId,
-      employeeId: employeeAId,
-      updatedBy: actorId,
-    });
-    await setATMEmployeeAssignment({
-      atmId,
-      employeeId: employeeAId,
-      updatedBy: actorId,
-    });
-    assert.deepEqual(db.state.atms[0].assignedEmployeeId, [employeeAId]);
-    assert.deepEqual(db.state.employees[0].assignedAtmIds, [atmId]);
-  } finally {
-    db.restore();
-  }
-});
-
-test("Employee assignment replacement removes prior ATM links and synchronizes destinations", async () => {
-  const previousAtmId = "64b000000000000000000005";
-  const desiredAtmId = "64b000000000000000000006";
-  const previousATM = { ...makeATM([employeeAId]), _id: previousAtmId };
-  const desiredATM = { ...makeATM(), _id: desiredAtmId };
-  const db = setup({
-    atms: [previousATM, desiredATM],
-    employees: [makeEmployee(employeeAId, [previousAtmId, previousAtmId])],
-    users: users(),
-  });
-  try {
-    const employee = await replaceEmployeeATMAssignments({
-      employeeId: employeeAId,
-      assignedAtmIds: [desiredAtmId, desiredAtmId],
-      updatedBy: actorId,
-    });
-    assert.deepEqual(employee.assignedAtmIds, [desiredAtmId]);
-    assert.deepEqual(previousATM.assignedEmployeeId, []);
-    assert.deepEqual(desiredATM.assignedEmployeeId, [employeeAId]);
-  } finally {
-    db.restore();
-  }
 });

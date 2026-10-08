@@ -281,6 +281,16 @@ export default function EmployeeJobsPage() {
                       {job.description}
                     </p>
                   )}
+                  {job.rejectionReason && (
+                    <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                        Returned for rework
+                      </p>
+                      <p className="mt-1 break-words text-sm text-muted-foreground">
+                        {job.rejectionReason}
+                      </p>
+                    </div>
+                  )}
                   {job.recurringMaintenance?.source === "RECURRING" && (
                     <div className="space-y-1.5">
                       <div className="flex flex-wrap items-center gap-2">

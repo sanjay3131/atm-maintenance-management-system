@@ -2,9 +2,12 @@ import api from "@/lib/axios";
 import type { AxiosProgressEvent } from "axios";
 import type {
   AssignJobData,
+  AdminJobMaterialUsage,
   CreateJobData,
   Job,
   JobHistoryEntry,
+  JobMaterialItem,
+  JobMaterialUsage,
   JobsListResponse,
   JobsQueryParams,
   MyJobsListResponse,
@@ -65,6 +68,81 @@ export const getJobHistory = async (
   );
 
   return response.data.data;
+};
+
+export const getActiveMaterialItems = async (): Promise<JobMaterialItem[]> => {
+  const response = await api.get<{
+    data: Array<{
+      _id: string;
+      itemName: string;
+      unit: string;
+    }>;
+  }>("/items", { params: { isActive: true } });
+
+  return response.data.data.map(({ _id, itemName, unit }) => ({
+    _id,
+    itemName,
+    unit,
+  }));
+};
+
+export const getJobMaterialUsage = async (
+  jobId: string,
+): Promise<JobMaterialUsage[]> => {
+  const response = await api.get<{
+    data: Array<{
+      _id: string;
+      itemNameSnapshot: string;
+      quantity: number;
+      unitSnapshot: string;
+      createdAt?: string;
+    }>;
+  }>(`/jobs/${jobId}/material-usage`);
+
+  return response.data.data.map(
+    ({ _id, itemNameSnapshot, quantity, unitSnapshot, createdAt }) => ({
+      _id,
+      itemNameSnapshot,
+      quantity,
+      unitSnapshot,
+      createdAt,
+    }),
+  );
+};
+
+export const getAdminJobMaterialUsage = async (
+  jobId: string,
+): Promise<AdminJobMaterialUsage[]> => {
+  const response = await api.get<{
+    data: AdminJobMaterialUsage[];
+  }>(`/jobs/${jobId}/material-usage`);
+
+  return response.data.data.map(
+    ({
+      _id,
+      itemNameSnapshot,
+      quantity,
+      unitSnapshot,
+      unitCostSnapshot,
+      lineCostSnapshot,
+      createdAt,
+    }) => ({
+      _id,
+      itemNameSnapshot,
+      quantity,
+      unitSnapshot,
+      unitCostSnapshot,
+      lineCostSnapshot,
+      createdAt,
+    }),
+  );
+};
+
+export const createJobMaterialUsage = async (
+  jobId: string,
+  data: { itemId: string; quantity: number },
+): Promise<void> => {
+  await api.post(`/jobs/${jobId}/material-usage`, data);
 };
 
 export const createJob = async (data: CreateJobData): Promise<Job> => {
@@ -148,14 +226,14 @@ export const closeJob = async (jobId: string): Promise<Job> => {
   return response.data.data;
 };
 
-export const uploadJobPhoto = async (
+export const uploadJobPhotos = async (
   jobId: string,
-  file: File,
+  files: File[],
   photoType: JobPhotoType,
   onProgress?: (percent: number) => void,
 ): Promise<UploadJobPhotoResponse> => {
   const formData = new FormData();
-  formData.append("photos", file, file.name);
+  files.forEach((file) => formData.append("photos", file, file.name));
   formData.append("photoType", photoType);
 
   const response = await api.post<{ data: UploadJobPhotoResponse }>(

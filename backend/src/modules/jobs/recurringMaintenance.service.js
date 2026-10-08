@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import ATM from "../atms/atm.model.js";
+import Employee from "../employees/employee.model.js";
 import User from "../users/user.model.js";
 import Job from "./jobs.model.js";
 import JobHistory from "./jobHistory.model.js";
@@ -46,6 +47,8 @@ const createResult = () => ({
   skippedNotScheduled: 0,
   skippedUnassigned: 0,
   skippedInactiveEmployee: 0,
+  skippedNoSelectedEmployee: 0,
+  skippedEmployeeNotAssignedToATM: 0,
   skippedMultipleAssignments: 0,
   skippedInactiveATM: 0,
   skippedUnsupportedType: 0,
@@ -65,6 +68,104 @@ const addSkip = (result, counter, plan, atmId, reason) => {
     atmId: atmId?.toString() || plan.atmId.toString(),
     reason,
   });
+};
+
+const normalizeId = (id) => String(id?._id ?? id ?? "").toLowerCase();
+
+const validatePlanEmployee = async (atmId, employeeId) => {
+  if (!employeeId) {
+    throw new ApiError(400, "An Employee must be selected for the recurring plan");
+  }
+
+  const atm = await ATM.findOne({
+    _id: atmId,
+    isDeleted: false,
+    status: { $in: ["ACTIVE", "UNDER_MAINTENANCE"] },
+  }).select("_id assignedEmployeeId");
+  if (!atm) throw new ApiError(404, "Active ATM not found");
+
+  const employee = await Employee.findById(employeeId).populate(
+    "userId",
+    "userType status",
+  );
+  if (!employee) throw new ApiError(404, "Employee not found");
+  if (employee.status !== "active") {
+    throw new ApiError(400, "Employee is inactive");
+  }
+  if (!employee.userId?._id) {
+    throw new ApiError(400, "Employee's linked User was not found");
+  }
+  if (employee.userId.status !== "active") {
+    throw new ApiError(400, "Employee's linked User is inactive");
+  }
+  if (employee.userId.userType !== "employee") {
+    throw new ApiError(400, "Employee's linked User must have employee type");
+  }
+  if (
+    !(atm.assignedEmployeeId ?? []).some(
+      (assignedEmployeeId) =>
+        normalizeId(assignedEmployeeId) === normalizeId(employee._id),
+    )
+  ) {
+    throw new ApiError(400, "Employee must be assigned to the selected ATM");
+  }
+
+  return employee;
+};
+
+const validateGeneratedPlanEmployee = async (plan, atm) => {
+  if (!plan.assignedEmployeeId) {
+    return {
+      counter: "skippedNoSelectedEmployee",
+      reason: "Recurring plan has no Employee selected",
+    };
+  }
+  const employee = await Employee.findById(plan.assignedEmployeeId).populate(
+    "userId",
+    "userType status",
+  );
+  if (!employee) {
+    return {
+      counter: "skippedInactiveEmployee",
+      reason: "Selected Employee no longer exists",
+    };
+  }
+  if (employee.status !== "active") {
+    return {
+      counter: "skippedInactiveEmployee",
+      reason: "Selected Employee is inactive",
+    };
+  }
+  if (!employee.userId?._id) {
+    return {
+      counter: "skippedInactiveEmployee",
+      reason: "Selected Employee's linked User no longer exists",
+    };
+  }
+  if (employee.userId.status !== "active") {
+    return {
+      counter: "skippedInactiveEmployee",
+      reason: "Selected Employee's linked User is inactive",
+    };
+  }
+  if (employee.userId.userType !== "employee") {
+    return {
+      counter: "skippedInactiveEmployee",
+      reason: "Selected Employee's linked User is not an employee",
+    };
+  }
+  if (
+    !(atm.assignedEmployeeId ?? []).some(
+      (assignedEmployeeId) =>
+        normalizeId(assignedEmployeeId) === normalizeId(employee._id),
+    )
+  ) {
+    return {
+      counter: "skippedEmployeeNotAssignedToATM",
+      reason: "Selected Employee is no longer assigned to the plan's ATM",
+    };
+  }
+  return { employee };
 };
 
 const addJobHistory = async (job, createdBy, atm, maintenanceType) => {
@@ -185,44 +286,18 @@ export const generateRecurringJobs = async ({
         continue;
       }
 
-      const assignmentEntries = atm.assignedEmployeeId || [];
-      if (assignmentEntries.length > 1) {
+      const eligibility = await validateGeneratedPlanEmployee(plan, atm);
+      if (!eligibility.employee) {
         addSkip(
           result,
-          "skippedMultipleAssignments",
+          eligibility.counter,
           plan,
           atm._id,
-          "ATM has multiple legacy employee assignments; resolve it in ATM management",
+          eligibility.reason,
         );
         continue;
       }
-      const assignedEmployee = assignmentEntries[0];
-      if (!assignedEmployee) {
-        addSkip(
-          result,
-          "skippedUnassigned",
-          plan,
-          atm._id,
-          "ATM has no valid assigned employee",
-        );
-        continue;
-      }
-
-      if (
-        !assignedEmployee._id ||
-        assignedEmployee.status !== "active" ||
-        assignedEmployee.userId?.status !== "active" ||
-        assignedEmployee.userId?.userType !== "employee"
-      ) {
-        addSkip(
-          result,
-          "skippedInactiveEmployee",
-          plan,
-          atm._id,
-          "Assigned employee or linked User is missing, inactive, or not an employee",
-        );
-        continue;
-      }
+      const assignedEmployee = eligibility.employee;
       const occurrenceKey = occurrenceKeyFor(plan, businessDate.dateKey);
       const { title, description } = getTypeDetails(plan.maintenanceType);
       const jobNumber = `JOB-${businessDate.dateKey.replaceAll("-", "")}-R-${randomUUID()
@@ -319,15 +394,15 @@ export const generateRecurringJobs = async ({
 export const getRecurringMaintenancePlans = async () =>
   RecurringMaintenancePlan.find()
     .populate("atmId", "atmId locationName status")
+    .populate({
+      path: "assignedEmployeeId",
+      select: "employeeCode status userId",
+      populate: { path: "userId", select: "firstName lastName status userType" },
+    })
     .sort({ createdAt: -1 });
 
 export const createRecurringMaintenancePlan = async (planData, createdBy) => {
-  const atm = await ATM.findOne({
-    _id: planData.atmId,
-    isDeleted: false,
-    status: { $in: ["ACTIVE", "UNDER_MAINTENANCE"] },
-  }).select("_id");
-  if (!atm) throw new ApiError(404, "Active ATM not found");
+  await validatePlanEmployee(planData.atmId, planData.assignedEmployeeId);
 
   try {
     return await RecurringMaintenancePlan.create({
@@ -367,6 +442,10 @@ export const updateRecurringMaintenancePlan = async (
   }
   if (plan.maintenanceType === "DAILY_CLEANING" && newDayOfWeek != null) {
     throw new ApiError(400, "Daily cleaning cannot have a weekday");
+  }
+
+  if (Object.hasOwn(updates, "assignedEmployeeId")) {
+    await validatePlanEmployee(plan.atmId, updates.assignedEmployeeId);
   }
 
   Object.assign(plan, updates, { updatedBy });

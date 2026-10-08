@@ -127,7 +127,7 @@ export default function CreateATMForm({
                 : [],
           ),
         ),
-      ].slice(0, 1),
+      ],
     });
   }, [initialATM, reset]);
 
@@ -274,6 +274,26 @@ export default function CreateATMForm({
       },
     );
   }, [employees, employeeSearch]);
+  const selectedEmployeeIds = watch("assignedEmployeeId") ?? [];
+  const availableEmployeeOptions = filteredEmployees.filter(
+    (employee: {
+      _id: string;
+      status?: string;
+      userId?: { status?: string };
+    }) =>
+      (employee.status === "active" && employee.userId?.status === "active") ||
+      selectedEmployeeIds.includes(employee._id),
+  );
+
+  const toggleEmployee = (employeeId: string, checked: boolean) => {
+    const nextIds = checked
+      ? [...new Set([...selectedEmployeeIds, employeeId])]
+      : selectedEmployeeIds.filter((id) => id !== employeeId);
+    setValue("assignedEmployeeId", nextIds, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  };
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
@@ -563,11 +583,9 @@ export default function CreateATMForm({
           <p className="mt-1 text-sm text-red-500">{errors.status.message}</p>
         )}
       </div>
-      {/* assign employee */}
-      <div>
-        <label className="mb-2 block text-sm font-medium">
-          Maintenance Employee
-        </label>
+      {/* assign employees */}
+      <fieldset>
+        <legend className="mb-2 text-sm font-medium">Assigned Employees</legend>
         <input
           type="text"
           placeholder="Search employee..."
@@ -575,70 +593,60 @@ export default function CreateATMForm({
           onChange={(e) => setEmployeeSearch(e.target.value)}
           className="mb-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
         />
-
-        <Select
-          value={watch("assignedEmployeeId")?.[0] || "unassigned"}
-          onValueChange={(value) =>
-            setValue(
-              "assignedEmployeeId",
-              value && value !== "unassigned" ? [value] : [],
-              { shouldValidate: true },
+        <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border p-3">
+          {employeesLoading ? (
+            <p className="text-sm text-muted-foreground">
+              Loading employees...
+            </p>
+          ) : availableEmployeeOptions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No matching active employees.
+            </p>
+          ) : (
+            availableEmployeeOptions.map(
+              (employee: {
+                _id: string;
+                employeeCode: string;
+                status?: string;
+                userId?: {
+                  firstName?: string;
+                  lastName?: string;
+                  status?: string;
+                };
+              }) => (
+                <label
+                  key={employee._id}
+                  className="flex cursor-pointer items-center gap-3 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedEmployeeIds.includes(employee._id)}
+                    onChange={(event) =>
+                      toggleEmployee(employee._id, event.target.checked)
+                    }
+                    className="size-4 accent-primary"
+                  />
+                  <span>
+                    {employee.employeeCode} —{" "}
+                    {`${employee.userId?.firstName || ""} ${
+                      employee.userId?.lastName || ""
+                    }`.trim()}
+                    {employee.status !== "active" && " (inactive)"}
+                  </span>
+                </label>
+              ),
             )
-          }
-          disabled={employeesLoading}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select an employee">
-              {watch("assignedEmployeeId")?.length
-                ? filteredEmployees.find(
-                    (employee: { _id: string }) =>
-                      employee._id === watch("assignedEmployeeId")?.[0],
-                  )?.userId?.firstName || "Selected employee"
-                : "Not Assigned"}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="unassigned">Not Assigned</SelectItem>
-            {employeesLoading ? (
-              <SelectItem value="loading" disabled>
-                Loading employees...
-              </SelectItem>
-            ) : (
-              filteredEmployees
-                .filter(
-                  (employee: {
-                    status?: string;
-                    userId?: { status?: string };
-                  }) =>
-                    employee.status === "active" &&
-                    employee.userId?.status === "active",
-                )
-                .map(
-                  (employee: {
-                    _id: string;
-                    employeeCode: string;
-                    userId: { firstName: string; lastName?: string };
-                  }) => (
-                    <SelectItem key={employee._id} value={employee._id}>
-                      {employee.employeeCode} —{" "}
-                      {`${employee.userId?.firstName || ""} ${
-                        employee.userId?.lastName || ""
-                      }`.trim()}
-                    </SelectItem>
-                  ),
-                )
-            )}
-          </SelectContent>
-        </Select>
+          )}
+        </div>
         {errors.assignedEmployeeId && (
           <p className="mt-1 text-sm text-red-500">
             {errors.assignedEmployeeId.message}
           </p>
         )}
         <p className="mt-1 text-xs text-muted-foreground">
-          One employee is responsible for this ATM’s maintenance.
+          Select any number of employees assigned to this ATM.
         </p>
-      </div>
+      </fieldset>
 
       {/* submit button */}
       <button

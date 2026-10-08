@@ -15,6 +15,11 @@ import {
   createRecurringMaintenancePlanSchema,
   updateRecurringMaintenancePlanSchema,
 } from "./recurringMaintenance.validation.js";
+import { createJobMaterialUsageSchema } from "./jobMaterialUsage.validation.js";
+import {
+  createJobMaterialUsage,
+  getJobMaterialUsage,
+} from "./jobMaterialUsage.controller.js";
 import {
   createRecurringMaintenancePlanController,
   listRecurringMaintenancePlans,
@@ -158,6 +163,20 @@ router.put(
   completeJob,
 );
 router.put("/:id/hold", verifyAccessToken, authorizeRoles("employee"), holdJob);
+
+router.post(
+  "/:id/material-usage",
+  verifyAccessToken,
+  authorizeRoles("employee"),
+  validateRequest(createJobMaterialUsageSchema),
+  createJobMaterialUsage,
+);
+router.get(
+  "/:id/material-usage",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin", "employee"),
+  getJobMaterialUsage,
+);
 
 // Shared routes
 router.get(
