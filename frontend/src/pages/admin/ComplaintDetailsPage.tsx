@@ -198,6 +198,7 @@ export default function ComplaintDetailsPage() {
   const requiresJob = ["ASSIGNED", "IN_PROGRESS", "RESOLVED", "CLOSED"].includes(
     complaint.status ?? "",
   );
+  const jobLinkHistory = complaint.jobLinkHistory ?? [];
   const canCreateLinkedJob =
     complaint.status === "OPEN" && !hasJobReference && Boolean(complaintAtmId);
 
@@ -403,6 +404,61 @@ export default function ComplaintDetailsPage() {
             </dl>
           </CardContent>
         </Card>
+
+        {jobLinkHistory.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Previous Jobs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ol className="divide-y">
+                {jobLinkHistory.map((entry, index) => {
+                  const previousJob = getPopulated(entry.jobId);
+                  const previousJobId = getId(entry.jobId);
+                  const jobLabel =
+                    previousJob?.jobNumber ||
+                    previousJob?.jobId ||
+                    previousJobId;
+
+                  return (
+                    <li
+                      key={entry._id || `${previousJobId}-${index}`}
+                      className="py-3 first:pt-0 last:pb-0"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-medium">
+                          {previousJob && previousJobId ? (
+                            <Link
+                              to={`/admin/jobs/${previousJobId}`}
+                              className="text-primary underline-offset-4 hover:underline"
+                            >
+                              {formatValue(jobLabel)}
+                            </Link>
+                          ) : (
+                            formatValue(jobLabel)
+                          )}
+                        </p>
+                        {previousJob?.status && (
+                          <span className="text-xs text-muted-foreground">
+                            {formatLabel(previousJob.status)}
+                          </span>
+                        )}
+                      </div>
+                      {previousJob?.title && (
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {previousJob.title}
+                        </p>
+                      )}
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {entry.endReason} · {formatDate(entry.endedAt)}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ol>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>

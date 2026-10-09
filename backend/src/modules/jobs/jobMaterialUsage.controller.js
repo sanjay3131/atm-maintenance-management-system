@@ -45,23 +45,57 @@ const findJob = async (jobId, session) => {
 
 export const createJobMaterialUsage = asyncHandler(async (req, res) => {
   const { id: jobId } = req.params;
+  const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
+  if (!isAdmin && req.user.userType !== "employee") {
+    throw new ApiError(403, "Access denied");
+  }
   if (!mongoose.isValidObjectId(jobId)) {
     throw new ApiError(400, "Invalid Job ID");
   }
   if (!mongoose.isValidObjectId(req.body.itemId)) {
     throw new ApiError(400, "Invalid Item ID");
   }
+  if (!isAdmin && req.body.correctionReason !== undefined) {
+    throw new ApiError(403, "Only admins can record a material correction reason");
+  }
+
+  const correctionReason =
+    typeof req.body.correctionReason === "string"
+      ? req.body.correctionReason.trim()
+      : "";
 
   const session = await mongoose.startSession();
   let usage;
   try {
     await session.withTransaction(async () => {
-      const jobFilter = {
-        _id: jobId,
-        assignedEmployeeId: req.user._id,
-        status: JOB_STATUS.IN_PROGRESS,
-        isDeleted: false,
-      };
+      let jobFilter;
+      let statusAtRequest;
+      if (isAdmin) {
+        const job = await findJob(jobId, session);
+        statusAtRequest = job.status;
+        if (
+          [JOB_STATUS.CLOSED, JOB_STATUS.CANCELLED].includes(statusAtRequest) &&
+          !correctionReason
+        ) {
+          throw new ApiError(
+            400,
+            "A correction reason is required for a closed or cancelled Job",
+          );
+        }
+        jobFilter = {
+          _id: jobId,
+          status: statusAtRequest,
+          isDeleted: false,
+        };
+      } else {
+        jobFilter = {
+          _id: jobId,
+          assignedEmployeeId: req.user._id,
+          status: JOB_STATUS.IN_PROGRESS,
+          isDeleted: false,
+        };
+      }
+
       const jobUpdate = await Job.updateOne(
         jobFilter,
         { $inc: { materialUsageRevision: 1 } },
@@ -70,8 +104,10 @@ export const createJobMaterialUsage = asyncHandler(async (req, res) => {
 
       if (jobUpdate.matchedCount !== 1) {
         const currentJob = await findJob(jobId, session);
-        const stateError = getJobStateError(currentJob, req.user._id);
-        if (stateError) throw stateError;
+        if (!isAdmin) {
+          const stateError = getJobStateError(currentJob, req.user._id);
+          if (stateError) throw stateError;
+        }
         throw new ApiError(
           409,
           "Job changed while recording material usage; please retry",
@@ -106,6 +142,7 @@ export const createJobMaterialUsage = asyncHandler(async (req, res) => {
             unitCostSnapshot,
             lineCostSnapshot,
             recordedBy: req.user._id,
+            ...(isAdmin && correctionReason ? { correctionReason } : {}),
           },
         ],
         { session },
@@ -145,6 +182,7 @@ export const getJobMaterialUsage = asyncHandler(async (req, res) => {
         const safeEntry = { ...entry };
         delete safeEntry.unitCostSnapshot;
         delete safeEntry.lineCostSnapshot;
+        delete safeEntry.correctionReason;
         return safeEntry;
       });
 

@@ -8,7 +8,8 @@ export type JobStatus =
   | "VERIFIED"
   | "APPROVED"
   | "CLOSED"
-  | "REJECTED";
+  | "REJECTED"
+  | "CANCELLED";
 
 export type JobPriority = "low" | "medium" | "high" | "critical";
 
@@ -87,6 +88,7 @@ export interface JobMaterialUsage {
 export interface AdminJobMaterialUsage extends JobMaterialUsage {
   unitCostSnapshot: number;
   lineCostSnapshot: number;
+  correctionReason?: string;
 }
 
 export interface RecurringMaintenanceJobMetadata {
@@ -124,6 +126,7 @@ export type JobHistoryAction =
   | "approved"
   | "rejected"
   | "closed"
+  | "cancelled"
   | "note_added";
 
 export interface JobHistoryActor {
@@ -171,6 +174,9 @@ export interface Job {
   approvedAt?: string | null;
   closedAt?: string | null;
   rejectedAt?: string | null;
+  cancelledAt?: string | null;
+  cancelledBy?: JobUser | string | null;
+  cancellationReason?: string;
   employeeGpsAtCompletion?: EmployeeGpsAtCompletion;
   gpsDistance?: number;
   gpsValidated?: boolean;
@@ -225,6 +231,10 @@ export interface CreateJobData {
 
 export interface AssignJobData {
   employeeId: string;
+}
+
+export interface CancelJobData {
+  reason: string;
 }
 
 export interface VerifyJobData {

@@ -10,6 +10,7 @@ import {
   reassignJobSchema,
   verifyJobSchema,
   approveJobSchema,
+  cancelJobSchema,
 } from "./jobs.validation.js";
 import {
   createRecurringMaintenancePlanSchema,
@@ -44,6 +45,7 @@ import {
   updateJob,
   deleteJob,
   holdJob,
+  cancelJob,
 } from "./jobs.controller.js";
 
 const router = Router();
@@ -125,6 +127,13 @@ router.put(
   closeJob,
 );
 router.put(
+  "/:id/cancel",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(cancelJobSchema),
+  cancelJob,
+);
+router.put(
   "/:id",
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin"),
@@ -174,7 +183,7 @@ router.put(
 router.post(
   "/:id/material-usage",
   verifyAccessToken,
-  authorizeRoles("employee"),
+  authorizeRoles("admin", "superAdmin", "employee"),
   validateRequest(createJobMaterialUsageSchema),
   createJobMaterialUsage,
 );

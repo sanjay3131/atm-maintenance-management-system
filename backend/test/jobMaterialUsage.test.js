@@ -108,7 +108,12 @@ const makeQuery = (value) => ({
 });
 
 async function withCreateMocks(
-  { job = makeJob(), item = makeItem(), beforeJobUpdate },
+  {
+    job = makeJob(),
+    item = makeItem(),
+    beforeJobUpdate,
+    user = { _id: userId, userType: "employee" },
+  },
   callback,
 ) {
   const originals = [
@@ -130,24 +135,31 @@ async function withCreateMocks(
     },
   };
   let createdUsage;
+  const isAdmin = ["admin", "superAdmin"].includes(user.userType);
 
   mongoose.startSession = async () => session;
   Job.findById = () => makeQuery(job);
   Job.updateOne = async (filter, update, options) => {
-    assert.deepEqual(filter, {
-      _id: jobId,
-      assignedEmployeeId: userId,
-      status: "IN_PROGRESS",
-      isDeleted: false,
-    });
+    assert.deepEqual(
+      filter,
+      isAdmin
+        ? { _id: jobId, status: job.status, isDeleted: false }
+        : {
+            _id: jobId,
+            assignedEmployeeId: userId,
+            status: "IN_PROGRESS",
+            isDeleted: false,
+          },
+    );
     assert.deepEqual(update, { $inc: { materialUsageRevision: 1 } });
     assert.equal(options.session, session);
     await beforeJobUpdate?.(job);
     const matches =
       job &&
       !job.isDeleted &&
-      job.status === "IN_PROGRESS" &&
-      String(job.assignedEmployeeId) === userId;
+      (isAdmin ||
+        (job.status === "IN_PROGRESS" &&
+          String(job.assignedEmployeeId) === userId));
     if (matches) {
       job.materialUsageRevision = (job.materialUsageRevision ?? 0) + 1;
     }
@@ -273,6 +285,14 @@ test("material usage schema accepts positive quantities and rejects prices and i
   ]) {
     assert.equal(createJobMaterialUsageSchema.safeParse(body).success, false);
   }
+  assert.equal(
+    createJobMaterialUsageSchema.parse({
+      itemId,
+      quantity: 1,
+      correctionReason: "  forgotten material  ",
+    }).correctionReason,
+    "forgotten material",
+  );
 });
 
 test("usage schema snapshots are immutable and allow repeated same-item entries", () => {
@@ -284,6 +304,7 @@ test("usage schema snapshots are immutable and allow repeated same-item entries"
     "unitCostSnapshot",
     "lineCostSnapshot",
     "recordedBy",
+    "correctionReason",
   ]) {
     assert.equal(usageSchema.path(field).options.immutable, true);
   }
@@ -372,6 +393,129 @@ test("assigned employee can record material usage using server-derived immutable
     assert.equal(session.ended, true);
     assert.equal(job.materialUsageRevision, 1);
   });
+});
+
+test("Admin and SuperAdmin can add material at every Job status", async (t) => {
+  const statuses = [
+    "PENDING",
+    "ASSIGNED",
+    "ACCEPTED",
+    "IN_PROGRESS",
+    "ON_HOLD",
+    "COMPLETED",
+    "VERIFIED",
+    "APPROVED",
+    "CLOSED",
+    "CANCELLED",
+    "REJECTED",
+  ];
+  for (const role of ["admin", "superAdmin"]) {
+    for (const status of statuses) {
+      await t.test(`${role} adds material to ${status}`, async () => {
+        const job = makeJob({
+          status,
+          assignedEmployeeId: otherUserId,
+          cancelledAt: new Date("2026-10-08T09:00:00.000Z"),
+          cancelledBy: otherUserId,
+          cancellationReason: "Replacement work",
+          completedAt: new Date("2026-10-08T08:00:00.000Z"),
+          approvedAt: new Date("2026-10-08T08:30:00.000Z"),
+          closedAt: new Date("2026-10-08T08:45:00.000Z"),
+        });
+        const before = {
+          status: job.status,
+          assignedEmployeeId: job.assignedEmployeeId,
+          cancelledAt: job.cancelledAt,
+          cancelledBy: job.cancelledBy,
+          cancellationReason: job.cancellationReason,
+          completedAt: job.completedAt,
+          approvedAt: job.approvedAt,
+          closedAt: job.closedAt,
+          complaintId: job.complaintId,
+        };
+        const user = { _id: adminId, userType: role };
+        await withCreateMocks({ job, user }, async ({ createdUsage }) => {
+          const body = { itemId, quantity: 2 };
+          if (["CLOSED", "CANCELLED"].includes(status)) {
+            body.correctionReason = "  missed during work  ";
+          }
+          const result = await invoke(
+            createJobMaterialUsage,
+            request(user, body),
+          );
+          assert.equal(result.status, 201);
+          assert.equal(createdUsage().recordedBy, adminId);
+          assert.equal(createdUsage().itemNameSnapshot, "Air filter");
+          assert.equal(createdUsage().unitSnapshot, "piece");
+          assert.equal(createdUsage().unitCostSnapshot, 12.345);
+          assert.equal(createdUsage().lineCostSnapshot, 24.69);
+          assert.equal(
+            createdUsage().correctionReason,
+            ["CLOSED", "CANCELLED"].includes(status)
+              ? "missed during work"
+              : undefined,
+          );
+          assert.deepEqual(
+            Object.fromEntries(Object.keys(before).map((key) => [key, job[key]])),
+            before,
+          );
+          assert.equal(job.materialUsageRevision, 1);
+        });
+      });
+    }
+  }
+});
+
+test("Admin terminal material corrections require a trimmed reason", async (t) => {
+  for (const status of ["CLOSED", "CANCELLED"]) {
+    await t.test(status, async () => {
+      const user = { _id: adminId, userType: "admin" };
+      await withCreateMocks(
+        { job: makeJob({ status }), user },
+        async ({ createdUsage, job }) => {
+          for (const reason of [undefined, "   "]) {
+            const error = await captureError(
+              createJobMaterialUsage,
+              request(user, {
+                itemId,
+                quantity: 1,
+                ...(reason === undefined ? {} : { correctionReason: reason }),
+              }),
+            );
+            assert.equal(error.statusCode, 400);
+            assert.equal(createdUsage(), undefined);
+            assert.equal(job.status, status);
+          }
+          await invoke(
+            createJobMaterialUsage,
+            request(user, {
+              itemId,
+              quantity: 1,
+              correctionReason: "  reconciled inventory  ",
+            }),
+          );
+          assert.equal(
+            createdUsage().correctionReason,
+            "reconciled inventory",
+          );
+        },
+      );
+    });
+  }
+});
+
+test("unauthorized user cannot add material at any Job status", async () => {
+  await withCreateMocks(
+    { job: makeJob({ status: "CLOSED" }) },
+    async ({ createdUsage }) => {
+      const error = await captureError(
+        createJobMaterialUsage,
+        request({ _id: otherUserId, userType: "manager" }),
+      );
+      assert.equal(error.statusCode, 403);
+      assert.equal(createdUsage(), undefined);
+    },
+  );
 });
 
 test("cost calculation rounds to two decimal places using nearest-cent rounding", async () => {
@@ -556,11 +700,11 @@ test("usage creation rejects missing or inactive Items and non-finite costs", as
   }
 });
 
-test("employees see all Job usage but never costs; admins see immutable cost snapshots", async () => {
+test("employee responses hide costs and correction reasons; admins retain both", async () => {
   const originalJobFindById = Job.findById;
   const originalUsageFind = JobMaterialUsage.find;
   const originalItemFindById = Item.findById;
-  const job = makeJob();
+  const job = makeJob({ status: "CANCELLED" });
   const item = {
     _id: itemId,
     itemName: "Air filter",
@@ -580,6 +724,7 @@ test("employees see all Job usage but never costs; admins see immutable cost sna
     unitCostSnapshot: 12.345,
     lineCostSnapshot: 24.69,
     recordedBy: otherUserId,
+    correctionReason: "Post-cancellation material correction",
   });
   let sortOrder;
 
@@ -603,6 +748,7 @@ test("employees see all Job usage but never costs; admins see immutable cost sna
     assert.equal(employeeResult.status, 200);
     assert.equal("unitCostSnapshot" in employeeResult.body.data[0], false);
     assert.equal("lineCostSnapshot" in employeeResult.body.data[0], false);
+    assert.equal("correctionReason" in employeeResult.body.data[0], false);
     assert.equal(employeeResult.body.data[0].itemNameSnapshot, "Air filter");
     assert.deepEqual(sortOrder, { createdAt: 1, _id: 1 });
 
@@ -612,6 +758,21 @@ test("employees see all Job usage but never costs; admins see immutable cost sna
     );
     assert.equal(adminResult.body.data[0].unitCostSnapshot, 12.345);
     assert.equal(adminResult.body.data[0].lineCostSnapshot, 24.69);
+    assert.equal(
+      adminResult.body.data[0].correctionReason,
+      "Post-cancellation material correction",
+    );
+
+    const superAdminResult = await invoke(
+      getJobMaterialUsage,
+      request({ _id: adminId, userType: "superAdmin" }),
+    );
+    assert.equal(
+      superAdminResult.body.data[0].correctionReason,
+      "Post-cancellation material correction",
+    );
+    assert.equal(superAdminResult.body.data[0].unitCostSnapshot, 12.345);
+    assert.equal(superAdminResult.body.data[0].lineCostSnapshot, 24.69);
 
     await invoke(updateItem, {
       params: { id: itemId },

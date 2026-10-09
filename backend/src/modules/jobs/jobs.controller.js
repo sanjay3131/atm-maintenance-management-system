@@ -16,6 +16,7 @@ import { escapeRegex } from "../../utils/geographicQuery.js";
 import { findActiveEmployeeByUserId } from "../employees/employeeAssignment.service.js";
 import {
   closeJobAndComplaint,
+  cancelJobAndPreserveComplaintHistory,
   createJobWithComplaint,
   softDeleteJobAndUnlinkComplaint,
 } from "../complaints/complaintJobIntegrity.service.js";
@@ -684,6 +685,22 @@ export const closeJob = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, job, "Job closed successfully"));
 });
 
+export const cancelJob = asyncHandler(async (req, res) => {
+  const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
+  if (!isAdmin) throw new ApiError(403, "Only admins can cancel jobs");
+
+  const job = await cancelJobAndPreserveComplaintHistory({
+    jobId: req.params.id,
+    cancelledBy: req.user._id,
+    reason: req.body.reason,
+    req,
+  });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, job, "Job cancelled successfully"));
+});
+
 // ============================================
 // 9. REASSIGN JOB
 // ============================================
@@ -950,6 +967,7 @@ export const getJobById = asyncHandler(async (req, res) => {
     .populate("createdBy", "firstName lastName")
     .populate("assignedBy", "firstName lastName")
     .populate("updatedBy", "firstName lastName")
+    .populate("cancelledBy", "firstName lastName")
     .populate("beforePhotos", "url thumbnailUrl photoType uploadedAt")
     .populate("afterPhotos", "url thumbnailUrl photoType uploadedAt");
 

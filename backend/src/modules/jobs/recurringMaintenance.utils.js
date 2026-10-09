@@ -43,6 +43,7 @@ export const getBusinessDayEnd = (dateKey) =>
 
 export const getRecurringJobDueState = (job, now = new Date()) => {
   if (!job.recurringMaintenance) return null;
+  if (job.status === "CANCELLED") return "CANCELLED";
   if (SUCCESSFUL_JOB_STATUSES.has(job.status)) return "COMPLETED";
 
   const scheduledDate = job.recurringMaintenance?.scheduledDate;

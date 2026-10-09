@@ -49,6 +49,12 @@ const jobMaterialUsageSchema = new mongoose.Schema(
       required: true,
       immutable: true,
     },
+    correctionReason: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      immutable: true,
+    },
   },
   { timestamps: true },
 );

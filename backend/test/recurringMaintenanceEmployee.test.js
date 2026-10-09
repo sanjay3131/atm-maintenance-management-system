@@ -14,6 +14,7 @@ import {
   createRecurringMaintenancePlanSchema,
   updateRecurringMaintenancePlanSchema,
 } from "../src/modules/jobs/recurringMaintenance.validation.js";
+import { getRecurringJobDueState } from "../src/modules/jobs/recurringMaintenance.utils.js";
 
 const atmId = "64b000000000000000000061";
 const employeeId = "64b000000000000000000062";
@@ -239,6 +240,7 @@ async function withGeneratorMocks({
 } = {}, callback) {
   const createdJobs = [];
   const history = [];
+  const countFilters = [];
   const result = await withOverrides(
     [
       [RecurringMaintenancePlan, "find", () => query([plan])],
@@ -254,18 +256,23 @@ async function withGeneratorMocks({
         return jobCreate(data);
       }],
       [Job, "exists", jobExists],
-      [Job, "countDocuments", async () => 0],
+      [Job, "countDocuments", async (filter) => {
+        countFilters.push(filter);
+        return 0;
+      }],
       [JobHistory, "create", async (entries) => {
         history.push(...entries);
       }],
     ],
-    async () =>
-      generateRecurringJobs({
+    async () => {
+      const result = await generateRecurringJobs({
         createdBy: adminId,
         now: new Date("2026-10-08T06:00:00.000Z"),
-      }),
+      });
+      return result;
+    },
   );
-  await callback({ result, createdJobs, history });
+  await callback({ result, createdJobs, history, countFilters });
 }
 
 test("generator assigns selected Employee's linked User ID despite multiple ATM assignments", async () => {
@@ -326,7 +333,7 @@ test("generator reports invalid selected Employee and linked User states", async
   }
 });
 
-test("generator preserves duplicate occurrence handling", async () => {
+test("generator does not regenerate a cancelled occurrence", async () => {
   await withGeneratorMocks(
     {
       jobCreate: async () => {
@@ -334,7 +341,10 @@ test("generator preserves duplicate occurrence handling", async () => {
         error.code = 11000;
         throw error;
       },
-      jobExists: async () => true,
+      jobExists: async () => ({
+        _id: "64b000000000000000000067",
+        status: "CANCELLED",
+      }),
     },
     async ({ result }) => {
       assert.equal(result.alreadyExists, 1);
@@ -342,6 +352,29 @@ test("generator preserves duplicate occurrence handling", async () => {
       assert.equal(result.errors.length, 0);
     },
   );
+});
+
+test("cancelled recurring Jobs are excluded from due and overdue totals", async () => {
+  await withGeneratorMocks({}, async ({ countFilters }) => {
+    assert.equal(countFilters.length, 2);
+    for (const filter of countFilters) {
+      assert.ok(filter.status.$nin.includes("CANCELLED"));
+    }
+  });
+});
+
+test("cancelled recurring Jobs have a distinct due state", () => {
+  const state = getRecurringJobDueState(
+    {
+      status: "CANCELLED",
+      recurringMaintenance: {
+        scheduledDate: new Date("2026-10-08T00:00:00.000Z"),
+        dueAt: new Date("2026-10-08T23:59:59.000Z"),
+      },
+    },
+    new Date("2026-10-09T00:00:00.000Z"),
+  );
+  assert.equal(state, "CANCELLED");
 });
 
 test("updating plan employee does not update existing Jobs", async () => {

@@ -73,6 +73,7 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
     closedJobs,
     rejectedJobs,
     onHoldJobs,
+    cancelledJobs,
     jobsByPriority,
     jobsByWorkType,
   ] = await Promise.all([
@@ -92,6 +93,7 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
     Job.countDocuments({ status: JOB_STATUS.CLOSED, isDeleted: false }),
     Job.countDocuments({ status: JOB_STATUS.REJECTED, isDeleted: false }),
     Job.countDocuments({ status: JOB_STATUS.ON_HOLD, isDeleted: false }),
+    Job.countDocuments({ status: JOB_STATUS.CANCELLED, isDeleted: false }),
     Job.aggregate([
       { $match: { isDeleted: false } },
       { $group: { _id: "$priority", count: { $sum: 1 } } },
@@ -232,8 +234,10 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
 
   // ── COMPLETION RATE ──
   const completionRate =
-    totalJobs > 0
-      ? Math.round(((approvedJobs + closedJobs) / totalJobs) * 100)
+    totalJobs - cancelledJobs > 0
+      ? Math.round(
+          ((approvedJobs + closedJobs) / (totalJobs - cancelledJobs)) * 100,
+        )
       : 0;
 
   return res.status(200).json(
@@ -254,6 +258,7 @@ export const getDashboardStats = asyncHandler(async (req, res) => {
           closed: closedJobs,
           rejected: rejectedJobs,
           onHold: onHoldJobs,
+          cancelled: cancelledJobs,
           byPriority: jobsByPriority.reduce((acc, curr) => {
             acc[curr._id] = curr.count;
             return acc;
@@ -427,6 +432,7 @@ export const getEmployeePerformance = asyncHandler(async (req, res) => {
       $match: {
         isDeleted: false,
         assignedEmployeeId: { $exists: true, $ne: null },
+        status: { $ne: JOB_STATUS.CANCELLED },
         ...dateFilter,
       },
     },

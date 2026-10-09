@@ -13,11 +13,12 @@ import {
   getBusinessDayStart,
 } from "./recurringMaintenance.utils.js";
 
-const SUCCESSFUL_JOB_STATUSES = [
+const NON_DUE_JOB_STATUSES = [
   JOB_STATUS.COMPLETED,
   JOB_STATUS.VERIFIED,
   JOB_STATUS.APPROVED,
   JOB_STATUS.CLOSED,
+  JOB_STATUS.CANCELLED,
 ];
 
 const getTypeDetails = (maintenanceType) => {
@@ -366,13 +367,13 @@ export const generateRecurringJobs = async ({
     Job.countDocuments({
       "recurringMaintenance.source": "RECURRING",
       "recurringMaintenance.dueAt": { $gte: dayStart, $lte: dayEnd },
-      status: { $nin: SUCCESSFUL_JOB_STATUSES },
+      status: { $nin: NON_DUE_JOB_STATUSES },
       isDeleted: false,
     }),
     Job.countDocuments({
       "recurringMaintenance.source": "RECURRING",
       "recurringMaintenance.dueAt": { $lt: now },
-      status: { $nin: SUCCESSFUL_JOB_STATUSES },
+      status: { $nin: NON_DUE_JOB_STATUSES },
       isDeleted: false,
     }),
   ]);

@@ -126,6 +126,11 @@ export default function AdminDashboardPage() {
               <p className="text-sm text-gray-500">Completed</p>
               <p className="mt-1 text-2xl font-bold">{data.jobs.completed}</p>
             </div>
+
+            <div>
+              <p className="text-sm text-gray-500">Cancelled</p>
+              <p className="mt-1 text-2xl font-bold">{data.jobs.cancelled}</p>
+            </div>
           </div>
         </div>
 

@@ -32,8 +32,8 @@ const generateComplaintId = async () => {
 const isValidObjectId = (value) =>
   typeof value === "string" && /^[0-9a-fA-F]{24}$/.test(value);
 
-const populateComplaint = (query) => {
-  return query
+const populateComplaint = (query, includeJobLinkHistory = false) => {
+  let populatedQuery = query
     .populate(
       "atmId",
       "atmId locationName bank address districtId regionId location installationType",
@@ -44,6 +44,15 @@ const populateComplaint = (query) => {
     .populate("updatedBy", "firstName lastName email")
     .populate("resolvedBy", "firstName lastName email")
     .populate("closedBy", "firstName lastName email");
+
+  if (includeJobLinkHistory) {
+    populatedQuery = populatedQuery.populate(
+      "jobLinkHistory.jobId",
+      "jobId jobNumber status title cancelledAt cancellationReason",
+    );
+  }
+
+  return populatedQuery;
 };
 
 // Status transition rules
@@ -288,7 +297,7 @@ export const getComplaintById = asyncHandler(async (req, res) => {
 
   const { id } = req.params;
 
-  const complaint = await populateComplaint(Complaint.findById(id));
+  const complaint = await populateComplaint(Complaint.findById(id), true);
 
   if (!complaint || complaint.isDeleted) {
     throw new ApiError(404, "Complaint not found");

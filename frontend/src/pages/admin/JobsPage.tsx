@@ -74,6 +74,7 @@ const jobStatuses: JobStatus[] = [
   "APPROVED",
   "CLOSED",
   "REJECTED",
+  "CANCELLED",
 ];
 
 const priorities: JobPriority[] = ["low", "medium", "high", "critical"];
@@ -146,6 +147,7 @@ function getEmployeeName(job: Job) {
 
 function getStatusVariant(status: JobStatus) {
   if (status === "REJECTED") return "destructive" as const;
+  if (status === "CANCELLED") return "destructive" as const;
   if (status === "PENDING" || status === "ON_HOLD") return "secondary" as const;
   if (status === "CLOSED") return "outline" as const;
   return "default" as const;

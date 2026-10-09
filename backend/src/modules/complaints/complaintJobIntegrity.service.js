@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import ApiError from "../../utils/ApiError.js";
 import Job from "../jobs/jobs.model.js";
+import JobHistory from "../jobs/jobHistory.model.js";
 import { JOB_STATUS } from "../../utils/jobStatus.js";
 import Complaint from "./complaints.model.js";
 
@@ -213,6 +214,112 @@ export const closeJobAndComplaint = async ({ jobId, closedBy }) =>
     await job.save({ session });
     return job;
   });
+
+export const cancelJobAndPreserveComplaintHistory = async ({
+  jobId,
+  cancelledBy,
+  reason,
+  req,
+}) => {
+  const cancellationReason = typeof reason === "string" ? reason.trim() : "";
+  if (!cancellationReason || cancellationReason.length > 1000) {
+    throw new ApiError(
+      400,
+      "Cancellation reason must be between 1 and 1000 characters",
+    );
+  }
+
+  return withComplaintJobTransaction(async (session) => {
+    const job = await findActiveJob(jobId, session);
+    const cancellableStatuses = [
+      JOB_STATUS.PENDING,
+      JOB_STATUS.ASSIGNED,
+      JOB_STATUS.ACCEPTED,
+      JOB_STATUS.ON_HOLD,
+      JOB_STATUS.REJECTED,
+    ];
+    if (!cancellableStatuses.includes(job.status)) {
+      const message =
+        job.status === JOB_STATUS.IN_PROGRESS
+          ? "Put the job on hold before cancelling it"
+          : `Cannot cancel job with status: ${job.status}`;
+      throw new ApiError(400, message);
+    }
+
+    const cancelledAt = new Date();
+    const oldStatus = job.status;
+    let previousComplaintStatus;
+
+    if (job.complaintId) {
+      const complaint = await withSession(
+        Complaint.findById(job.complaintId),
+        session,
+      );
+      if (!complaint || complaint.isDeleted) {
+        throw new ApiError(404, "Linked complaint not found");
+      }
+      if (!sameId(complaint.jobId, job._id)) {
+        throw new ApiError(
+          409,
+          "Job and complaint relationship is inconsistent",
+        );
+      }
+      assertSameATM(complaint, job);
+      if (complaint.status === "CLOSED") {
+        throw new ApiError(409, "Cannot cancel a job linked to a closed complaint");
+      }
+
+      previousComplaintStatus = complaint.status;
+      complaint.jobLinkHistory ??= [];
+      complaint.jobLinkHistory.push({
+        jobId: job._id,
+        endedAt: cancelledAt,
+        endReason: cancellationReason,
+      });
+      complaint.jobId = null;
+      if (complaint.status !== "CANCELLED") complaint.status = "OPEN";
+      complaint.updatedBy = cancelledBy;
+      await complaint.save({ session });
+    } else {
+      const linkedComplaint = await withSession(
+        Complaint.findOne({ jobId: job._id, isDeleted: false }),
+        session,
+      );
+      if (linkedComplaint) {
+        throw new ApiError(
+          409,
+          "Complaint and job relationship is inconsistent",
+        );
+      }
+    }
+
+    job.status = JOB_STATUS.CANCELLED;
+    job.cancelledAt = cancelledAt;
+    job.cancelledBy = cancelledBy;
+    job.cancellationReason = cancellationReason;
+    job.updatedBy = cancelledBy;
+    await job.save({ session });
+    await JobHistory.create(
+      [
+        {
+          jobId: job._id,
+          action: "cancelled",
+          fromStatus: oldStatus,
+          toStatus: JOB_STATUS.CANCELLED,
+          performedBy: cancelledBy,
+          performedAt: cancelledAt,
+          details: {
+            cancellationReason,
+            previousComplaintStatus,
+          },
+          ipAddress: req?.ip || req?.headers?.["x-forwarded-for"] || null,
+        },
+      ],
+      { session },
+    );
+    return job;
+  });
+};
 
 export const softDeleteJobAndUnlinkComplaint = async ({
   jobId,

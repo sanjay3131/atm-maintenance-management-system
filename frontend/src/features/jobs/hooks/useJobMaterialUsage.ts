@@ -32,18 +32,28 @@ interface CreateUsageVariables {
   jobId: string;
   itemId: string;
   quantity: number;
+  correctionReason?: string;
 }
 
 export const useCreateJobMaterialUsage = () => {
   const queryClient = useQueryClient();
 
   return useMutation<void, Error, CreateUsageVariables>({
-    mutationFn: ({ jobId, itemId, quantity }) =>
-      createJobMaterialUsage(jobId, { itemId, quantity }),
+    mutationFn: ({ jobId, itemId, quantity, correctionReason }) =>
+      createJobMaterialUsage(jobId, {
+        itemId,
+        quantity,
+        ...(correctionReason ? { correctionReason } : {}),
+      }),
     onSuccess: async (_response, { jobId }) => {
-      await queryClient.invalidateQueries({
-        queryKey: jobMaterialUsageQueryKey(jobId),
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: jobMaterialUsageQueryKey(jobId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["admin-job-material-usage", jobId],
+        }),
+      ]);
     },
     onError: async (error, { jobId }) => {
       if (

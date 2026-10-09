@@ -62,6 +62,10 @@ export const approveJobSchema = z.object({
   remarks: z.string().optional(),
 });
 
+export const cancelJobSchema = z.object({
+  reason: z.string().trim().min(1, "Cancellation reason is required").max(1000),
+});
+
 export const jobFilterSchema = z
   .object({
     status: z.string().optional(),

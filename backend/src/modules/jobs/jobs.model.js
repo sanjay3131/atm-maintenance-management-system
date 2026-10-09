@@ -148,6 +148,17 @@ const jobSchema = new mongoose.Schema(
     rejectedAt: {
       type: Date,
     },
+    cancelledAt: {
+      type: Date,
+    },
+    cancelledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    cancellationReason: {
+      type: String,
+      trim: true,
+    },
 
     // GPS at completion
     employeeGpsAtCompletion: {

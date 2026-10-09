@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   acceptJob,
   approveJob,
+  cancelJob,
   closeJob,
   completeJob,
   holdJob,
@@ -11,7 +12,12 @@ import {
   type CompleteJobData,
   type JobPhotoType,
 } from "../services/jobs.service";
-import type { ApproveJobData, Job, VerifyJobData } from "../types/job.types";
+import type {
+  ApproveJobData,
+  CancelJobData,
+  Job,
+  VerifyJobData,
+} from "../types/job.types";
 
 interface JobLifecycleVariables {
   jobId: string;
@@ -39,6 +45,36 @@ export const useAcceptJob = () => useJobLifecycleMutation(acceptJob);
 export const useStartJob = () => useJobLifecycleMutation(startJob);
 export const useHoldJob = () => useJobLifecycleMutation(holdJob);
 export const useCloseJob = () => useJobLifecycleMutation(closeJob);
+
+export const useCancelJob = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    Job,
+    Error,
+    { jobId: string; data: CancelJobData }
+  >({
+    mutationFn: ({ jobId, data }) => cancelJob(jobId, data),
+    onSuccess: async (_job, { jobId }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["job", jobId] }),
+        queryClient.invalidateQueries({ queryKey: ["job-history", jobId] }),
+        queryClient.invalidateQueries({ queryKey: ["my-jobs"] }),
+        queryClient.invalidateQueries({ queryKey: ["jobs"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["customer-complaints"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["complaint"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["complaints", "admin-list"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["dashboard-stats"],
+        }),
+      ]);
+    },
+  });
+};
 
 interface JobReviewVariables<TData> {
   jobId: string;

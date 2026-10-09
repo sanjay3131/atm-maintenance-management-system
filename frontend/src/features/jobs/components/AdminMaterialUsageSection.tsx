@@ -1,12 +1,26 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
-import { LoaderCircle, Trash2 } from "lucide-react";
+import { LoaderCircle, PackagePlus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import ConfirmMaterialUsageRemovalDialog from "./ConfirmMaterialUsageRemovalDialog";
-import { useAdminJobMaterialUsage } from "../hooks/useAdminJobMaterialUsage";
-import { useDeleteJobMaterialUsage } from "../hooks/useJobMaterialUsage";
+import {
+  useAdminJobMaterialUsage,
+} from "../hooks/useAdminJobMaterialUsage";
+import {
+  useActiveMaterialItems,
+  useCreateJobMaterialUsage,
+  useDeleteJobMaterialUsage,
+} from "../hooks/useJobMaterialUsage";
+import type { Job } from "../types/job.types";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -33,23 +47,76 @@ function getErrorMessage(error: unknown) {
 }
 
 export default function AdminMaterialUsageSection({
-  jobId,
+  job,
 }: {
-  jobId: string;
+  job: Job;
 }) {
+  const jobId = job._id;
+  const terminalCorrection = ["CLOSED", "CANCELLED"].includes(job.status);
   const [usageToRemove, setUsageToRemove] = useState<{
     _id: string;
     itemNameSnapshot: string;
   } | null>(null);
+  const [itemId, setItemId] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [validationError, setValidationError] = useState("");
   const usageQuery = useAdminJobMaterialUsage(jobId);
+  const itemsQuery = useActiveMaterialItems(true);
+  const createMutation = useCreateJobMaterialUsage();
   const deleteMutation = useDeleteJobMaterialUsage();
   const entries = usageQuery.data ?? [];
+  const selectedItem = itemsQuery.data?.find((item) => item._id === itemId);
   const totalExpense =
     entries.reduce(
       (totalCents, entry) =>
         totalCents + Math.round(entry.lineCostSnapshot * 100),
       0,
     ) / 100;
+
+  const addMaterial = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (createMutation.isPending) return;
+    const parsedQuantity = Number(quantity);
+    const reason = correctionReason.trim();
+
+    if (!itemId) {
+      setValidationError("Select an active Item.");
+      return;
+    }
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+      setValidationError("Quantity must be a finite number greater than zero.");
+      return;
+    }
+    if (terminalCorrection && !reason) {
+      setValidationError("A correction reason is required for this Job.");
+      return;
+    }
+
+    setValidationError("");
+    createMutation.mutate(
+      {
+        jobId,
+        itemId,
+        quantity: parsedQuantity,
+        ...(reason ? { correctionReason: reason } : {}),
+      },
+      {
+        onSuccess: () => {
+          setItemId("");
+          setQuantity("1");
+          setCorrectionReason("");
+          toast.success("Material usage added.");
+        },
+        onError: (error) => {
+          const message = isAxiosError<{ message?: string }>(error)
+            ? error.response?.data?.message
+            : undefined;
+          toast.error(message || "Could not add material usage. Try again.");
+        },
+      },
+    );
+  };
 
   const confirmRemove = () => {
     if (!usageToRemove || deleteMutation.isPending) return;
@@ -78,6 +145,145 @@ export default function AdminMaterialUsageSection({
         <CardTitle>Materials Used</CardTitle>
       </CardHeader>
       <CardContent className="min-w-0 space-y-4 p-4 pt-0 sm:p-6 sm:pt-0">
+        {terminalCorrection && (
+          <p className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-900 dark:text-amber-200">
+            This is a post-{job.status === "CLOSED" ? "completion" : "cancellation"}{" "}
+            material correction. The Job will remain {job.status}; provide a
+            reason for this addition.
+          </p>
+        )}
+        <form
+          className="grid min-w-0 gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(8rem,0.4fr)_auto] sm:items-end sm:p-4"
+          onSubmit={addMaterial}
+        >
+          <div className="min-w-0 space-y-2">
+            <label className="text-sm font-medium" htmlFor={`admin-material-item-${jobId}`}>
+              Active Item
+            </label>
+            {itemsQuery.isError ? (
+              <div className="space-y-2">
+                <p role="alert" className="text-sm text-destructive">
+                  Could not load active Items.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void itemsQuery.refetch()}
+                  disabled={itemsQuery.isFetching}
+                >
+                  {itemsQuery.isFetching ? "Retrying..." : "Retry"}
+                </Button>
+              </div>
+            ) : (
+              <Select
+                value={itemId}
+                onValueChange={(value) => {
+                  setItemId(value ?? "");
+                  setValidationError("");
+                }}
+                disabled={
+                  createMutation.isPending ||
+                  itemsQuery.isLoading ||
+                  (itemsQuery.data?.length ?? 0) === 0
+                }
+              >
+                <SelectTrigger
+                  id={`admin-material-item-${jobId}`}
+                  className="min-h-11 w-full"
+                  aria-label="Active Item"
+                >
+                  <SelectValue
+                    placeholder={
+                      itemsQuery.isLoading
+                        ? "Loading Items..."
+                        : (itemsQuery.data?.length ?? 0) > 0
+                          ? "Select an Item"
+                          : "No active Items available"
+                    }
+                  >
+                    {selectedItem
+                      ? `${selectedItem.itemName} (${selectedItem.unit})`
+                      : undefined}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {(itemsQuery.data ?? []).map((item) => (
+                    <SelectItem key={item._id} value={item._id}>
+                      {item.itemName} ({item.unit})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+          <div className="space-y-2">
+            <label
+              className="text-sm font-medium"
+              htmlFor={`admin-material-quantity-${jobId}`}
+            >
+              Quantity
+            </label>
+            <input
+              id={`admin-material-quantity-${jobId}`}
+              type="number"
+              min="0"
+              step="any"
+              inputMode="decimal"
+              value={quantity}
+              onChange={(event) => {
+                setQuantity(event.target.value);
+                setValidationError("");
+              }}
+              disabled={createMutation.isPending}
+              className="h-11 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+            />
+          </div>
+          <Button
+            type="submit"
+            className="min-h-11 w-full sm:w-auto"
+            disabled={
+              createMutation.isPending ||
+              itemsQuery.isLoading ||
+              itemsQuery.isError ||
+              (itemsQuery.data?.length ?? 0) === 0
+            }
+          >
+            {createMutation.isPending ? (
+              <LoaderCircle className="animate-spin" />
+            ) : (
+              <PackagePlus />
+            )}
+            {createMutation.isPending ? "Adding..." : "Add Material"}
+          </Button>
+          {terminalCorrection && (
+            <div className="space-y-2 sm:col-span-3">
+              <label
+                className="text-sm font-medium"
+                htmlFor={`material-correction-reason-${jobId}`}
+              >
+                Correction reason
+              </label>
+              <textarea
+                id={`material-correction-reason-${jobId}`}
+                value={correctionReason}
+                onChange={(event) => {
+                  setCorrectionReason(event.target.value);
+                  setValidationError("");
+                }}
+                maxLength={1000}
+                rows={2}
+                disabled={createMutation.isPending}
+                className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+              />
+            </div>
+          )}
+          {validationError && (
+            <p className="text-sm text-destructive sm:col-span-3" role="alert">
+              {validationError}
+            </p>
+          )}
+        </form>
         {usageQuery.isLoading ? (
           <div
             className="flex items-center gap-2 py-4 text-sm text-muted-foreground"
@@ -145,6 +351,11 @@ export default function AdminMaterialUsageSection({
                       <tr key={entry._id}>
                         <td className="max-w-56 break-words px-3 py-3 font-medium">
                           {entry.itemNameSnapshot}
+                          {entry.correctionReason && (
+                            <p className="mt-1 whitespace-normal text-xs font-normal text-muted-foreground">
+                              Correction: {entry.correctionReason}
+                            </p>
+                          )}
                         </td>
                         <td className="whitespace-nowrap px-3 py-3">
                           {entry.quantity} {entry.unitSnapshot}

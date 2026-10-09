@@ -15,6 +15,7 @@ export interface DashboardStats {
     closed: number;
     rejected: number;
     onHold: number;
+    cancelled: number;
     byPriority: Record<string, number>;
     byWorkType: Record<string, number>;
     completionRate: number;

@@ -3,6 +3,7 @@ import type { AxiosProgressEvent } from "axios";
 import type {
   AssignJobData,
   AdminJobMaterialUsage,
+  CancelJobData,
   CreateJobData,
   Job,
   JobHistoryEntry,
@@ -125,6 +126,7 @@ export const getAdminJobMaterialUsage = async (
       unitSnapshot,
       unitCostSnapshot,
       lineCostSnapshot,
+      correctionReason,
       createdAt,
     }) => ({
       _id,
@@ -133,6 +135,7 @@ export const getAdminJobMaterialUsage = async (
       unitSnapshot,
       unitCostSnapshot,
       lineCostSnapshot,
+      correctionReason,
       createdAt,
     }),
   );
@@ -140,7 +143,11 @@ export const getAdminJobMaterialUsage = async (
 
 export const createJobMaterialUsage = async (
   jobId: string,
-  data: { itemId: string; quantity: number },
+  data: {
+    itemId: string;
+    quantity: number;
+    correctionReason?: string;
+  },
 ): Promise<void> => {
   await api.post(`/jobs/${jobId}/material-usage`, data);
 };
@@ -229,6 +236,18 @@ export const approveJob = async (
 
 export const closeJob = async (jobId: string): Promise<Job> => {
   const response = await api.put<{ data: Job }>(`/jobs/${jobId}/close`);
+
+  return response.data.data;
+};
+
+export const cancelJob = async (
+  jobId: string,
+  data: CancelJobData,
+): Promise<Job> => {
+  const response = await api.put<{ data: Job }>(
+    `/jobs/${jobId}/cancel`,
+    data,
+  );
 
   return response.data.data;
 };

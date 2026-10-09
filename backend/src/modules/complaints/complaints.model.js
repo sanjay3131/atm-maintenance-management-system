@@ -64,6 +64,24 @@ const complaintsSchema = new mongoose.Schema(
       ref: "Job",
       index: true,
     },
+    jobLinkHistory: [
+      {
+        jobId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Job",
+          required: true,
+        },
+        endedAt: {
+          type: Date,
+          required: true,
+        },
+        endReason: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+      },
+    ],
     // Resolution tracking
     resolvedAt: {
       type: Date,

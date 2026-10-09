@@ -84,7 +84,9 @@ function getJobStatusVariant(status: Job["status"]) {
   if (["COMPLETED", "VERIFIED", "APPROVED", "CLOSED"].includes(status)) {
     return "default" as const;
   }
-  if (status === "REJECTED") return "destructive" as const;
+  if (status === "REJECTED" || status === "CANCELLED") {
+    return "destructive" as const;
+  }
   return "secondary" as const;
 }
 

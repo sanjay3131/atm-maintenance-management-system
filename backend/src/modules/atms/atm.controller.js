@@ -77,7 +77,7 @@ const ensureATMCanMove = async (atmId) => {
     Job.countDocuments({
       atmId,
       isDeleted: false,
-      status: { $ne: JOB_STATUS.CLOSED },
+      status: { $nin: [JOB_STATUS.CLOSED, JOB_STATUS.CANCELLED] },
     }),
     AMC.countDocuments({
       atmId,

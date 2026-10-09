@@ -21,6 +21,7 @@ const jobHistorySchema = new mongoose.Schema(
         "approved",
         "rejected",
         "closed",
+        "cancelled",
         "note_added",
       ],
       required: true,

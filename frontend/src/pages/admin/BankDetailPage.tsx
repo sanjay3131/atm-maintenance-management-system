@@ -71,6 +71,7 @@ const JOB_STATUSES: JobStatus[] = [
   "APPROVED",
   "CLOSED",
   "REJECTED",
+  "CANCELLED",
 ];
 const JOB_WORK_TYPES: JobWorkType[] = [
   "repair",
@@ -272,7 +273,9 @@ function formatJobDate(value: string) {
 }
 
 function getJobStatusVariant(status: JobStatus) {
-  if (status === "REJECTED") return "destructive" as const;
+  if (status === "REJECTED" || status === "CANCELLED") {
+    return "destructive" as const;
+  }
   if (status === "PENDING" || status === "ON_HOLD") return "secondary" as const;
   if (status === "CLOSED") return "outline" as const;
   return "default" as const;
@@ -1850,6 +1853,10 @@ export default function BankDetailPage() {
                         getJobStatusCount(jobStatusCounts, "APPROVED"),
                     ],
                     ["Closed", getJobStatusCount(jobStatusCounts, "CLOSED")],
+                    [
+                      "Cancelled",
+                      getJobStatusCount(jobStatusCounts, "CANCELLED"),
+                    ],
                   ].map(([label, count]) => (
                     <Card key={label}>
                       <CardContent className="p-5">
@@ -1878,6 +1885,12 @@ export default function BankDetailPage() {
                       Rejected:{" "}
                       <strong>
                         {getJobStatusCount(jobStatusCounts, "REJECTED")}
+                      </strong>
+                    </span>
+                    <span>
+                      Cancelled:{" "}
+                      <strong>
+                        {getJobStatusCount(jobStatusCounts, "CANCELLED")}
                       </strong>
                     </span>
                   </CardContent>

@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { isAxiosError } from "axios";
 import {
   ArrowLeft,
+  Ban,
   Check,
   LoaderCircle,
   Pause,
@@ -28,6 +29,7 @@ import JobPhotoGallery from "@/features/jobs/components/JobPhotoGallery";
 import {
   useAcceptJob,
   useApproveJob,
+  useCancelJob,
   useCloseJob,
   useHoldJob,
   useStartJob,
@@ -48,6 +50,13 @@ const REASSIGNABLE_STATUSES: JobStatus[] = [
   "ASSIGNED",
   "ACCEPTED",
   "IN_PROGRESS",
+  "ON_HOLD",
+  "REJECTED",
+];
+const CANCELLABLE_STATUSES: JobStatus[] = [
+  "PENDING",
+  "ASSIGNED",
+  "ACCEPTED",
   "ON_HOLD",
   "REJECTED",
 ];
@@ -111,6 +120,7 @@ function formatHistoryAction(action: string, entry: JobHistoryEntry) {
     approved: "Approved",
     rejected: "Rejected",
     closed: "Closed",
+    cancelled: "Cancelled",
     note_added: "Note Added",
   };
 
@@ -229,6 +239,7 @@ function formatGpsValue(value?: number) {
 
 function getStatusVariant(status: JobStatus) {
   if (status === "REJECTED") return "destructive" as const;
+  if (status === "CANCELLED") return "destructive" as const;
   if (status === "PENDING" || status === "ON_HOLD") return "secondary" as const;
   if (status === "CLOSED") return "outline" as const;
   return "default" as const;
@@ -299,6 +310,8 @@ export default function JobDetailsPage({
   const { jobId = "" } = useParams<{ jobId: string }>();
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState("");
   const [rejectionAction, setRejectionAction] = useState<
     "verify" | "approve" | null
   >(null);
@@ -306,6 +319,7 @@ export default function JobDetailsPage({
   const acceptMutation = useAcceptJob();
   const startMutation = useStartJob();
   const holdMutation = useHoldJob();
+  const cancelMutation = useCancelJob();
   const verifyMutation = useVerifyJob();
   const approveMutation = useApproveJob();
   const closeMutation = useCloseJob();
@@ -373,7 +387,8 @@ export default function JobDetailsPage({
   const lifecycleMutationPending =
     acceptMutation.isPending ||
     startMutation.isPending ||
-    holdMutation.isPending;
+    holdMutation.isPending ||
+    cancelMutation.isPending;
   const reviewMutationPending =
     verifyMutation.isPending ||
     approveMutation.isPending ||
@@ -404,6 +419,7 @@ export default function JobDetailsPage({
     ["Approved", job.approvedAt],
     ["Rejected", job.rejectedAt],
     ["Closed", job.closedAt],
+    ["Cancelled", job.cancelledAt],
   ] as const;
 
   const handleRejectSuccess = () => {
@@ -480,6 +496,30 @@ export default function JobDetailsPage({
       { jobId: job._id },
       {
         onSuccess: () => toast.success("Job closed."),
+        onError: (mutationError) =>
+          toast.error(getMutationErrorMessage(mutationError)),
+      },
+    );
+  };
+
+  const handleCancelDialogChange = (open: boolean) => {
+    if (cancelMutation.isPending) return;
+    setIsCancelDialogOpen(open);
+    if (!open) setCancellationReason("");
+  };
+
+  const confirmCancel = () => {
+    const reason = cancellationReason.trim();
+    if (!reason || cancelMutation.isPending) return;
+
+    cancelMutation.mutate(
+      { jobId: job._id, data: { reason } },
+      {
+        onSuccess: () => {
+          setIsCancelDialogOpen(false);
+          setCancellationReason("");
+          toast.success("Job cancelled.");
+        },
         onError: (mutationError) =>
           toast.error(getMutationErrorMessage(mutationError)),
       },
@@ -601,6 +641,17 @@ export default function JobDetailsPage({
                 Close
               </Button>
             )}
+            {CANCELLABLE_STATUSES.includes(job.status) && (
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={lifecycleMutationPending}
+                onClick={() => setIsCancelDialogOpen(true)}
+              >
+                <Ban />
+                Cancel Job
+              </Button>
+            )}
           </div>
         )}
         {readOnly && (
@@ -668,7 +719,7 @@ export default function JobDetailsPage({
       {readOnly ? (
         <EmployeeMaterialUsageSection job={job} />
       ) : (
-        <AdminMaterialUsageSection jobId={job._id} />
+        <AdminMaterialUsageSection job={job} />
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -969,6 +1020,7 @@ export default function JobDetailsPage({
         {(job.employeeRemarks ||
           job.adminRemarks ||
           job.rejectionReason ||
+          job.cancellationReason ||
           job.isReassigned ||
           reassignmentHistory.length > 0) && (
           <Card className="lg:col-span-2">
@@ -990,6 +1042,18 @@ export default function JobDetailsPage({
                   <DetailRow
                     label="Rejection reason"
                     value={job.rejectionReason}
+                  />
+                )}
+                {job.cancellationReason && (
+                  <DetailRow
+                    label="Cancellation reason"
+                    value={job.cancellationReason}
+                  />
+                )}
+                {job.cancelledBy && (
+                  <DetailRow
+                    label="Cancelled by"
+                    value={getPersonName(job.cancelledBy)}
                   />
                 )}
                 {job.isReassigned && (
@@ -1162,6 +1226,58 @@ export default function JobDetailsPage({
                 <LoaderCircle className="animate-spin" />
               )}
               Confirm Reject
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isCancelDialogOpen} onOpenChange={handleCancelDialogChange}>
+        <DialogContent>
+          <div className="space-y-2">
+            <DialogTitle>Cancel Job</DialogTitle>
+            <DialogDescription>
+              Cancel {job.jobNumber || job.jobId}? This job will remain in
+              history with its material and cost records intact. Any linked
+              linked complaint will retain this job in its history; an active
+              complaint will reopen for replacement work.
+            </DialogDescription>
+          </div>
+          <div className="mt-4">
+            <label
+              htmlFor="job-cancellation-reason"
+              className="mb-2 block text-sm font-medium"
+            >
+              Cancellation reason
+            </label>
+            <textarea
+              id="job-cancellation-reason"
+              value={cancellationReason}
+              onChange={(event) => setCancellationReason(event.target.value)}
+              rows={4}
+              maxLength={1000}
+              required
+              disabled={cancelMutation.isPending}
+              className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+            />
+          </div>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleCancelDialogChange(false)}
+              disabled={cancelMutation.isPending}
+            >
+              Keep Job
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={confirmCancel}
+              disabled={cancelMutation.isPending || !cancellationReason.trim()}
+            >
+              {cancelMutation.isPending && (
+                <LoaderCircle className="animate-spin" />
+              )}
+              Confirm Cancellation
             </Button>
           </div>
         </DialogContent>

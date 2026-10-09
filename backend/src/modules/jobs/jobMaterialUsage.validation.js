@@ -12,5 +12,10 @@ export const createJobMaterialUsageSchema = z
       .number()
       .finite("Quantity must be a finite number")
       .positive("Quantity must be greater than zero"),
+    correctionReason: z
+      .string()
+      .trim()
+      .max(1000, "Correction reason must be 1000 characters or fewer")
+      .optional(),
   })
   .strict();

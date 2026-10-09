@@ -31,9 +31,19 @@ export interface ComplaintCustomer {
 export interface ComplaintJob {
   _id: string;
   jobId?: string;
+  jobNumber?: string;
   status?: string;
   title?: string;
   assignedEmployeeId?: string | null;
+  cancelledAt?: string;
+  cancellationReason?: string;
+}
+
+export interface ComplaintJobLinkHistory {
+  _id?: string;
+  jobId: ComplaintJob | string;
+  endedAt: string;
+  endReason: string;
 }
 
 export interface ComplaintUser {
@@ -55,6 +65,7 @@ export interface Complaint {
   priority?: ComplaintPriority | null;
   status?: ComplaintStatus | null;
   jobId?: ComplaintJob | string | null;
+  jobLinkHistory?: ComplaintJobLinkHistory[];
   resolvedAt?: string;
   resolvedBy?: ComplaintUser | string | null;
   resolutionNotes?: string;

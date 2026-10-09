@@ -5,6 +5,7 @@ import ATM from "../src/modules/atms/atm.model.js";
 import Employee from "../src/modules/employees/employee.model.js";
 import User from "../src/modules/users/user.model.js";
 import AMC from "../src/modules/amc/amc.model.js";
+import Job from "../src/modules/jobs/jobs.model.js";
 import {
   guardEmployeeEligibilityChange,
   guardUserEligibilityChange,
@@ -559,6 +560,67 @@ test("AMC generation reports and skips ATMs without dedicated responsibility", a
     assert.equal(result.created, 0);
     assert.equal(result.skipped, 1);
     assert.match(result.errors[0].error, /No AMC responsible employee/);
+  } finally {
+    for (const [target, key, original] of originals.reverse()) {
+      target[key] = original;
+    }
+  }
+});
+
+test("AMC generation remains independent of a cancelled Job", async () => {
+  const record = {
+    _id: atmId,
+    atmId: "ATM0001",
+    status: "ACTIVE",
+    assignedEmployeeId: [{ _id: employeeAId, userId: { _id: userAId } }],
+    amcResponsibleEmployeeId: {
+      _id: employeeAId,
+      employeeCode: "EMP-A",
+      status: "active",
+      supervisorId: null,
+      userId: { _id: userAId, status: "active", userType: "employee" },
+    },
+    customer: null,
+    bankId: null,
+    districtId: null,
+  };
+  const cancelledJob = { status: "CANCELLED" };
+  const generatedAMCs = [];
+  let jobCreateCalls = 0;
+  const originals = [];
+  const override = (target, key, value) => {
+    originals.push([target, key, target[key]]);
+    target[key] = value;
+  };
+  const queryResult = {
+    populate() {
+      return this;
+    },
+    then(resolve, reject) {
+      return Promise.resolve([record]).then(resolve, reject);
+    },
+  };
+  override(ATM, "find", () => queryResult);
+  override(User, "findOne", () => ({
+    select: async () => ({ _id: actorId }),
+  }));
+  override(AMC, "countDocuments", async () => 0);
+  override(AMC, "create", async (data) => {
+    generatedAMCs.push(data);
+    return data;
+  });
+  override(Job, "create", async () => {
+    jobCreateCalls++;
+    throw new Error("AMC generation must not create Jobs");
+  });
+
+  try {
+    const result = await generateMonthlyAMC(10, 2026, actorId);
+    assert.equal(result.created, 1);
+    assert.equal(generatedAMCs.length, 1);
+    assert.equal(generatedAMCs[0].atmId, atmId);
+    assert.equal(cancelledJob.status, "CANCELLED");
+    assert.equal(jobCreateCalls, 0);
   } finally {
     for (const [target, key, original] of originals.reverse()) {
       target[key] = original;
