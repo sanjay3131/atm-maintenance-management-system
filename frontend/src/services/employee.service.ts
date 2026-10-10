@@ -30,6 +30,49 @@ export interface Employee {
   updatedAt: string;
 }
 
+export interface MyEmployeeProfile {
+  employeeCode?: string;
+  designation?: string;
+  department?: string;
+  joiningDate?: string;
+  employmentType?: "full-time" | "part-time" | "contract";
+  status?: "active" | "inactive" | "on_leave" | "resigned";
+  user?: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phoneNumber?: string;
+  } | null;
+  districts: Array<{
+    districtName: string;
+    pinCode: string;
+    state?: string;
+  }>;
+  regions: Array<{
+    name: string;
+    code?: string;
+    district: {
+      districtName: string;
+      pinCode: string;
+      state?: string;
+    } | null;
+  }>;
+  assignedAtms: Array<{
+    atmId: string;
+    locationName?: string;
+    status: string;
+    district: {
+      districtName: string;
+      pinCode: string;
+      state?: string;
+    } | null;
+    region: {
+      name: string;
+      code?: string;
+    } | null;
+  }>;
+}
+
 export interface DistrictEmployee {
   _id: string;
   employeeCode: string;
@@ -126,6 +169,12 @@ export const getEmployeeById = async (
   employeeId: string,
 ): Promise<Employee> => {
   const response = await api.get(`/employees/${employeeId}`);
+
+  return response.data.data;
+};
+
+export const getMyEmployeeProfile = async (): Promise<MyEmployeeProfile> => {
+  const response = await api.get<{ data: MyEmployeeProfile }>("/employees/me");
 
   return response.data.data;
 };

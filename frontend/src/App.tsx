@@ -7,6 +7,7 @@ import EmployeeDashboardPage from "@/pages/employee/EmployeeDashboardPage";
 import ProtectedRoute from "@/routes/ProtectedRoute";
 import AdminLayout from "@/layouts/AdminLayout";
 import EmployeesPage from "@/pages/admin/EmployeesPage";
+import EmployeeDetailsPage from "@/pages/admin/EmployeeDetailsPage";
 import AtmsPage from "@/pages/admin/AtmsPage";
 import JobsPage from "@/pages/admin/JobsPage";
 import AmcPage from "@/pages/admin/AmcPage";
@@ -17,6 +18,7 @@ import EditATMPage from "@/pages/admin/EditATMPage";
 import JobDetailsPage from "@/pages/admin/JobDetailsPage";
 import RecurringMaintenancePage from "@/pages/admin/RecurringMaintenancePage";
 import EmployeeJobsPage from "@/pages/employee/EmployeeJobsPage";
+import EmployeeAttendancePage from "@/pages/employee/EmployeeAttendancePage";
 import BanksPage from "@/pages/admin/BanksPage";
 import BankDetailPage from "@/pages/admin/BankDetailPage";
 import DistrictsPage from "@/pages/admin/DistrictsPage";
@@ -38,6 +40,10 @@ export default function App() {
           <Route element={<AdminLayout />}>
             <Route path="/admin" element={<AdminDashboardPage />} />
             <Route path="/admin/employees" element={<EmployeesPage />} />
+            <Route
+              path="/admin/employees/:employeeId"
+              element={<EmployeeDetailsPage />}
+            />
             <Route path="/admin/customers" element={<CustomersPage />} />
             <Route path="/admin/items" element={<ItemsPage />} />
             <Route
@@ -79,6 +85,10 @@ export default function App() {
 
         <Route element={<ProtectedRoute allowedRoles={["employee"]} />}>
           <Route path="/employee" element={<EmployeeDashboardPage />} />
+          <Route
+            path="/employee/attendance"
+            element={<EmployeeAttendancePage />}
+          />
           <Route path="/employee/jobs" element={<EmployeeJobsPage />} />
           <Route
             path="/employee/jobs/:jobId"

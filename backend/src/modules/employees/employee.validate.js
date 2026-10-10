@@ -52,44 +52,46 @@ const validateRequest = (schema) => {
 };
 
 // update employee schema
-const updateEmployeeSchema = z.object({
-  designation: z.string().trim().min(2, "Designation is required").optional(),
-  department: z.string().trim().min(2, "Department is required").optional(),
-  joiningDate: z.preprocess(
-    (value) => {
-      if (typeof value === "string" && value.trim() !== "") {
-        return new Date(value);
-      }
-      return value;
-    },
-    z
-      .date({ invalid_type_error: "Joining date must be a valid date" })
+const updateEmployeeSchema = z
+  .object({
+    designation: z.string().trim().min(2, "Designation is required").optional(),
+    department: z.string().trim().min(2, "Department is required").optional(),
+    joiningDate: z.preprocess(
+      (value) => {
+        if (typeof value === "string" && value.trim() !== "") {
+          return new Date(value);
+        }
+        return value;
+      },
+      z
+        .date({ invalid_type_error: "Joining date must be a valid date" })
+        .optional(),
+    ),
+    employmentType: z
+      .enum(["full-time", "part-time", "contract"], {
+        errorMap: () => ({
+          message:
+            "Employment type must be 'full-time', 'part-time' or 'contract'",
+        }),
+      })
       .optional(),
-  ),
-  employmentType: z
-    .enum(["full-time", "part-time", "contract"], {
-      errorMap: () => ({
-        message:
-          "Employment type must be 'full-time', 'part-time' or 'contract'",
-      }),
-    })
-    .optional(),
-  districtIds: z.array(objectIdSchema).optional(),
-  assignedAtmIds: z.array(objectIdSchema).optional(),
-  regionIds: z.array(objectIdSchema).optional(),
-  status: z
-    .enum(["active", "inactive", "on_leave", "resigned"], {
-      errorMap: () => ({
-        message:
-          "Status must be 'active', 'inactive', 'on_leave' or 'resigned'",
-      }),
-    })
-    .optional(),
-  salary: z
-    .number({ invalid_type_error: "Salary must be a number" })
-    .nonnegative("Salary must be zero or greater")
-    .optional(),
-});
+    districtIds: z.array(objectIdSchema).optional(),
+    assignedAtmIds: z.array(objectIdSchema).optional(),
+    regionIds: z.array(objectIdSchema).optional(),
+    status: z
+      .enum(["active", "inactive", "on_leave", "resigned"], {
+        errorMap: () => ({
+          message:
+            "Status must be 'active', 'inactive', 'on_leave' or 'resigned'",
+        }),
+      })
+      .optional(),
+    salary: z
+      .number({ invalid_type_error: "Salary must be a number" })
+      .nonnegative("Salary must be zero or greater")
+      .optional(),
+  })
+  .strict();
 
 const assignATMsSchema = z.object({
   assignedAtmIds: z

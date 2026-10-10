@@ -1,4 +1,8 @@
 import api from "@/lib/axios";
+import type {
+  JobPerformancePeriod,
+  MyJobPerformance,
+} from "@/features/jobs/types/job.types";
 
 export interface DashboardStats {
   jobs: {
@@ -93,6 +97,13 @@ export interface EmployeePerformance {
   avgCompletionTimeHours: number;
 }
 
+export interface EmployeePerformanceDetails extends MyJobPerformance {
+  employee: {
+    name: string;
+    employeeCode: string;
+  };
+}
+
 export interface DistrictSummary {
   districtName: string;
   pinCode?: string;
@@ -146,6 +157,18 @@ export const getEmployeePerformance = async (
   const response = await api.get("/dashboard/employee-performance", {
     params: { period },
   });
+
+  return response.data.data;
+};
+
+export const getEmployeePerformanceDetails = async (
+  employeeDocumentId: string,
+  period: JobPerformancePeriod,
+): Promise<EmployeePerformanceDetails> => {
+  const response = await api.get<{ data: EmployeePerformanceDetails }>(
+    `/dashboard/employee-performance/${employeeDocumentId}/details`,
+    { params: { period } },
+  );
 
   return response.data.data;
 };

@@ -41,6 +41,7 @@ import {
   getAllJobs,
   getJobById,
   getMyJobs,
+  getMyJobPerformance,
   getJobHistory,
   updateJob,
   deleteJob,
@@ -147,6 +148,12 @@ router.delete(
 );
 
 // Employee routes
+router.get(
+  "/my-performance",
+  verifyAccessToken,
+  authorizeRoles("employee"),
+  getMyJobPerformance,
+);
 router.get(
   "/my-jobs",
   verifyAccessToken,

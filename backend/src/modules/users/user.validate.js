@@ -34,15 +34,17 @@ const assignRoleSchema = z.object({
   ),
 });
 
-const changeUserStatusSchema = z.object({
-  status: z
-    .enum(["active", "inactive", "blocked"], {
-      errorMap: () => ({
-        message: "Invalid status. Must be 'active', 'inactive' or 'blocked'",
-      }),
-    })
-    .optional(),
-});
+const changeUserStatusSchema = z
+  .object({
+    status: z
+      .enum(["active", "inactive", "blocked"], {
+        errorMap: () => ({
+          message: "Invalid status. Must be 'active', 'inactive' or 'blocked'",
+        }),
+      })
+      .optional(),
+  })
+  .strict();
 const createEmployeeUserSchema = z.object({
   firstName: z
     .string()

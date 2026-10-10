@@ -179,6 +179,30 @@ test("initial assignment rejects inactive Employee and invalid linked User recor
       },
     },
     {
+      name: "Employee on leave",
+      employee: {
+        _id: employeeId,
+        status: "on_leave",
+        userId: {
+          _id: employeeUserId,
+          status: "active",
+          userType: "employee",
+        },
+      },
+    },
+    {
+      name: "resigned Employee",
+      employee: {
+        _id: employeeId,
+        status: "resigned",
+        userId: {
+          _id: employeeUserId,
+          status: "active",
+          userType: "employee",
+        },
+      },
+    },
+    {
       name: "inactive linked User",
       employee: {
         _id: employeeId,

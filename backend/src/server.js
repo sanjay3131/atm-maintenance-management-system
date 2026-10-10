@@ -28,6 +28,7 @@ import amcPhotoRouter from "./modules/amcPhotos/amcPhoto.routes.js";
 import notificationRouter from "./modules/notification/notification.routes.js";
 import supervisorRouter from "./modules/supervisor/supervisor.routes.js";
 import itemRouter from "./modules/items/item.routes.js";
+import attendanceRouter from "./modules/attendance/attendance.routes.js";
 import { initializeItemNameIndex } from "./modules/items/itemIndexReadiness.js";
 
 import errorMiddleware from "./middlewares/error.middleware.js";
@@ -131,6 +132,7 @@ app.use("/api/v1/amc-photos", amcPhotoRouter);
 app.use("/api/v1/notifications", notificationRouter);
 app.use("/api/v1/supervisor", supervisorRouter);
 app.use("/api/v1/items", itemRouter);
+app.use("/api/v1/attendance", attendanceRouter);
 
 // Health check
 app.get("/health", (req, res) => {

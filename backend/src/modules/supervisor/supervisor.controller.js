@@ -19,6 +19,7 @@ export const getSupervisedEmployees = asyncHandler(async (req, res) => {
   }
 
   const employees = await Employee.find({ supervisorId: req.user._id })
+    .select("-salary")
     .populate("userId", "firstName lastName email phoneNumber status")
     .populate("districtIds", "districtName")
     .populate("assignedAtmIds", "atmId locationName status");

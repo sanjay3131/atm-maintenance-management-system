@@ -5,6 +5,7 @@ import {
   getDashboardStats,
   getRecentActivity,
   getEmployeePerformance,
+  getEmployeePerformanceDetails,
   getDistrictSummary,
   getBankSummary,
   getJobTrends,
@@ -34,6 +35,13 @@ router.get(
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin"),
   getEmployeePerformance,
+);
+
+router.get(
+  "/employee-performance/:employeeId/details",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  getEmployeePerformanceDetails,
 );
 
 // District summary (ATM counts per district)

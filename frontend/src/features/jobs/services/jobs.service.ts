@@ -13,6 +13,8 @@ import type {
   JobsQueryParams,
   MyJobsListResponse,
   MyJobsQueryParams,
+  MyJobPerformance,
+  JobPerformancePeriod,
   ApproveJobData,
   VerifyJobData,
 } from "../types/job.types";
@@ -50,6 +52,17 @@ export const getMyJobs = async (
   const response = await api.get<{ data: MyJobsListResponse }>(
     "/jobs/my-jobs",
     { params },
+  );
+
+  return response.data.data;
+};
+
+export const getMyJobPerformance = async (
+  period: JobPerformancePeriod,
+): Promise<MyJobPerformance> => {
+  const response = await api.get<{ data: MyJobPerformance }>(
+    "/jobs/my-performance",
+    { params: { period } },
   );
 
   return response.data.data;

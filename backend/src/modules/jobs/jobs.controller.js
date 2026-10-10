@@ -20,6 +20,8 @@ import {
   createJobWithComplaint,
   softDeleteJobAndUnlinkComplaint,
 } from "../complaints/complaintJobIntegrity.service.js";
+import { myJobPerformanceQuerySchema } from "./jobs.validation.js";
+import { getJobPerformanceForUser } from "./jobPerformance.service.js";
 
 // ============================================
 // HELPERS
@@ -110,6 +112,9 @@ const findEmployeeEligibleForJob = async (job, employeeUserId) => {
 
   return employee;
 };
+
+const assertEmployeeWorkEligible = (employeeUserId) =>
+  findActiveEmployeeByUserId(employeeUserId);
 
 const rejectSubmissionForRework = async ({ job, req, remarks }) => {
   const rejectedFromStatus = job.status;
@@ -382,6 +387,8 @@ export const acceptJob = asyncHandler(async (req, res) => {
   if (job.status !== JOB_STATUS.ASSIGNED)
     throw new ApiError(400, `Cannot accept job with status: ${job.status}`);
 
+  await assertEmployeeWorkEligible(req.user._id);
+
   const oldStatus = job.status;
   job.status = JOB_STATUS.ACCEPTED;
   job.acceptedAt = new Date();
@@ -419,6 +426,8 @@ export const startJob = asyncHandler(async (req, res) => {
   if (!validStatuses.includes(job.status))
     throw new ApiError(400, `Cannot start job with status: ${job.status}`);
 
+  await assertEmployeeWorkEligible(req.user._id);
+
   const oldStatus = job.status;
   job.status = JOB_STATUS.IN_PROGRESS;
   job.startedAt = new Date();
@@ -455,6 +464,8 @@ export const completeJob = asyncHandler(async (req, res) => {
     throw new ApiError(403, "This job is not assigned to you");
   if (job.status !== JOB_STATUS.IN_PROGRESS)
     throw new ApiError(400, `Cannot complete job with status: ${job.status}`);
+
+  await assertEmployeeWorkEligible(req.user._id);
 
   await assertCleaningEvidence(job);
 
@@ -1045,6 +1056,40 @@ export const getMyJobs = asyncHandler(async (req, res) => {
         },
       },
       "My jobs fetched successfully",
+    ),
+  );
+});
+
+// Completion counts are gps_validated submission events, including repeated rework submissions.
+// The response contains currentAssignedJobs, completion, and current-attempt duration fields.
+export const getMyJobPerformance = asyncHandler(async (req, res) => {
+  if (req.user.userType !== "employee") {
+    throw new ApiError(403, "Only employees can access their job performance");
+  }
+
+  const parsedQuery = myJobPerformanceQuerySchema.safeParse(req.query);
+  if (!parsedQuery.success) {
+    throw new ApiError(
+      400,
+      "Invalid job performance query",
+      parsedQuery.error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        message: issue.message,
+      })),
+    );
+  }
+
+  const query = {
+    period: "month",
+    ...parsedQuery.data,
+  };
+  const performance = await getJobPerformanceForUser(req.user._id, query);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      performance,
+      "My job performance fetched successfully",
     ),
   );
 });

@@ -8,6 +8,14 @@ import Complaint from "../complaints/complaints.model.js";
 import User from "../users/user.model.js";
 import District from "../districts/district.models.js";
 import { JOB_STATUS } from "../../utils/jobStatus.js";
+import { getJobPerformanceForUser } from "../jobs/jobPerformance.service.js";
+import { z } from "zod";
+
+const employeePerformanceDetailsQuerySchema = z
+  .object({
+    period: z.enum(["week", "month", "year"]).default("month"),
+  })
+  .strict();
 
 // ============================================
 // HELPERS
@@ -548,6 +556,62 @@ export const getEmployeePerformance = asyncHandler(async (req, res) => {
       ),
     );
 });
+
+export const getEmployeePerformanceDetails = asyncHandler(
+    async (req, res) => {
+      if (!["admin", "superAdmin"].includes(req.user.userType)) {
+        throw new ApiError(403, "Access denied");
+      }
+
+      const { employeeId } = req.params;
+      if (!/^[a-fA-F0-9]{24}$/.test(employeeId)) {
+        throw new ApiError(400, "Invalid Employee ID");
+      }
+
+      const parsedQuery = employeePerformanceDetailsQuerySchema.safeParse(
+        req.query,
+      );
+      if (!parsedQuery.success) {
+        throw new ApiError(
+          400,
+          "Invalid employee performance query",
+          parsedQuery.error.issues.map((issue) => ({
+            path: issue.path.join("."),
+            message: issue.message,
+          })),
+        );
+      }
+
+      const employee = await Employee.findById(employeeId)
+        .select("userId employeeCode")
+        .populate("userId", "firstName lastName");
+      if (!employee?.userId?._id) {
+        throw new ApiError(404, "Employee not found");
+      }
+
+      const performance = await getJobPerformanceForUser(
+        employee.userId._id,
+        parsedQuery.data,
+      );
+      const name = [employee.userId.firstName, employee.userId.lastName]
+        .filter(Boolean)
+        .join(" ");
+
+      return res.status(200).json(
+        new ApiResponse(
+          200,
+          {
+            employee: {
+              name,
+              employeeCode: employee.employeeCode,
+            },
+            ...performance,
+          },
+          "Employee performance details fetched successfully",
+        ),
+      );
+    },
+);
 
 // ============================================
 // 4. DISTRICT SUMMARY

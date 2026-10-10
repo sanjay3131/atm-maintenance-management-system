@@ -56,6 +56,7 @@ test("rejects a missing, inactive, or non-employee User", async (t) => {
   for (const user of [
     null,
     { _id: userId, status: "inactive", userType: "employee" },
+    { _id: userId, status: "blocked", userType: "employee" },
     { _id: userId, status: "active", userType: "admin" },
   ]) {
     await t.test(JSON.stringify(user), async () => {

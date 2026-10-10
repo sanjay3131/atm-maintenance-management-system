@@ -3,6 +3,7 @@ import {
   assignAtms,
   assignDistricts,
   createEmployee,
+  getMyEmployeeProfile,
   updateEmployee,
   viewAllEmployees,
   viewEmployeeById,
@@ -35,6 +36,14 @@ router.patch(
   authorizeRoles("admin", "superAdmin"),
   validateRequest(updateEmployeeSchema),
   updateEmployee,
+);
+
+// Employee self-service profile; no caller-supplied Employee ID is accepted.
+router.get(
+  "/me",
+  verifyAccessToken,
+  authorizeRoles("employee"),
+  getMyEmployeeProfile,
 );
 
 // view employee by id

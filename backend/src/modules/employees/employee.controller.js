@@ -196,6 +196,95 @@ export const viewEmployeeById = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, employee, "Employee retrieved successfully"));
 });
 
+export const getMyEmployeeProfile = asyncHandler(async (req, res) => {
+  const employee = await Employee.findOne({ userId: req.user._id })
+    .select(
+      "userId employeeCode designation department joiningDate employmentType status districtIds regionIds assignedAtmIds",
+    )
+    .populate("userId", "firstName lastName email phoneNumber")
+    .populate("districtIds", "districtName pinCode state")
+    .populate({
+      path: "regionIds",
+      select: "name code districtId",
+      populate: {
+        path: "districtId",
+        select: "districtName pinCode",
+      },
+    })
+    .populate({
+      path: "assignedAtmIds",
+      select: "atmId locationName status districtId regionId",
+      populate: [
+        {
+          path: "districtId",
+          select: "districtName pinCode",
+        },
+        {
+          path: "regionId",
+          select: "name code",
+        },
+      ],
+    });
+
+  if (!employee) {
+    throw new ApiError(404, "Employee profile not found");
+  }
+
+  const districtSummary = (district) =>
+    district
+      ? {
+          districtName: district.districtName,
+          pinCode: district.pinCode,
+          ...(district.state ? { state: district.state } : {}),
+        }
+      : null;
+
+  const profile = {
+    employeeCode: employee.employeeCode,
+    designation: employee.designation,
+    department: employee.department,
+    joiningDate: employee.joiningDate,
+    employmentType: employee.employmentType,
+    status: employee.status,
+    user: employee.userId
+      ? {
+          firstName: employee.userId.firstName,
+          lastName: employee.userId.lastName,
+          email: employee.userId.email,
+          phoneNumber: employee.userId.phoneNumber,
+        }
+      : null,
+    districts: (employee.districtIds ?? [])
+      .filter((district) => district?.districtName)
+      .map(districtSummary),
+    regions: (employee.regionIds ?? [])
+      .filter((region) => region?.name)
+      .map((region) => ({
+        name: region.name,
+        ...(region.code ? { code: region.code } : {}),
+        district: districtSummary(region.districtId),
+      })),
+    assignedAtms: (employee.assignedAtmIds ?? [])
+      .filter((atm) => atm?.atmId)
+      .map((atm) => ({
+        atmId: atm.atmId,
+        locationName: atm.locationName,
+        status: atm.status,
+        district: districtSummary(atm.districtId),
+        region: atm.regionId
+          ? {
+              name: atm.regionId.name,
+              ...(atm.regionId.code ? { code: atm.regionId.code } : {}),
+            }
+          : null,
+      })),
+  };
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, profile, "Employee profile fetched"));
+});
+
 // view all employees (admin and superAdmin)
 
 export const viewAllEmployees = asyncHandler(async (req, res) => {

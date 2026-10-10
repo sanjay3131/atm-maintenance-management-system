@@ -219,6 +219,25 @@ export interface MyJobsQueryParams {
   status?: JobStatus;
 }
 
+export type JobPerformancePeriod = "week" | "month" | "year";
+
+export interface MyJobPerformance {
+  currentAssignedJobs: {
+    total: number;
+    byStatus: Record<JobStatus, number>;
+  };
+  completion: {
+    completedEventCount: number;
+    range: {
+      fromDate: string;
+      toDate: string;
+      timezone: string;
+    };
+  };
+  averageCurrentAttemptCompletionHours: number | null;
+  averageCurrentAttemptJobCount: number;
+}
+
 export interface CreateJobData {
   title: string;
   atmId: string;

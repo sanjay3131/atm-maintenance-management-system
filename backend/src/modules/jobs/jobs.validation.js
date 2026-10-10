@@ -83,3 +83,54 @@ export const jobFilterSchema = z
     search: z.string().optional(),
   })
   .optional();
+
+const performanceDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must use YYYY-MM-DD format")
+  .refine((value) => {
+    const [year, month, day] = value.split("-").map(Number);
+    const date = new Date(0);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCFullYear(year, month - 1, day);
+    return (
+      date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day
+    );
+  }, "Date must be a valid calendar date");
+
+export const myJobPerformanceQuerySchema = z
+  .object({
+    period: z.enum(["week", "month", "year"]).optional(),
+    fromDate: performanceDateSchema.optional(),
+    toDate: performanceDateSchema.optional(),
+  })
+  .strict()
+  .superRefine((query, context) => {
+    const hasFromDate = query.fromDate !== undefined;
+    const hasToDate = query.toDate !== undefined;
+
+    if (hasFromDate !== hasToDate) {
+      context.addIssue({
+        code: "custom",
+        path: [hasFromDate ? "toDate" : "fromDate"],
+        message: "fromDate and toDate must be provided together",
+      });
+    }
+
+    if (hasFromDate && query.period) {
+      context.addIssue({
+        code: "custom",
+        path: ["period"],
+        message: "Choose either period or fromDate/toDate",
+      });
+    }
+
+    if (hasFromDate && hasToDate && query.fromDate > query.toDate) {
+      context.addIssue({
+        code: "custom",
+        path: ["fromDate"],
+        message: "fromDate must be on or before toDate",
+      });
+    }
+  });
