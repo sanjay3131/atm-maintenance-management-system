@@ -27,6 +27,7 @@ import RegionDetailPage from "@/pages/admin/RegionDetailPage";
 import CustomersPage from "@/pages/admin/CustomersPage";
 import CustomerDetailsPage from "@/pages/admin/CustomerDetailsPage";
 import ItemsPage from "@/pages/admin/ItemsPage";
+import AdminAttendancePage from "@/pages/admin/AdminAttendancePage";
 
 export default function App() {
   return (
@@ -39,6 +40,10 @@ export default function App() {
         >
           <Route element={<AdminLayout />}>
             <Route path="/admin" element={<AdminDashboardPage />} />
+            <Route
+              path="/admin/attendance"
+              element={<AdminAttendancePage />}
+            />
             <Route path="/admin/employees" element={<EmployeesPage />} />
             <Route
               path="/admin/employees/:employeeId"

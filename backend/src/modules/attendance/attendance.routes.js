@@ -4,9 +4,14 @@ import { authorizeRoles } from "../../middlewares/role.middleware.js";
 import { validateRequest } from "../../middlewares/validate.middleware.js";
 import { handleAttendanceError } from "./attendanceError.middleware.js";
 import {
+  adminAttendanceDashboardQuerySchema,
   attendanceCorrectionSchema,
   attendanceIdParamsSchema,
   attendanceRecordsQuerySchema,
+  attendanceStatusOverrideAuditParamsSchema,
+  attendanceStatusOverrideAuditQuerySchema,
+  attendanceStatusOverrideParamsSchema,
+  attendanceStatusOverrideSchema,
   employeeIdParamsSchema,
   myAttendanceQuerySchema,
   onBehalfAttendanceRecordSchema,
@@ -19,8 +24,11 @@ import {
   correctAttendanceRecord,
   createEmployeeAttendance,
   getAttendanceById,
+  getAdminAttendanceDashboardRecords,
   getAttendanceRecords,
+  getAttendanceStatusAudit,
   getMyAttendance,
+  setAttendanceStatus,
 } from "./attendance.controller.js";
 
 const router = Router();
@@ -64,11 +72,34 @@ router.get(
   getAttendanceRecords,
 );
 router.get(
+  "/admin/dashboard",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(adminAttendanceDashboardQuerySchema, "query"),
+  getAdminAttendanceDashboardRecords,
+);
+router.get(
   "/records/:id",
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin", "supervisor"),
   validateRequest(attendanceIdParamsSchema, "params"),
   getAttendanceById,
+);
+router.post(
+  "/admin/employees/:employeeId/status-overrides",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(attendanceStatusOverrideParamsSchema, "params"),
+  validateRequest(attendanceStatusOverrideSchema),
+  setAttendanceStatus,
+);
+router.get(
+  "/admin/employees/:employeeId/status-overrides/:attendanceDate/audit",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(attendanceStatusOverrideAuditParamsSchema, "params"),
+  validateRequest(attendanceStatusOverrideAuditQuerySchema, "query"),
+  getAttendanceStatusAudit,
 );
 router.patch(
   "/records/:id/correction",

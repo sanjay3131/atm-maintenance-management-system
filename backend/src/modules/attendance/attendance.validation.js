@@ -162,6 +162,45 @@ export const attendanceIdParamsSchema = z
   .object({ id: objectIdSchema })
   .strict();
 
+export const attendanceStatusOverrideParamsSchema = z
+  .object({ employeeId: objectIdSchema })
+  .strict();
+
+export const attendanceStatusOverrideAuditParamsSchema = z
+  .object({
+    employeeId: objectIdSchema,
+    attendanceDate: attendanceDateSchema,
+  })
+  .strict();
+
+export const attendanceStatusOverrideSchema = z
+  .object({
+    attendanceDate: attendanceDateSchema,
+    status: z.enum(["present", "absent"]),
+    reason: z.string().trim().min(1).max(1000),
+  })
+  .strict();
+
+export const attendanceStatusOverrideAuditQuerySchema = z
+  .object({
+    page: paginationValue(1, Number.MAX_SAFE_INTEGER),
+    limit: paginationValue(20, 100),
+  })
+  .strict();
+
+export const adminAttendanceDashboardQuerySchema = z
+  .object({
+    date: attendanceDateSchema.optional(),
+    search: z.string().trim().max(100).optional(),
+    role: z.enum(["all", "employee"]).default("all"),
+    status: z
+      .enum(["all", "present", "absent", "incomplete", "unrecorded"])
+      .default("all"),
+    page: paginationValue(1, Number.MAX_SAFE_INTEGER),
+    limit: paginationValue(20, 100),
+  })
+  .strict();
+
 const correctionValuesSchema = z
   .object({
     reason: z.string().trim().min(1).max(1000),

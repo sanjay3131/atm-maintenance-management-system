@@ -11,6 +11,7 @@ import {
   MapPinned,
   UserRound,
   Package,
+  CalendarCheck2,
 } from "lucide-react";
 
 const navItems = [
@@ -23,6 +24,11 @@ const navItems = [
     label: "Employees",
     path: "/admin/employees",
     icon: Users,
+  },
+  {
+    label: "Attendance",
+    path: "/admin/attendance",
+    icon: CalendarCheck2,
   },
   {
     label: "Customers",
@@ -71,7 +77,11 @@ const navItems = [
   },
 ];
 
-export default function AdminSidebar() {
+export default function AdminSidebar({
+  onNavigate,
+}: {
+  onNavigate?: () => void;
+}) {
   return (
     <nav className="space-y-1 p-4">
       {navItems.map((item) => {
@@ -82,6 +92,7 @@ export default function AdminSidebar() {
             key={item.path}
             to={item.path}
             end={item.path === "/admin"}
+            onClick={onNavigate}
             className={({ isActive }) =>
               `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
                 isActive

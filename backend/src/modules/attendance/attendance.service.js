@@ -3,10 +3,14 @@ import ApiError from "../../utils/ApiError.js";
 import Attendance from "./attendance.model.js";
 import AttendanceCorrection from "./attendanceCorrection.model.js";
 import AttendanceEntryAudit from "./attendanceEntryAudit.model.js";
+import AttendanceStatusOverride from "./attendanceStatusOverride.model.js";
+import AttendanceStatusOverrideAudit from "./attendanceStatusOverrideAudit.model.js";
 import Employee from "../employees/employee.model.js";
 import {
   attendanceDateOnlySchema,
+  adminAttendanceDashboardQuerySchema,
   attendanceCorrectionSchema,
+  attendanceStatusOverrideSchema,
   onBehalfCheckInSchema,
   onBehalfCheckOutSchema,
 } from "./attendance.validation.js";
@@ -54,6 +58,12 @@ const getBusinessDate = (date) => {
     parts.map(({ type, value }) => [type, value]),
   );
   return `${values.year}-${values.month}-${values.day}`;
+};
+
+const getEmployeeDisplayName = (user) => {
+  if (!user) return "Unknown employee";
+  return [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+    "Unknown employee";
 };
 
 const getActiveEmployeeForUser = async (userId) => {
@@ -248,6 +258,156 @@ export const listAttendanceRecords = async (actor, filters) => {
   return getPaginatedAttendance(filter, filters);
 };
 
+export const getAdminAttendanceDashboard = async (
+  actor,
+  filters,
+  now = new Date(),
+) => {
+  requireActor(actor, ADMIN_ROLES);
+  const parsed = adminAttendanceDashboardQuerySchema.safeParse({
+    ...filters,
+    ...(typeof filters?.page === "number"
+      ? { page: String(filters.page) }
+      : {}),
+    ...(typeof filters?.limit === "number"
+      ? { limit: String(filters.limit) }
+      : {}),
+  });
+  if (!parsed.success) {
+    throw new ApiError(400, getErrorMessage(parsed.error));
+  }
+  const query = parsed.data;
+  const date = query.date ?? getBusinessDate(now);
+
+  const employeeProfiles = await Employee.find({ status: "active" })
+    .select("employeeCode status userId")
+    .populate({
+      path: "userId",
+      select: "firstName lastName userType status avatar.url",
+    });
+  const eligibleEmployees = employeeProfiles.filter((employee) => {
+    const user =
+      employee.userId && typeof employee.userId === "object"
+        ? employee.userId
+        : null;
+    return user?.userType !== "supervisor";
+  });
+  const employeeIds = eligibleEmployees.map((employee) => employee._id);
+  const [attendanceRecords, statusOverrides] = employeeIds.length
+    ? await Promise.all([
+        Attendance.find({
+          employeeId: { $in: employeeIds },
+          attendanceDate: date,
+        }).select(
+          "employeeId attendanceDate checkInAt checkOutAt checkInSource checkOutSource checkInRecordedBy checkOutRecordedBy",
+        ),
+        AttendanceStatusOverride.find({
+          employeeId: { $in: employeeIds },
+          attendanceDate: date,
+        }).select("employeeId attendanceDate status"),
+      ])
+    : [[], []];
+
+  const attendanceByEmployee = new Map(
+    attendanceRecords.map((record) => [String(record.employeeId), record]),
+  );
+  const overrideByEmployee = new Map(
+    statusOverrides.map((override) => [
+      String(override.employeeId),
+      override,
+    ]),
+  );
+  const allRows = eligibleEmployees.map((employee) => {
+      const user =
+        employee.userId && typeof employee.userId === "object"
+          ? employee.userId
+          : null;
+      const attendance = attendanceByEmployee.get(String(employee._id)) ?? null;
+      const override = overrideByEmployee.get(String(employee._id)) ?? null;
+      const effectiveStatus = override
+        ? override.status
+        : attendance
+          ? attendance.checkOutAt
+            ? "present"
+            : "incomplete"
+          : "unrecorded";
+      const displayName = getEmployeeDisplayName(user);
+      const row = {
+        employee: {
+          id: String(employee._id),
+          employeeCode: employee.employeeCode ?? null,
+          name: displayName,
+          role: "employee",
+          avatarUrl: user?.avatar?.url ?? null,
+          employeeStatus: employee.status ?? null,
+          userStatus: user?.status ?? null,
+        },
+        attendance: {
+          id: attendance ? String(attendance._id) : null,
+          attendanceDate: date,
+          actualCheckInAt: attendance?.checkInAt ?? null,
+          actualCheckOutAt: attendance?.checkOutAt ?? null,
+          effectiveCheckInAt: attendance?.checkInAt ?? null,
+          effectiveCheckOutAt: attendance?.checkOutAt ?? null,
+          effectiveStatus,
+          statusOrigin: override
+            ? "admin_override"
+            : attendance
+              ? "recorded"
+              : "no_record",
+        },
+      };
+      return row;
+    });
+
+  const summary = {
+    employees: {
+      total: allRows.length,
+      present: allRows.filter(
+        (row) => row.attendance.effectiveStatus === "present",
+      ).length,
+      absent: allRows.filter(
+        (row) => row.attendance.effectiveStatus === "absent",
+      ).length,
+      incomplete: allRows.filter(
+        (row) => row.attendance.effectiveStatus === "incomplete",
+      ).length,
+      unrecorded: allRows.filter(
+        (row) => row.attendance.effectiveStatus === "unrecorded",
+      ).length,
+    },
+    supervisors: null,
+  };
+
+  const rows = allRows;
+  const normalizedSearch = query.search?.toLocaleLowerCase();
+  const filteredRows = rows.filter((row) => {
+    const searchMatches =
+      !normalizedSearch ||
+      row.employee.employeeCode?.toLocaleLowerCase().includes(normalizedSearch) ||
+      row.employee.name.toLocaleLowerCase().includes(normalizedSearch);
+    const statusMatches =
+      query.status === "all" ||
+      row.attendance.effectiveStatus === query.status;
+    return searchMatches && statusMatches;
+  });
+  const skip = (query.page - 1) * query.limit;
+  const total = filteredRows.length;
+
+  return {
+    date,
+    timeZone: ATTENDANCE_TIMEZONE,
+    summary,
+    records: filteredRows.slice(skip, skip + query.limit),
+    pagination: {
+      page: query.page,
+      limit: query.limit,
+      total,
+      totalPages: Math.ceil(total / query.limit),
+    },
+  };
+};
+
 export const getAttendanceRecord = async (attendanceId, actor) => {
   requireActor(actor, ON_BEHALF_ROLES);
   requireObjectId(attendanceId, "Attendance ID");
@@ -260,6 +420,124 @@ export const getAttendanceRecord = async (attendanceId, actor) => {
     requireSupervisorScope(employee, actor);
   }
   return attendance;
+};
+
+export const setAttendanceStatusOverride = async ({
+  employeeId,
+  attendanceDate,
+  status,
+  reason,
+  actor,
+  now = new Date(),
+}) => {
+  requireActor(actor, ADMIN_ROLES);
+  requireObjectId(employeeId, "Employee ID");
+  const parsed = attendanceStatusOverrideSchema.safeParse({
+    attendanceDate,
+    status,
+    reason,
+  });
+  if (!parsed.success) {
+    throw new ApiError(400, getErrorMessage(parsed.error));
+  }
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
+    throw new ApiError(400, "Invalid attendance timestamp");
+  }
+
+  return withAttendanceTransaction(async (session) => {
+    const employee = await Employee.findById(employeeId).session(session);
+    if (!employee) throw new ApiError(404, "Employee not found");
+
+    const filter = { employeeId: employee._id, attendanceDate };
+    const [currentOverride, attendance] = await Promise.all([
+      AttendanceStatusOverride.findOne(filter).session(session),
+      Attendance.findOne(filter).session(session),
+    ]);
+    const previousStatus =
+      currentOverride?.status ??
+      (attendance
+        ? attendance.checkOutAt
+          ? "present"
+          : "incomplete"
+        : "unrecorded");
+    const previousTimestamps = attendance
+      ? {
+          checkInAt: attendance.checkInAt,
+          checkOutAt: attendance.checkOutAt ?? null,
+        }
+      : null;
+    const changedAt = new Date(now);
+
+    const override = await AttendanceStatusOverride.findOneAndUpdate(
+      filter,
+      {
+        $set: {
+          status,
+          changedBy: actor._id,
+          changedAt,
+        },
+        $setOnInsert: {
+          employeeId: employee._id,
+          attendanceDate,
+        },
+      },
+      { new: true, upsert: true, runValidators: true, session },
+    );
+    const [audit] = await AttendanceStatusOverrideAudit.create(
+      [
+        {
+          employeeId: employee._id,
+          attendanceDate,
+          previousEffectiveValues: {
+            status: previousStatus,
+            ...(previousTimestamps ?? { checkInAt: null, checkOutAt: null }),
+          },
+          newEffectiveValues: {
+            status,
+            ...(previousTimestamps ?? { checkInAt: null, checkOutAt: null }),
+          },
+          actorId: actor._id,
+          changedAt,
+          reason: parsed.data.reason,
+        },
+      ],
+      { session },
+    );
+    return { override, audit };
+  });
+};
+
+export const listAttendanceStatusOverrideAudit = async ({
+  employeeId,
+  attendanceDate,
+  actor,
+  page,
+  limit,
+}) => {
+  requireActor(actor, ADMIN_ROLES);
+  requireObjectId(employeeId, "Employee ID");
+  const parsedDate = attendanceDateOnlySchema.safeParse(attendanceDate);
+  if (!parsedDate.success) {
+    throw new ApiError(400, getErrorMessage(parsedDate.error));
+  }
+  const filter = { employeeId, attendanceDate: parsedDate.data };
+  const skip = (page - 1) * limit;
+  const [events, total] = await Promise.all([
+    AttendanceStatusOverrideAudit.find(filter)
+      .sort({ changedAt: -1, _id: -1 })
+      .skip(skip)
+      .limit(limit),
+    AttendanceStatusOverrideAudit.countDocuments(filter),
+  ]);
+  return {
+    events,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 };
 
 export const checkInForEmployee = async (authenticatedUser, now = new Date()) => {

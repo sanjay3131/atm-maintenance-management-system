@@ -4,10 +4,13 @@ import {
   checkInForEmployee,
   checkOutForEmployee,
   correctAttendance,
+  getAdminAttendanceDashboard,
   getAttendanceRecord,
+  listAttendanceStatusOverrideAudit,
   listAttendanceRecords,
   listMyAttendance,
   recordAttendanceForEmployee,
+  setAttendanceStatusOverride,
 } from "./attendance.service.js";
 
 export const checkIn = asyncHandler(async (req, res) => {
@@ -51,6 +54,18 @@ export const getAttendanceRecords = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, result, "Attendance records fetched"));
 });
 
+export const getAdminAttendanceDashboardRecords = asyncHandler(
+  async (req, res) => {
+    const result = await getAdminAttendanceDashboard(
+      req.user,
+      req.validatedQuery,
+    );
+    return res
+      .status(200)
+      .json(new ApiResponse(200, result, "Attendance dashboard fetched"));
+  },
+);
+
 export const getAttendanceById = asyncHandler(async (req, res) => {
   const attendance = await getAttendanceRecord(
     req.validatedParams.id,
@@ -73,4 +88,29 @@ export const correctAttendanceRecord = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, result, "Attendance record corrected"));
+});
+
+export const setAttendanceStatus = asyncHandler(async (req, res) => {
+  const result = await setAttendanceStatusOverride({
+    employeeId: req.validatedParams.employeeId,
+    attendanceDate: req.body.attendanceDate,
+    status: req.body.status,
+    reason: req.body.reason,
+    actor: req.user,
+  });
+  return res
+    .status(200)
+    .json(new ApiResponse(200, result, "Attendance status overridden"));
+});
+
+export const getAttendanceStatusAudit = asyncHandler(async (req, res) => {
+  const result = await listAttendanceStatusOverrideAudit({
+    employeeId: req.validatedParams.employeeId,
+    attendanceDate: req.validatedParams.attendanceDate,
+    actor: req.user,
+    ...req.validatedQuery,
+  });
+  return res
+    .status(200)
+    .json(new ApiResponse(200, result, "Attendance status audit fetched"));
 });
