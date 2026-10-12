@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, Search } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -124,11 +124,18 @@ function StatCard({ label, value }: { label: string; value?: number }) {
 }
 
 export default function ComplaintsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedPriority = searchParams.get("priority");
+  const initialPriority = COMPLAINT_PRIORITIES.find(
+    (value) => value === requestedPriority,
+  );
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [status, setStatus] = useState<ComplaintStatus | typeof ALL>(ALL);
-  const [priority, setPriority] = useState<ComplaintPriority | typeof ALL>(ALL);
+  const [priority, setPriority] = useState<ComplaintPriority | typeof ALL>(
+    initialPriority ?? ALL,
+  );
   const [customerId, setCustomerId] = useState(ALL);
   const [atmId, setAtmId] = useState(ALL);
   const [fromDate, setFromDate] = useState("");
@@ -192,6 +199,7 @@ export default function ComplaintsPage() {
     setAtmId(ALL);
     setFromDate("");
     setToDate("");
+    setSearchParams({}, { replace: true });
     setPage(1);
   };
   const handleComplaintCreated = () => {
@@ -204,6 +212,7 @@ export default function ComplaintsPage() {
     setAtmId(ALL);
     setFromDate("");
     setToDate("");
+    setSearchParams({}, { replace: true });
     setPage(1);
   };
 
