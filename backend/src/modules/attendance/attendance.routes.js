@@ -5,6 +5,7 @@ import { validateRequest } from "../../middlewares/validate.middleware.js";
 import { handleAttendanceError } from "./attendanceError.middleware.js";
 import {
   adminAttendanceDashboardQuerySchema,
+  attendanceCalendarQuerySchema,
   attendanceCorrectionSchema,
   attendanceIdParamsSchema,
   attendanceRecordsQuerySchema,
@@ -25,6 +26,7 @@ import {
   createEmployeeAttendance,
   getAttendanceById,
   getAdminAttendanceDashboardRecords,
+  getEmployeeAttendanceCalendarRecords,
   getAttendanceRecords,
   getAttendanceStatusAudit,
   getMyAttendance,
@@ -70,6 +72,14 @@ router.get(
   authorizeRoles("admin", "superAdmin", "supervisor"),
   validateRequest(attendanceRecordsQuerySchema, "query"),
   getAttendanceRecords,
+);
+router.get(
+  "/admin/employees/:employeeId/calendar",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(employeeIdParamsSchema, "params"),
+  validateRequest(attendanceCalendarQuerySchema, "query"),
+  getEmployeeAttendanceCalendarRecords,
 );
 router.get(
   "/admin/dashboard",

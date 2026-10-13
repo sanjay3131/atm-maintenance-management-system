@@ -258,6 +258,62 @@ export const listAttendanceRecords = async (actor, filters) => {
   return getPaginatedAttendance(filter, filters);
 };
 
+export const getEmployeeAttendanceCalendar = async ({
+  employeeId,
+  month,
+  actor,
+}) => {
+  requireActor(actor, ADMIN_ROLES);
+  requireObjectId(employeeId, "Employee ID");
+
+  const employee = await Employee.findById(employeeId).select("_id");
+  if (!employee) throw new ApiError(404, "Employee not found");
+
+  const [year, monthNumber] = month.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  const fromDate = `${month}-01`;
+  const toDate = `${month}-${String(lastDay).padStart(2, "0")}`;
+  const dateRange = { $gte: fromDate, $lte: toDate };
+  const [records, overrides] = await Promise.all([
+    Attendance.find({ employeeId, attendanceDate: dateRange }).select(
+      "attendanceDate checkInAt checkOutAt",
+    ),
+    AttendanceStatusOverride.find({
+      employeeId,
+      attendanceDate: dateRange,
+    }).select("attendanceDate status"),
+  ]);
+
+  const daysByDate = new Map();
+  records.forEach((record) => {
+    daysByDate.set(record.attendanceDate, {
+      attendanceDate: record.attendanceDate,
+      status: record.checkOutAt ? "present" : "incomplete",
+      statusOrigin: "recorded",
+      checkInAt: record.checkInAt,
+      checkOutAt: record.checkOutAt,
+    });
+  });
+  overrides.forEach((override) => {
+    const record = daysByDate.get(override.attendanceDate);
+    daysByDate.set(override.attendanceDate, {
+      attendanceDate: override.attendanceDate,
+      status: override.status,
+      statusOrigin: "admin_override",
+      checkInAt: record?.checkInAt ?? null,
+      checkOutAt: record?.checkOutAt ?? null,
+    });
+  });
+
+  return {
+    month,
+    timeZone: ATTENDANCE_TIMEZONE,
+    days: [...daysByDate.values()].sort((left, right) =>
+      left.attendanceDate.localeCompare(right.attendanceDate),
+    ),
+  };
+};
+
 export const getAdminAttendanceDashboard = async (
   actor,
   filters,

@@ -38,6 +38,12 @@ import {
 import { useJobHistory } from "@/features/jobs/hooks/useJobHistory";
 import { useJob } from "@/features/jobs/hooks/useJob";
 import { useATM } from "@/features/atms/hooks/useATM";
+import {
+  employeeDisplayLabel,
+  employeeErrorMessage,
+  employeeJobStatusLabel,
+  useEmployeeLanguage,
+} from "@/features/employee-portal/i18n";
 import type {
   Job,
   JobHistoryEntry,
@@ -72,17 +78,19 @@ function formatValue(value: string | number | null | undefined) {
     : String(value);
 }
 
-function formatDate(value?: string | null) {
+function formatDate(value: string | null | undefined, language: "ta" | "en") {
   if (!value) return NOT_AVAILABLE;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? NOT_AVAILABLE : date.toLocaleString();
-}
-
-function formatScheduledDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? NOT_AVAILABLE
-    : date.toLocaleDateString("en-IN", {
+    : date.toLocaleString(language === "ta" ? "ta-IN" : undefined);
+}
+
+function formatScheduledDate(value: string, language: "ta" | "en") {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? NOT_AVAILABLE
+    : date.toLocaleDateString(language === "ta" ? "ta-IN" : "en-IN", {
         timeZone: "Asia/Kolkata",
         year: "numeric",
         month: "short",
@@ -99,18 +107,22 @@ function formatLabel(value?: string | null) {
     .join(" ");
 }
 
-function formatHistoryAction(action: string, entry: JobHistoryEntry) {
+function formatHistoryAction(
+  action: string,
+  entry: JobHistoryEntry,
+  t: ReturnType<typeof useEmployeeLanguage>["t"],
+) {
   if (action === "status_changed") {
     if (entry.toStatus === "IN_PROGRESS" && entry.fromStatus === "ON_HOLD") {
-      return "Resumed";
+      return t("Resumed");
     }
-    if (entry.toStatus === "IN_PROGRESS") return "Started";
-    if (entry.toStatus === "ON_HOLD") return "Put On Hold";
-    if (entry.toStatus === "ACCEPTED") return "Accepted";
-    if (entry.toStatus === "COMPLETED") return "Completed";
+    if (entry.toStatus === "IN_PROGRESS") return t("Started");
+    if (entry.toStatus === "ON_HOLD") return t("Put On Hold");
+    if (entry.toStatus === "ACCEPTED") return t("Accepted");
+    if (entry.toStatus === "COMPLETED") return t("Completed");
   }
 
-  const labels: Record<string, string> = {
+  const labels: Record<string, Parameters<typeof t>[0]> = {
     created: "Job Created",
     assigned: "Assigned",
     photo_uploaded: "Photo Uploaded",
@@ -124,7 +136,7 @@ function formatHistoryAction(action: string, entry: JobHistoryEntry) {
     note_added: "Note Added",
   };
 
-  return labels[action] || formatLabel(action);
+  return labels[action] ? t(labels[action]) : formatLabel(action);
 }
 
 function isDetailsRecord(value: unknown): value is Record<string, unknown> {
@@ -134,6 +146,7 @@ function isDetailsRecord(value: unknown): value is Record<string, unknown> {
 function formatHistoryDetailLines(
   action: string,
   details: unknown,
+  t: ReturnType<typeof useEmployeeLanguage>["t"],
   atm?: { documentId?: string; identifier?: string },
 ): string[] {
   if (details === null || details === undefined || details === "") return [];
@@ -147,7 +160,9 @@ function formatHistoryDetailLines(
         typeof value === "number" ||
         typeof value === "boolean",
     );
-    return values.length > 0 ? [`Details: ${values.join(", ")}`] : [];
+    return values.length > 0
+      ? [t("Details: {details}", { details: values.join(", ") })]
+      : [];
   }
 
   const record = details as Record<string, unknown>;
@@ -156,13 +171,16 @@ function formatHistoryDetailLines(
     const distance = record.gpsDistance;
     const accuracy = record.gpsAccuracy;
     if (typeof distance === "number" && Number.isFinite(distance)) {
-      gpsLines.push(`GPS Distance: ${distance} m`);
+      gpsLines.push(t("GPS Distance: {distance} m", { distance }));
     }
     if (typeof accuracy === "number" && Number.isFinite(accuracy)) {
-      gpsLines.push(`GPS Accuracy: ${accuracy} m`);
+      gpsLines.push(t("GPS Accuracy: {accuracy} m", { accuracy }));
     }
 
-    const formatLocation = (label: string, location: unknown) => {
+    const formatLocation = (
+      label: "Employee Location" | "ATM Location",
+      location: unknown,
+    ) => {
       if (!isDetailsRecord(location)) return;
       const { latitude, longitude } = location;
       if (
@@ -171,7 +189,9 @@ function formatHistoryDetailLines(
         typeof longitude === "number" &&
         Number.isFinite(longitude)
       ) {
-        gpsLines.push(`${label}: ${latitude}, ${longitude}`);
+        gpsLines.push(
+          t(`${label}: {latitude}, {longitude}`, { latitude, longitude }),
+        );
       }
     };
 
@@ -183,7 +203,7 @@ function formatHistoryDetailLines(
   const labels: Record<string, string> = {
     adminRemarks: "Admin Remarks",
     assignedTo: "Assigned employee updated",
-    employeeId: "Employee assignment updated",
+    employeeId: "Assigned employee updated",
     fromEmployee: "Previous employee updated",
     holdReason: "Hold Reason",
     reason: "Reason",
@@ -200,12 +220,14 @@ function formatHistoryDetailLines(
         atm?.documentId &&
         atm.identifier &&
         value.toLowerCase() === atm.documentId.toLowerCase();
-      return [`ATM ID: ${resolvesToCurrentATM ? atm.identifier : value}`];
+      return [
+        `${t("ATM ID")}: ${resolvesToCurrentATM ? atm.identifier : value}`,
+      ];
     }
     if (
       ["assignedTo", "employeeId", "fromEmployee", "toEmployee"].includes(key)
     ) {
-      return [labels[key]];
+      return [t(labels[key] as Parameters<typeof t>[0])];
     }
 
     const label =
@@ -221,11 +243,15 @@ function formatHistoryDetailLines(
           typeof item === "boolean",
       );
       return scalarValues.length > 0
-        ? [`${label}: ${scalarValues.join(", ")}`]
+        ? [`${t(label as Parameters<typeof t>[0])}: ${scalarValues.join(", ")}`]
         : [];
     }
-    if (typeof value === "object") return [`${label}: details recorded`];
-    return [`${label}: ${String(value)}`];
+    if (typeof value === "object") {
+        return [
+          `${t(label as Parameters<typeof t>[0])}: ${t("details recorded")}`,
+        ];
+    }
+    return [`${t(label as Parameters<typeof t>[0])}: ${String(value)}`];
   });
 
   return lines;
@@ -262,17 +288,21 @@ function getEmployeeLabel(person?: JobUser | string | null) {
 }
 
 function DetailRow({ label, value }: { label: string; value: ReactNode }) {
+  const { t } = useEmployeeLanguage();
+
   return (
     <div className="flex flex-col gap-1 border-b py-3 last:border-b-0 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <dt className="text-sm text-muted-foreground">{label}</dt>
       <dd className="break-words text-sm font-medium sm:max-w-[65%] sm:text-right">
-        {value}
+        {value === NOT_AVAILABLE ? t("Not available") : value}
       </dd>
     </div>
   );
 }
 
 function DetailsSkeleton() {
+  const { t } = useEmployeeLanguage();
+
   return (
     <div className="space-y-6 p-6" role="status">
       <div className="h-8 w-48 animate-pulse rounded bg-muted" />
@@ -284,7 +314,7 @@ function DetailsSkeleton() {
           />
         ))}
       </div>
-      <p className="sr-only">Loading job details...</p>
+      <p className="sr-only">{t("Loading job details...")}</p>
     </div>
   );
 }
@@ -307,6 +337,15 @@ export default function JobDetailsPage({
   backPath = "/admin/jobs",
 }: JobDetailsPageProps) {
   const navigate = useNavigate();
+  const { language, t } = useEmployeeLanguage();
+  const localize = (label: string) => employeeDisplayLabel(label, t);
+  const mutationErrorMessage = (mutationError: unknown) =>
+    employeeErrorMessage(
+      getMutationErrorMessage(mutationError),
+      "Could not update this job.",
+      language,
+      t,
+    );
   const { jobId = "" } = useParams<{ jobId: string }>();
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
@@ -348,17 +387,24 @@ export default function JobDetailsPage({
       <div className="p-6">
         <Button variant="ghost" onClick={() => navigate(backPath)}>
           <ArrowLeft />
-          Back to Jobs
+          {t("Back to Jobs")}
         </Button>
         <div className="mt-6 max-w-2xl rounded-lg border border-destructive/30 bg-destructive/5 p-6">
           <h1 className="font-semibold text-destructive">
-            {isNotFound ? "Job not found" : "Job details unavailable"}
+            {t(isNotFound ? "Job not found" : "Job details unavailable")}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {message ||
-              (isNotFound
+            {employeeErrorMessage(
+              message ||
+                (isNotFound
+                  ? t("This job may have been removed.")
+                  : t("The job could not be loaded. Please try again.")),
+              isNotFound
                 ? "This job may have been removed."
-                : "The job could not be loaded. Please try again.")}
+                : "The job could not be loaded. Please try again.",
+              language,
+              t,
+            )}
           </p>
           {!isNotFound && (
             <Button
@@ -368,7 +414,7 @@ export default function JobDetailsPage({
               onClick={() => void refetch()}
               disabled={isFetching}
             >
-              {isFetching ? "Retrying..." : "Retry"}
+              {isFetching ? t("Retrying...") : t("Retry")}
             </Button>
           )}
         </div>
@@ -404,7 +450,7 @@ export default function JobDetailsPage({
       {
         onSuccess: () => toast.success(successMessage),
         onError: (mutationError) =>
-          toast.error(getMutationErrorMessage(mutationError)),
+          toast.error(mutationErrorMessage(mutationError)),
       },
     );
   };
@@ -426,11 +472,11 @@ export default function JobDetailsPage({
     setIsRejectDialogOpen(false);
     setRejectionAction(null);
     setRejectionRemarks("");
-    toast.success("Job rejected.");
+    toast.success(t("Job rejected."));
   };
 
   const handleRejectError = (mutationError: Error) => {
-    toast.error(getMutationErrorMessage(mutationError));
+    toast.error(mutationErrorMessage(mutationError));
   };
 
   const confirmReject = () => {
@@ -473,7 +519,7 @@ export default function JobDetailsPage({
       {
         onSuccess: () => toast.success("Job verified."),
         onError: (mutationError) =>
-          toast.error(getMutationErrorMessage(mutationError)),
+          toast.error(mutationErrorMessage(mutationError)),
       },
     );
   };
@@ -485,7 +531,7 @@ export default function JobDetailsPage({
       {
         onSuccess: () => toast.success("Job approved."),
         onError: (mutationError) =>
-          toast.error(getMutationErrorMessage(mutationError)),
+          toast.error(mutationErrorMessage(mutationError)),
       },
     );
   };
@@ -497,7 +543,7 @@ export default function JobDetailsPage({
       {
         onSuccess: () => toast.success("Job closed."),
         onError: (mutationError) =>
-          toast.error(getMutationErrorMessage(mutationError)),
+          toast.error(mutationErrorMessage(mutationError)),
       },
     );
   };
@@ -518,10 +564,10 @@ export default function JobDetailsPage({
         onSuccess: () => {
           setIsCancelDialogOpen(false);
           setCancellationReason("");
-          toast.success("Job cancelled.");
+          toast.success(t("Job cancelled."));
         },
         onError: (mutationError) =>
-          toast.error(getMutationErrorMessage(mutationError)),
+          toast.error(mutationErrorMessage(mutationError)),
       },
     );
   };
@@ -532,16 +578,16 @@ export default function JobDetailsPage({
         <div>
           <Button
             variant="ghost"
-            className="-ml-3 mb-3"
+            className="-ml-3 mb-3 min-h-11"
             onClick={() => navigate(backPath)}
           >
             <ArrowLeft />
-            Back to Jobs
+            {t("Back to Jobs")}
           </Button>
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-bold">Job Details</h1>
+            <h1 className="text-2xl font-bold">{t("Job Details")}</h1>
             <Badge variant={getStatusVariant(job.status)}>
-              {formatLabel(job.status)}
+              {employeeJobStatusLabel(job.status, t)}
             </Badge>
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -554,7 +600,7 @@ export default function JobDetailsPage({
             REASSIGNABLE_STATUSES.includes(job.status) ? (
               <Button type="button" onClick={() => setIsAssignDialogOpen(true)}>
                 <UserRoundPlus />
-                {job.status === "PENDING" ? "Assign Job" : "Reassign Job"}
+                {t(job.status === "PENDING" ? "Assign Job" : "Reassign Job")}
               </Button>
             ) : null}
             {job.status === "IN_PROGRESS" && (
@@ -565,7 +611,7 @@ export default function JobDetailsPage({
                 onClick={() =>
                   runLifecycleAction(
                     holdMutation,
-                    "Job stopped and put on hold.",
+                    t("Job stopped and put on hold."),
                   )
                 }
               >
@@ -574,7 +620,7 @@ export default function JobDetailsPage({
                 ) : (
                   <Pause />
                 )}
-                Stop (Put On Hold)
+                {t("Stop (Put On Hold)")}
               </Button>
             )}
             {job.status === "COMPLETED" && (
@@ -589,7 +635,7 @@ export default function JobDetailsPage({
                   ) : (
                     <Check />
                   )}
-                  Verify
+                  {t("Verify")}
                 </Button>
                 <Button
                   type="button"
@@ -598,7 +644,7 @@ export default function JobDetailsPage({
                   onClick={() => openRejectDialog("verify")}
                 >
                   <X />
-                  Reject
+                  {t("Reject")}
                 </Button>
               </>
             )}
@@ -614,7 +660,7 @@ export default function JobDetailsPage({
                   ) : (
                     <Check />
                   )}
-                  Approve
+                  {t("Approve")}
                 </Button>
                 <Button
                   type="button"
@@ -623,7 +669,7 @@ export default function JobDetailsPage({
                   onClick={() => openRejectDialog("approve")}
                 >
                   <X />
-                  Reject
+                  {t("Reject")}
                 </Button>
               </>
             )}
@@ -638,7 +684,7 @@ export default function JobDetailsPage({
                 ) : (
                   <Check />
                 )}
-                Close
+                {t("Close")}
               </Button>
             )}
             {CANCELLABLE_STATUSES.includes(job.status) && (
@@ -649,7 +695,7 @@ export default function JobDetailsPage({
                 onClick={() => setIsCancelDialogOpen(true)}
               >
                 <Ban />
-                Cancel Job
+                {t("Cancel Job")}
               </Button>
             )}
           </div>
@@ -659,9 +705,10 @@ export default function JobDetailsPage({
             {job.status === "ASSIGNED" && (
               <Button
                 type="button"
+                className="min-h-12"
                 disabled={lifecycleMutationPending}
                 onClick={() =>
-                  runLifecycleAction(acceptMutation, "Job accepted.")
+                  runLifecycleAction(acceptMutation, t("Job accepted."))
                 }
               >
                 {acceptMutation.isPending ? (
@@ -669,17 +716,20 @@ export default function JobDetailsPage({
                 ) : (
                   <Check />
                 )}
-                Accept Job
+                {t("Accept Job")}
               </Button>
             )}
             {(job.status === "ACCEPTED" || job.status === "ON_HOLD") && (
               <Button
                 type="button"
+                className="min-h-12"
                 disabled={lifecycleMutationPending}
                 onClick={() =>
                   runLifecycleAction(
                     startMutation,
-                    job.status === "ON_HOLD" ? "Job resumed." : "Job started.",
+                    job.status === "ON_HOLD"
+                      ? t("Job resumed.")
+                      : t("Job started."),
                   )
                 }
               >
@@ -688,16 +738,17 @@ export default function JobDetailsPage({
                 ) : (
                   <Play />
                 )}
-                {job.status === "ON_HOLD" ? "Resume Job" : "Start Job"}
+                {t(job.status === "ON_HOLD" ? "Resume Job" : "Start Job")}
               </Button>
             )}
             {job.status === "IN_PROGRESS" && (
               <Button
                 type="button"
                 variant="outline"
+                className="min-h-12"
                 disabled={lifecycleMutationPending}
                 onClick={() =>
-                  runLifecycleAction(holdMutation, "Job put on hold.")
+                  runLifecycleAction(holdMutation, t("Job put on hold."))
                 }
               >
                 {holdMutation.isPending ? (
@@ -705,7 +756,7 @@ export default function JobDetailsPage({
                 ) : (
                   <Pause />
                 )}
-                Hold Job
+                {t("Hold Job")}
               </Button>
             )}
           </div>
@@ -725,24 +776,24 @@ export default function JobDetailsPage({
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Job Information</CardTitle>
+            <CardTitle>{t("Job Information")}</CardTitle>
           </CardHeader>
           <CardContent>
             <dl>
-              <DetailRow label="Job ID" value={formatValue(job.jobId)} />
+              <DetailRow label={t("Job ID")} value={formatValue(job.jobId)} />
               <DetailRow
-                label="Job number"
+                label={t("Job number")}
                 value={formatValue(job.jobNumber)}
               />
-              <DetailRow label="Title" value={formatValue(job.title)} />
-              <DetailRow label="Work type" value={formatLabel(job.workType)} />
-              <DetailRow label="Priority" value={formatLabel(job.priority)} />
+              <DetailRow label={t("Title")} value={formatValue(job.title)} />
+              <DetailRow label={t("Work type")} value={localize(formatLabel(job.workType))} />
+              <DetailRow label={t("Priority")} value={localize(formatLabel(job.priority))} />
               <DetailRow
-                label="Description"
+                label={t("Description")}
                 value={formatValue(job.description)}
               />
-              <DetailRow label="Created" value={formatDate(job.createdAt)} />
-              <DetailRow label="Updated" value={formatDate(job.updatedAt)} />
+              <DetailRow label={t("Created")} value={formatDate(job.createdAt, language)} />
+              <DetailRow label={t("Updated")} value={formatDate(job.updatedAt, language)} />
             </dl>
           </CardContent>
         </Card>
@@ -750,20 +801,21 @@ export default function JobDetailsPage({
         {job.recurringMaintenance?.source === "RECURRING" && (
           <Card>
             <CardHeader>
-              <CardTitle>Recurring Maintenance</CardTitle>
+              <CardTitle>{t("Recurring Maintenance")}</CardTitle>
             </CardHeader>
             <CardContent>
               <dl>
                 <DetailRow
-                  label="Type"
-                  value={formatLabel(
+                  label={t("Type")}
+                  value={localize(formatLabel(
                     job.recurringMaintenance.maintenanceType,
-                  )}
+                  ))}
                 />
                 <DetailRow
-                  label="Scheduled date"
+                  label={t("Scheduled date")}
                   value={formatScheduledDate(
                     job.recurringMaintenance.scheduledDate,
+                    language,
                   )}
                 />
               </dl>
@@ -773,50 +825,48 @@ export default function JobDetailsPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>ATM Information</CardTitle>
+            <CardTitle>{t("ATM Information")}</CardTitle>
           </CardHeader>
           <CardContent>
             <dl>
               <DetailRow
-                label="ATM ID"
+                label={t("ATM ID")}
                 value={formatValue(atmDetails?.atmId || atm?.atmId)}
               />
               <DetailRow
-                label="Location"
+                label={t("Location")}
                 value={formatValue(
                   atmDetails?.locationName || atm?.locationName,
                 )}
               />
               <DetailRow
-                label="Address"
+                label={t("Address")}
                 value={formatValue(atmDetails?.address || atm?.address)}
               />
               <DetailRow
-                label="Bank"
+                label={t("Bank")}
                 value={formatValue(atmDetails?.bankId?.bankName || atm?.bank)}
               />
               <DetailRow
-                label="District"
-                value={formatValue(
-                  atmDetails?.districtId?.districtName || atm?.districtId,
-                )}
+                label={t("District")}
+                value={formatValue(atmDetails?.districtId?.districtName)}
               />
               <DetailRow
-                label="Region"
-                value={formatValue(atmDetails?.regionId?.name || atm?.regionId)}
+                label={t("Region")}
+                value={formatValue(atmDetails?.regionId?.name)}
               />
               <DetailRow
-                label="ATM status"
+                label={t("ATM status")}
                 value={formatValue(atmDetails?.status)}
               />
               <DetailRow
-                label="Installation type"
+                label={t("Installation type")}
                 value={formatValue(atmDetails?.installationType)}
               />
               {isATMDetailsLoading && (
                 <DetailRow
-                  label="Additional ATM information"
-                  value="Loading..."
+                  label={t("Additional ATM information")}
+                  value={t("Loading...")}
                 />
               )}
             </dl>
@@ -825,25 +875,25 @@ export default function JobDetailsPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>Assignment</CardTitle>
+            <CardTitle>{t("Assignment")}</CardTitle>
           </CardHeader>
           <CardContent>
             <dl>
-              <DetailRow label="Employee" value={getPersonName(employee)} />
+              <DetailRow label={t("Employee")} value={getPersonName(employee)} />
               <DetailRow
-                label="Employee code"
+                label={t("Employee code")}
                 value={formatValue(employee?.employeeCode)}
               />
               <DetailRow
-                label="Phone"
+                label={t("Phone")}
                 value={formatValue(employee?.phoneNumber)}
               />
               <DetailRow
-                label="Assigned at"
-                value={formatDate(job.assignedAt)}
+                label={t("Assigned at")}
+                value={formatDate(job.assignedAt, language)}
               />
               <DetailRow
-                label="Assigned by"
+                label={t("Assigned by")}
                 value={getPersonName(job.assignedBy)}
               />
             </dl>
@@ -852,68 +902,70 @@ export default function JobDetailsPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>Customer</CardTitle>
+            <CardTitle>{t("Customer")}</CardTitle>
           </CardHeader>
           <CardContent>
             <dl>
-              <DetailRow label="Name" value={customerName} />
+              <DetailRow label={t("Name")} value={customerName} />
               <DetailRow
-                label="Email"
+                label={t("Email")}
                 value={formatValue(customer?.customerEmail)}
               />
               <DetailRow
-                label="Phone"
+                label={t("Phone")}
                 value={formatValue(customer?.customerPhone)}
               />
-              <DetailRow
-                label="Customer reference"
-                value={formatValue(
-                  customer?._id ||
-                    (typeof job.customerId === "string"
-                      ? job.customerId
-                      : undefined),
-                )}
-              />
+              {!readOnly && (
+                <DetailRow
+                  label={t("Customer reference")}
+                  value={formatValue(
+                    customer?._id ||
+                      (typeof job.customerId === "string"
+                        ? job.customerId
+                        : undefined),
+                  )}
+                />
+              )}
             </dl>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Complaint</CardTitle>
+            <CardTitle>{t("Complaint")}</CardTitle>
           </CardHeader>
           <CardContent>
             {complaint ? (
               <dl>
                 <DetailRow
-                  label="Complaint number"
+                  label={t("Complaint number")}
                   value={formatValue(complaint.complaintNumber)}
                 />
-                <DetailRow label="Title" value={formatValue(complaint.title)} />
+                <DetailRow label={t("Title")} value={formatValue(complaint.title)} />
                 <DetailRow
-                  label="Description"
+                  label={t("Description")}
                   value={formatValue(complaint.description)}
                 />
                 <DetailRow
-                  label="Reported by"
+                  label={t("Reported by")}
                   value={formatValue(complaint.reportedBy)}
                 />
                 <DetailRow
-                  label="Reported via"
-                  value={formatLabel(complaint.reportedVia)}
+                  label={t("Reported via")}
+                  value={localize(formatLabel(complaint.reportedVia))}
                 />
                 <DetailRow
-                  label="Status"
-                  value={formatLabel(complaint.status)}
+                  label={t("Status")}
+                  value={localize(formatLabel(complaint.status))}
                 />
                 <DetailRow
-                  label="Reported at"
-                  value={formatDate(complaint.reportedAt)}
+                  label={t("Reported at")}
+                  value={formatDate(complaint.reportedAt, language)}
                 />
               </dl>
             ) : (
               <p className="text-sm text-muted-foreground">
-                No complaint is linked to this job.
+                {t("No complaint is linked to this job.")}
               </p>
             )}
           </CardContent>
@@ -921,15 +973,15 @@ export default function JobDetailsPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>Lifecycle dates</CardTitle>
+            <CardTitle>{t("Lifecycle dates")}</CardTitle>
           </CardHeader>
           <CardContent>
             <dl>
               {lifecycleDates.map(([label, value]) => (
                 <DetailRow
                   key={label}
-                  label={label}
-                  value={formatDate(value)}
+                  label={t(label)}
+                  value={formatDate(value, language)}
                 />
               ))}
             </dl>
@@ -939,20 +991,20 @@ export default function JobDetailsPage({
         {!readOnly && (
           <Card>
             <CardHeader>
-              <CardTitle>Completion GPS</CardTitle>
+              <CardTitle>{t("Completion GPS")}</CardTitle>
             </CardHeader>
             <CardContent>
               <dl>
                 <DetailRow
-                  label="Latitude"
+                  label={t("Latitude")}
                   value={formatGpsValue(job.employeeGpsAtCompletion?.latitude)}
                 />
                 <DetailRow
-                  label="Longitude"
+                  label={t("Longitude")}
                   value={formatGpsValue(job.employeeGpsAtCompletion?.longitude)}
                 />
                 <DetailRow
-                  label="Accuracy"
+                  label={t("Accuracy")}
                   value={
                     job.employeeGpsAtCompletion?.accuracy !== undefined &&
                     Number.isFinite(job.employeeGpsAtCompletion.accuracy)
@@ -961,7 +1013,7 @@ export default function JobDetailsPage({
                   }
                 />
                 <DetailRow
-                  label="Distance from ATM"
+                  label={t("Distance from ATM")}
                   value={
                     job.gpsDistance !== undefined &&
                     Number.isFinite(job.gpsDistance)
@@ -970,22 +1022,22 @@ export default function JobDetailsPage({
                   }
                 />
                 <DetailRow
-                  label="GPS validation"
+                  label={t("GPS validation")}
                   value={
                     job.gpsValidated === true ? (
                       <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
-                        Validated
+                        {t("Validated")}
                       </Badge>
                     ) : job.gpsValidated === false ? (
-                      <Badge variant="secondary">Not validated</Badge>
+                      <Badge variant="secondary">{t("Not validated")}</Badge>
                     ) : (
                       NOT_AVAILABLE
                     )
                   }
                 />
                 <DetailRow
-                  label="Captured at"
-                  value={formatDate(job.employeeGpsAtCompletion?.timestamp)}
+                  label={t("Captured at")}
+                  value={formatDate(job.employeeGpsAtCompletion?.timestamp, language)}
                 />
               </dl>
             </CardContent>
@@ -994,16 +1046,16 @@ export default function JobDetailsPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>Audit</CardTitle>
+            <CardTitle>{t("Audit")}</CardTitle>
           </CardHeader>
           <CardContent>
             <dl>
               <DetailRow
-                label="Created by"
+                label={t("Created by")}
                 value={getPersonName(job.createdBy)}
               />
               <DetailRow
-                label="Updated by"
+                label={t("Updated by")}
                 value={getPersonName(job.updatedBy)}
               />
             </dl>
@@ -1025,46 +1077,46 @@ export default function JobDetailsPage({
           reassignmentHistory.length > 0) && (
           <Card className="lg:col-span-2">
             <CardHeader>
-              <CardTitle>Notes and reassignment</CardTitle>
+              <CardTitle>{t("Notes and reassignment")}</CardTitle>
             </CardHeader>
             <CardContent>
               <dl>
                 {job.employeeRemarks && (
                   <DetailRow
-                    label="Employee remarks"
+                    label={t("Employee remarks")}
                     value={job.employeeRemarks}
                   />
                 )}
                 {job.adminRemarks && (
-                  <DetailRow label="Admin remarks" value={job.adminRemarks} />
+                  <DetailRow label={t("Admin remarks")} value={job.adminRemarks} />
                 )}
                 {job.rejectionReason && (
                   <DetailRow
-                    label="Rejection reason"
+                    label={t("Rejection reason")}
                     value={job.rejectionReason}
                   />
                 )}
                 {job.cancellationReason && (
                   <DetailRow
-                    label="Cancellation reason"
+                    label={t("Cancellation reason")}
                     value={job.cancellationReason}
                   />
                 )}
                 {job.cancelledBy && (
                   <DetailRow
-                    label="Cancelled by"
+                    label={t("Cancelled by")}
                     value={getPersonName(job.cancelledBy)}
                   />
                 )}
                 {job.isReassigned && (
                   <DetailRow
-                    label="Reassigned"
-                    value={job.reassignmentReason || "Yes"}
+                    label={t("Reassigned")}
+                    value={job.reassignmentReason || t("Yes")}
                   />
                 )}
                 {job.previousJobId && (
                   <DetailRow
-                    label="Previous job ID"
+                    label={t("Previous job ID")}
                     value={job.previousJobId}
                   />
                 )}
@@ -1075,15 +1127,15 @@ export default function JobDetailsPage({
                   >
                     <p className="text-sm font-medium">
                       {getEmployeeLabel(entry.fromEmployee)}
-                      <span className="px-2 text-muted-foreground">to</span>
+                      <span className="px-2 text-muted-foreground">{t("to")}</span>
                       {getEmployeeLabel(entry.toEmployee)}
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {formatValue(entry.reason)} ·{" "}
-                      {formatDate(entry.reassignedAt)}
+                      {formatDate(entry.reassignedAt, language)}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Reassigned by {getPersonName(entry.reassignedBy)}
+                      {t("Reassigned by")} {getPersonName(entry.reassignedBy)}
                     </p>
                   </div>
                 ))}
@@ -1095,16 +1147,16 @@ export default function JobDetailsPage({
         {!readOnly && (
           <Card className="lg:col-span-2">
             <CardHeader>
-              <CardTitle>Job History</CardTitle>
+              <CardTitle>{t("Job History")}</CardTitle>
             </CardHeader>
             <CardContent>
               {historyQuery.isLoading ? (
                 <p className="text-sm text-muted-foreground">
-                  Loading history...
+                  {t("Loading history...")}
                 </p>
               ) : historyQuery.isError ? (
                 <p role="status" className="text-sm text-destructive">
-                  Unable to load job history.
+                  {t("Unable to load job history.")}
                 </p>
               ) : historyQuery.data?.length ? (
                 <ol>
@@ -1115,10 +1167,11 @@ export default function JobDetailsPage({
                         entry.performedBy?.lastName,
                       ]
                         .filter(Boolean)
-                        .join(" ") || "Unknown user";
+                        .join(" ") || t("Unknown user");
                     const details = formatHistoryDetailLines(
                       entry.action,
                       entry.details,
+                      t,
                       {
                         documentId: atmDetails?._id ?? atm?._id,
                         identifier: atmDetails?.atmId ?? atm?.atmId,
@@ -1132,24 +1185,24 @@ export default function JobDetailsPage({
                       >
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <p className="text-sm font-medium">
-                            {formatHistoryAction(entry.action, entry)}
+                            {formatHistoryAction(entry.action, entry, t)}
                           </p>
                           <time className="text-xs text-muted-foreground">
-                            {formatDate(entry.performedAt)}
+                            {formatDate(entry.performedAt, language)}
                           </time>
                         </div>
                         {entry.fromStatus && entry.toStatus && (
                           <p className="mt-1 text-sm text-muted-foreground">
-                            {formatLabel(entry.fromStatus)} -&gt;{" "}
-                            {formatLabel(entry.toStatus)}
+                            {localize(formatLabel(entry.fromStatus))} -&gt;{" "}
+                            {localize(formatLabel(entry.toStatus))}
                           </p>
                         )}
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Performed by: {actorName}
+                          {t("Performed by: {name}", { name: actorName })}
                           {entry.performedBy?.userType && (
                             <>
                               {" "}
-                              · Role: {formatLabel(entry.performedBy.userType)}
+                              · {t("Role: {role}", { role: localize(formatLabel(entry.performedBy.userType)) })}
                             </>
                           )}
                         </p>
@@ -1167,7 +1220,7 @@ export default function JobDetailsPage({
                 </ol>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  No history available.
+                  {t("No history available.")}
                 </p>
               )}
             </CardContent>
@@ -1185,10 +1238,9 @@ export default function JobDetailsPage({
       <Dialog open={isRejectDialogOpen} onOpenChange={handleRejectDialogChange}>
         <DialogContent>
           <div className="space-y-2">
-            <DialogTitle>Reject Job</DialogTitle>
+            <DialogTitle>{t("Reject Job")}</DialogTitle>
             <DialogDescription>
-              This job will move to Rejected. You may optionally provide a
-              reason.
+              {t("This job will move to Rejected. You may optionally provide a reason.")}
             </DialogDescription>
           </div>
           <div className="mt-4">
@@ -1196,7 +1248,7 @@ export default function JobDetailsPage({
               htmlFor="job-rejection-remarks"
               className="mb-2 block text-sm font-medium"
             >
-              Rejection reason
+              {t("Rejection reason")}
             </label>
             <textarea
               id="job-rejection-remarks"
@@ -1214,7 +1266,7 @@ export default function JobDetailsPage({
               onClick={() => handleRejectDialogChange(false)}
               disabled={reviewMutationPending}
             >
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button
               type="button"
@@ -1225,7 +1277,7 @@ export default function JobDetailsPage({
               {reviewMutationPending && (
                 <LoaderCircle className="animate-spin" />
               )}
-              Confirm Reject
+              {t("Confirm Reject")}
             </Button>
           </div>
         </DialogContent>
@@ -1233,12 +1285,11 @@ export default function JobDetailsPage({
       <Dialog open={isCancelDialogOpen} onOpenChange={handleCancelDialogChange}>
         <DialogContent>
           <div className="space-y-2">
-            <DialogTitle>Cancel Job</DialogTitle>
+            <DialogTitle>{t("Cancel Job")}</DialogTitle>
             <DialogDescription>
-              Cancel {job.jobNumber || job.jobId}? This job will remain in
-              history with its material and cost records intact. Any linked
-              linked complaint will retain this job in its history; an active
-              complaint will reopen for replacement work.
+              {t("Cancel {job}? This job will remain in history with its material and cost records intact. Any linked complaint will retain this job in its history; an active complaint will reopen for replacement work.", {
+                job: job.jobNumber || job.jobId,
+              })}
             </DialogDescription>
           </div>
           <div className="mt-4">
@@ -1246,7 +1297,7 @@ export default function JobDetailsPage({
               htmlFor="job-cancellation-reason"
               className="mb-2 block text-sm font-medium"
             >
-              Cancellation reason
+              {t("Cancellation reason")}
             </label>
             <textarea
               id="job-cancellation-reason"
@@ -1266,7 +1317,7 @@ export default function JobDetailsPage({
               onClick={() => handleCancelDialogChange(false)}
               disabled={cancelMutation.isPending}
             >
-              Keep Job
+              {t("Keep Job")}
             </Button>
             <Button
               type="button"
@@ -1277,7 +1328,7 @@ export default function JobDetailsPage({
               {cancelMutation.isPending && (
                 <LoaderCircle className="animate-spin" />
               )}
-              Confirm Cancellation
+              {t("Confirm Cancellation")}
             </Button>
           </div>
         </DialogContent>

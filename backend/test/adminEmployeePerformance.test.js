@@ -4,7 +4,10 @@ import Employee from "../src/modules/employees/employee.model.js";
 import Job from "../src/modules/jobs/jobs.model.js";
 import JobHistory from "../src/modules/jobs/jobHistory.model.js";
 import dashboardRouter from "../src/modules/dashboard/dashboard.routes.js";
-import { getEmployeePerformanceDetails } from "../src/modules/dashboard/dashboard.controller.js";
+import {
+  getEmployeePerformance,
+  getEmployeePerformanceDetails,
+} from "../src/modules/dashboard/dashboard.controller.js";
 import { JOB_STATUS } from "../src/utils/jobStatus.js";
 
 const employeeDocumentId = "64b000000000000000000021";
@@ -73,6 +76,41 @@ const adminRequest = ({
   params: { employeeId: id },
   query: { period },
   user: { _id: "64b000000000000000000029", userType },
+});
+
+test("Employee performance summary supports validated filtering by linked User ID", async () => {
+  await withMocks({}, async ({ jobPipelines }) => {
+    const result = await invoke(getEmployeePerformance, {
+      query: { employeeId: employeeUserId, period: "month" },
+      user: { _id: "64b000000000000000000029", userType: "admin" },
+    });
+    assert.equal(result.error, undefined);
+    assert.equal(
+      String(jobPipelines[0][0].$match.assignedEmployeeId),
+      employeeUserId,
+    );
+  });
+
+  await withMocks({}, async ({ jobPipelines }) => {
+    const result = await invoke(getEmployeePerformance, {
+      query: { employeeId: "not-an-object-id", period: "month" },
+      user: { _id: "64b000000000000000000029", userType: "admin" },
+    });
+    assert.equal(result.error?.statusCode, 400);
+    assert.equal(jobPipelines.length, 0);
+  });
+
+  await withMocks({}, async ({ jobPipelines }) => {
+    const result = await invoke(getEmployeePerformance, {
+      query: { period: "month" },
+      user: { _id: "64b000000000000000000029", userType: "admin" },
+    });
+    assert.equal(result.error, undefined);
+    assert.deepEqual(jobPipelines[0][0].$match.assignedEmployeeId, {
+      $exists: true,
+      $ne: null,
+    });
+  });
 });
 
 test("Admin detail resolves Employee document ID to linked User ID for all metrics", async () => {

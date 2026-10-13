@@ -27,6 +27,11 @@ import JobPhotoGallery from "@/features/jobs/components/JobPhotoGallery";
 import { useCompleteJob, useUploadJobPhoto } from "../hooks/useJobLifecycle";
 import type { Job, JobPhoto } from "../types/job.types";
 import type { JobPhotoType } from "../services/jobs.service";
+import {
+  employeeErrorMessage,
+  useEmployeeLanguage,
+  type EmployeeTranslationKey,
+} from "@/features/employee-portal/i18n";
 
 const REQUIRED_PHOTOS_PER_TYPE = 3;
 const MAX_PHOTOS_PER_TYPE = 3;
@@ -58,28 +63,44 @@ type UploadStatus = "idle" | "uploading" | "uploaded" | "failed";
 const EMPTY_SELECTION: PhotoSelection = { before: [], after: [] };
 const EMPTY_COUNTS: PhotoCounts = { before: 0, after: 0 };
 
-function getApiErrorMessage(error: unknown) {
+function getApiErrorMessage(
+  error: unknown,
+  t: ReturnType<typeof useEmployeeLanguage>["t"],
+  language: "ta" | "en",
+) {
+  const fallback = t("The request could not be completed.");
   if (isAxiosError<{ message?: string }>(error)) {
-    return (
-      error.response?.data?.message || "The request could not be completed."
+    return employeeErrorMessage(
+      error.response?.data?.message || "The request could not be completed.",
+      "The request could not be completed.",
+      language,
+      t,
     );
   }
   return error instanceof Error
-    ? error.message
-    : "The request could not be completed.";
+    ? employeeErrorMessage(
+        error.message,
+        "The request could not be completed.",
+        language,
+        t,
+      )
+    : fallback;
 }
 
-function getGeolocationError(error: GeolocationPositionError) {
+function getGeolocationError(
+  error: GeolocationPositionError,
+  t: ReturnType<typeof useEmployeeLanguage>["t"],
+) {
   if (error.code === error.PERMISSION_DENIED) {
-    return "Location permission is required to continue. Allow location access in your browser and try again.";
+    return t("Location permission is required to continue. Allow location access in your browser and try again.");
   }
   if (error.code === error.POSITION_UNAVAILABLE) {
-    return "Your current location is unavailable. Check your device location settings and retry.";
+    return t("Your current location is unavailable. Check your device location settings and retry.");
   }
   if (error.code === error.TIMEOUT) {
-    return "Getting your location took too long. Move to an area with a clear GPS signal and retry.";
+    return t("Getting your location took too long. Move to an area with a clear GPS signal and retry.");
   }
-  return "Could not get your location. Please retry.";
+  return t("Could not get your location. Please retry.");
 }
 
 function calculateDistanceMeters(
@@ -127,11 +148,13 @@ function PendingPhotoCard({
   disabled,
   onRemove,
   onReplace,
+  t,
 }: {
   photo: PendingPhoto;
   disabled: boolean;
   onRemove: () => void;
   onReplace: () => void;
+  t: ReturnType<typeof useEmployeeLanguage>["t"];
 }) {
   const reducedMotion = useReducedMotion();
 
@@ -146,11 +169,14 @@ function PendingPhotoCard({
     >
       <img
         src={photo.previewUrl}
-        alt={`Preview of ${photo.photoType} photo ${photo.file.name}`}
+        alt={t("Preview of {type} photo: {filename}", {
+          type: t(photo.photoType === "before" ? "Before" : "After"),
+          filename: photo.file.name,
+        })}
         className="aspect-square w-full rounded object-cover"
       />
       <p className="mt-2 truncate text-xs font-medium">
-        {photo.photoType === "before" ? "Before" : "After"} · {photo.file.name}
+        {t(photo.photoType === "before" ? "Before" : "After")} · {photo.file.name}
       </p>
       <div className="mt-2 grid grid-cols-2 gap-2">
         <Button
@@ -162,19 +188,19 @@ function PendingPhotoCard({
           onClick={onReplace}
         >
           <Replace aria-hidden="true" />
-          Replace
+          {t("Replace")}
         </Button>
         <Button
           type="button"
           size="sm"
           variant="outline"
           className="min-h-11 min-w-0 px-2"
-          aria-label={`Remove ${photo.file.name}`}
+          aria-label={t("Remove {filename}", { filename: photo.file.name })}
           disabled={disabled}
           onClick={onRemove}
         >
           <Trash2 aria-hidden="true" />
-          Remove
+          {t("Remove")}
         </Button>
       </div>
     </motion.li>
@@ -182,6 +208,7 @@ function PendingPhotoCard({
 }
 
 export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
+  const { t, language } = useEmployeeLanguage();
   const queryClient = useQueryClient();
   const reducedMotion = useReducedMotion();
   const [gps, setGps] = useState<GpsPosition | null>(null);
@@ -251,7 +278,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
   };
   const photoTypes: Array<{
     type: JobPhotoType;
-    title: string;
+    title: EmployeeTranslationKey;
   }> = [
     { type: "before", title: "Before photos" },
     { type: "after", title: "After photos" },
@@ -329,9 +356,17 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
 
     for (const file of selectedFiles) {
       if (!ALLOWED_FILE_TYPES.has(file.type)) {
-        issues.push(`${file.name}: use a JPEG, PNG, or WebP image.`);
+        issues.push(
+          t("{filename}: use a JPEG, PNG, or WebP image.", {
+            filename: file.name,
+          }),
+        );
       } else if (file.size > MAX_FILE_SIZE) {
-        issues.push(`${file.name}: maximum file size is 5 MB.`);
+        issues.push(
+          t("{filename}: maximum file size is 5 MB.", {
+            filename: file.name,
+          }),
+        );
       } else {
         validFiles.push(file);
       }
@@ -344,14 +379,20 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
         return;
       }
       if (validFiles.length > 1) {
-        issues.push("Only the first valid image was used to replace this photo.");
+        issues.push(
+          t("Only the first valid image was used to replace this photo."),
+        );
       }
       const duplicate = currentSelection.some(
         (photo) =>
           photo.id === getFileId(replacementFile) && photo.id !== target.id,
       );
       if (duplicate) {
-        issues.push(`${replacementFile.name}: this file is already selected.`);
+        issues.push(
+          t("{filename}: this file is already selected.", {
+            filename: replacementFile.name,
+          }),
+        );
       } else {
         const replacement: PendingPhoto = {
           id: getFileId(replacementFile),
@@ -374,12 +415,20 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
       for (const [index, file] of validFiles.entries()) {
         const id = getFileId(file);
         if (fingerprints.has(id)) {
-          issues.push(`${file.name}: this file is already selected.`);
+          issues.push(
+            t("{filename}: this file is already selected.", {
+              filename: file.name,
+            }),
+          );
           continue;
         }
         if (accepted.length >= availableSlots) {
           issues.push(
-            `${validFiles.length - index} selected ${photoType} photo(s) were not added; only ${availableSlots} more can be selected.`,
+            t("{count} selected {type} photo(s) were not added; only {slots} more can be selected.", {
+              count: validFiles.length - index,
+              type: t(photoType === "before" ? "Before" : "After"),
+              slots: availableSlots,
+            }),
           );
           break;
         }
@@ -421,7 +470,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
     setGpsError("");
     setGps(null);
     if (!navigator.geolocation) {
-      setGpsError("This browser does not support location services.");
+      setGpsError(t("This browser does not support location services."));
       return;
     }
 
@@ -436,7 +485,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
         setIsLocating(false);
       },
       (error) => {
-        setGpsError(getGeolocationError(error));
+        setGpsError(getGeolocationError(error, t));
         setIsLocating(false);
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
@@ -464,15 +513,16 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
         },
       },
       {
-        onSuccess: () => toast.success("ATM location configured successfully."),
+        onSuccess: () =>
+          toast.success(t("ATM location configured successfully.")),
         onError: (error) => {
           if (isAxiosError(error) && error.response?.status === 403) {
             toast.error(
-              "You are not assigned to this ATM. Ask an administrator to assign this ATM to you.",
+              t("You are not assigned to this ATM. Ask an administrator to assign this ATM to you."),
             );
             return;
           }
-          toast.error(getApiErrorMessage(error));
+          toast.error(getApiErrorMessage(error, t, language));
         },
       },
     );
@@ -538,7 +588,10 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
           .map((photo) => photo.file);
         if (files.length !== remaining) {
           throw new Error(
-            `Select ${remaining} more ${type} photo(s) before uploading.`,
+            t("Select {count} more {type} photo(s) before uploading.", {
+              count: remaining,
+              type: t(type === "before" ? "Before" : "After"),
+            }),
           );
         }
 
@@ -571,7 +624,9 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
           totalForType < REQUIRED_PHOTOS_PER_TYPE
         ) {
           throw new Error(
-            `The server did not confirm all required ${type} photos. Refresh the job and retry any missing photos.`,
+            t("The server did not confirm all required {type} photos. Refresh the job and retry any missing photos.", {
+              type: t(type === "before" ? "Before" : "After"),
+            }),
           );
         }
 
@@ -620,14 +675,14 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
         finalCounts.after >= REQUIRED_PHOTOS_PER_TYPE
       ) {
         setConfirmedCounts(finalCounts);
-        toast.success("All required Before and After photos are uploaded.");
+        toast.success(t("All required Before and After photos are uploaded."));
       } else {
         throw new Error(
-          "The uploaded photos could not be confirmed. Refresh the job before retrying.",
+          t("The uploaded photos could not be confirmed. Refresh the job before retrying."),
         );
       }
     } catch (error) {
-      const message = getApiErrorMessage(error);
+      const message = getApiErrorMessage(error, t, language);
       setActiveUpload(null);
       setUploadStatus((current) => ({
         ...current,
@@ -662,13 +717,13 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
         ) {
           setUploadError("");
           setUploadStatus({ before: "uploaded", after: "uploaded" });
-          toast.success("All required Before and After photos are uploaded.");
+          toast.success(t("All required Before and After photos are uploaded."));
           return;
         }
         setUploadError(message);
         toast.error(message);
       } catch {
-        const refreshError = `${message} The saved photo status could not be refreshed; reload the job before retrying.`;
+        const refreshError = t("{message} The saved photo status could not be refreshed; reload the job before retrying.", { message });
         setUploadError(refreshError);
         toast.error(refreshError);
       }
@@ -694,9 +749,9 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
       {
         onSuccess: () => {
           setIsCompleteDialogOpen(false);
-          toast.success("Job completed successfully.");
+          toast.success(t("Job completed successfully."));
         },
-        onError: (error) => toast.error(getApiErrorMessage(error)),
+        onError: (error) => toast.error(getApiErrorMessage(error, t, language)),
       },
     );
   };
@@ -704,7 +759,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
   return (
     <Card className="min-w-0 overflow-hidden">
       <CardHeader className="p-4 sm:p-6">
-        <CardTitle>Field Work</CardTitle>
+        <CardTitle>{t("Field Work")}</CardTitle>
       </CardHeader>
       <CardContent className="min-w-0 space-y-6 p-4 pt-0 sm:p-6 sm:pt-0">
         <section className="min-w-0 space-y-3" aria-labelledby="job-gps-heading">
@@ -714,11 +769,10 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
               className="flex items-center gap-2 text-sm font-semibold"
             >
               <MapPin className="size-4 shrink-0" aria-hidden="true" />
-              GPS location
+              {t("GPS location")}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              The server checks your submitted location against the ATM before
-              completing the job.
+              {t("The server checks your submitted location against the ATM before completing the job.")}
             </p>
           </div>
           <Button
@@ -734,10 +788,10 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
               <MapPin />
             )}
             {isLocating
-              ? "Getting location..."
+              ? t("Getting location...")
               : gps
-                ? "Refresh location"
-                : "Get current location"}
+                ? t("Refresh location")
+                : t("Get current location")}
           </Button>
           {gpsError && (
             <p role="alert" className="break-words text-sm text-destructive">
@@ -746,8 +800,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
           )}
           {!hasAtmCoordinates && (
             <p role="status" className="break-words text-sm text-destructive">
-              ATM location is not configured. Acquire your current location and
-              set it as the ATM location before completing this job.
+              {t("ATM location is not configured. Acquire your current location and set it as the ATM location before completing this job.")}
             </p>
           )}
           {gps && (
@@ -755,7 +808,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
               className="min-w-0 break-words rounded-md border bg-muted/30 p-3 text-sm"
               role="status"
             >
-              <p>Location acquired · accuracy ±{Math.round(gps.accuracy)} m</p>
+              <p>{t("Location acquired · accuracy ±{accuracy} m", { accuracy: Math.round(gps.accuracy) })}</p>
               {distance !== null && (
                 <p
                   className={
@@ -765,13 +818,12 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                   }
                 >
                   {distance} m from ATM ·{" "}
-                  {withinRadius ? "Within 20 m" : "Outside 20 m"}
+                  {t(withinRadius ? "Within 20 m" : "Outside 20 m")}
                 </p>
               )}
               {gps.accuracy > 20 && (
                 <p className="mt-1 text-muted-foreground">
-                  GPS accuracy is low. Retry from a location with a clearer
-                  signal if possible.
+                  {t("GPS accuracy is low. Retry from a location with a clearer signal if possible.")}
                 </p>
               )}
             </div>
@@ -789,18 +841,17 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                 <MapPin />
               )}
               {setATMLocationMutation.isPending
-                ? "Setting ATM location..."
-                : "Set Current Location as ATM Location"}
+                ? t("Setting ATM location...")
+                : t("Set Current Location as ATM Location")}
             </Button>
           )}
         </section>
 
         <section className="min-w-0 space-y-4 border-t pt-5">
           <div>
-            <h2 className="text-sm font-semibold">Cleaning photos</h2>
+            <h2 className="text-sm font-semibold">{t("Cleaning photos")}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Select three Before and three After photos. Review the previews,
-              then upload both groups.
+              {t("Select three Before and three After photos. Review the previews, then upload both groups.")}
             </p>
           </div>
 
@@ -815,8 +866,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
               persistedCount + selected.length < MAX_PHOTOS_PER_TYPE;
             const status = uploadStatus[type];
             const currentUpload = activeUpload?.photoType === type;
-            const pickerLabel =
-              type === "before" ? "Before" : "After";
+            const pickerLabel = t(type === "before" ? "Before" : "After");
 
             return (
               <section
@@ -829,10 +879,10 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                     id={`${type}-photos-heading`}
                     className="font-semibold"
                   >
-                    {title}
+                    {t(title)}
                   </h3>
                   <p className="text-sm text-muted-foreground">
-                    {pickerLabel}: {displayedCount}/
+                    {t("{type}: {count}/", { type: pickerLabel, count: displayedCount })}
                     {REQUIRED_PHOTOS_PER_TYPE}
                   </p>
                 </div>
@@ -848,7 +898,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                       capture="environment"
                       multiple
                       className="sr-only"
-                      aria-label={`Take ${pickerLabel} photo`}
+                      aria-label={t("Take {type} photo", { type: pickerLabel })}
                       disabled={!canSelectMore || isUploading}
                       onChange={(event) => handleFileSelection(type, event)}
                     />
@@ -860,7 +910,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                       accept="image/*"
                       multiple
                       className="sr-only"
-                      aria-label={`Choose ${pickerLabel} photos`}
+                      aria-label={t("Choose {type} photos", { type: pickerLabel })}
                       disabled={!canSelectMore || isUploading}
                       onChange={(event) => handleFileSelection(type, event)}
                     />
@@ -871,7 +921,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                       type="file"
                       accept="image/*"
                       className="sr-only"
-                      aria-label={`Replace a selected ${pickerLabel} photo`}
+                      aria-label={t("Replace a selected {type} photo", { type: pickerLabel })}
                       disabled={isUploading}
                       onChange={(event) => handleFileSelection(type, event, true)}
                     />
@@ -883,7 +933,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                       onClick={() => cameraInputRefs.current[type]?.click()}
                     >
                       <Camera aria-hidden="true" />
-                      Take photo
+                      {t("Take photo")}
                     </Button>
                     <Button
                       type="button"
@@ -893,7 +943,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                       onClick={() => pickerInputRefs.current[type]?.click()}
                     >
                       <ImagePlus aria-hidden="true" />
-                      Choose photos
+                      {t("Choose photos")}
                     </Button>
                   </div>
                 )}
@@ -906,6 +956,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                           key={photo.id}
                           photo={photo}
                           disabled={isUploading}
+                          t={t}
                           onRemove={() => removeSelectedPhoto(type, photo.id)}
                           onReplace={() => startReplacingPhoto(type, photo.id)}
                         />
@@ -916,13 +967,13 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
 
                 {persistedCount > 0 && (
                   <p className="text-xs text-muted-foreground">
-                    {persistedCount} photo(s) already uploaded and saved.
+                    {t("{count} photo(s) already uploaded and saved.", { count: persistedCount })}
                   </p>
                 )}
                 {status === "uploaded" && (
                   <p className="flex items-center gap-2 text-sm font-medium text-emerald-700">
                     <Check className="size-4 shrink-0" aria-hidden="true" />
-                    {pickerLabel} photos uploaded successfully.
+                    {t("{type} photos uploaded successfully.", { type: pickerLabel })}
                   </p>
                 )}
                 {currentUpload && (
@@ -934,8 +985,10 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                     aria-live="polite"
                   >
                     <LoaderCircle className="mr-2 inline size-4 animate-spin" />
-                    Uploading {pickerLabel} photos:{" "}
-                    {activeUpload.persistedCount + activeUpload.fileCount}/
+                    {t("Uploading {type} photos: {count}/", {
+                      type: pickerLabel,
+                      count: activeUpload.persistedCount + activeUpload.fileCount,
+                    })}
                     {REQUIRED_PHOTOS_PER_TYPE}
                     {activeUpload.progress !== undefined &&
                       ` · ${activeUpload.progress}%`}
@@ -963,7 +1016,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
               ) : (
                 <Upload aria-hidden="true" />
               )}
-              {isUploading ? "Uploading photos..." : "Upload Photos"}
+              {isUploading ? t("Uploading photos...") : t("Upload Photos")}
             </Button>
           )}
 
@@ -1003,10 +1056,10 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                 )}
                 <p className="flex items-center gap-2 font-semibold">
                   <CircleCheck className="size-5 shrink-0" aria-hidden="true" />
-                  All 3 Before and 3 After photos are uploaded.
+                  {t("All 3 Before and 3 After photos are uploaded.")}
                 </p>
                 <p className="mt-1 text-sm">
-                  Acquire your GPS location to complete the job.
+                  {t("Acquire your GPS location to complete the job.")}
                 </p>
               </motion.div>
             )}
@@ -1035,18 +1088,18 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                 ) : (
                   <CircleCheck />
                 )}
-                Complete Job
+                {t("Complete Job")}
               </Button>
             </motion.div>
           )}
           {!gps && evidenceComplete && (
             <p className="break-words text-sm text-muted-foreground">
-              Get your current location to complete this job.
+              {t("Get your current location to complete this job.")}
             </p>
           )}
           {gps && !withinRadius && distance !== null && evidenceComplete && (
             <p className="break-words text-sm text-muted-foreground">
-              Move within 20 m of the ATM and refresh your location to continue.
+              {t("Move within 20 m of the ATM and refresh your location to continue.")}
             </p>
           )}
         </div>
@@ -1059,11 +1112,9 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
         }}
       >
         <DialogContent className="w-[calc(100vw-1rem)] max-w-lg">
-          <DialogTitle>Complete this job?</DialogTitle>
+          <DialogTitle>{t("Complete this job?")}</DialogTitle>
           <DialogDescription className="mt-2">
-            The server will validate your GPS coordinates. Once completed, you
-            cannot continue working on this job unless an authorized user
-            changes its status.
+            {t("The server will validate your GPS coordinates. Once completed, you cannot continue working on this job unless an authorized user changes its status.")}
           </DialogDescription>
           <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button
@@ -1073,7 +1124,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
               disabled={completeMutation.isPending}
               onClick={() => setIsCompleteDialogOpen(false)}
             >
-              Cancel
+              {t("Cancel")}
             </Button>
             <Button
               type="button"
@@ -1084,7 +1135,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
               {completeMutation.isPending && (
                 <LoaderCircle className="animate-spin" />
               )}
-              Confirm completion
+              {t("Confirm completion")}
             </Button>
           </div>
         </DialogContent>

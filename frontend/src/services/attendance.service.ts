@@ -26,6 +26,25 @@ export interface AttendanceListResponse {
   pagination: AttendancePagination;
 }
 
+export type AttendanceCalendarStatus =
+  | "present"
+  | "incomplete"
+  | "absent";
+
+export interface AttendanceCalendarDay {
+  attendanceDate: string;
+  status: AttendanceCalendarStatus;
+  statusOrigin: "recorded" | "admin_override";
+  checkInAt: string | null;
+  checkOutAt: string | null;
+}
+
+export interface AttendanceCalendarResponse {
+  month: string;
+  timeZone: "Asia/Kolkata";
+  days: AttendanceCalendarDay[];
+}
+
 export interface AttendanceQuery {
   fromDate?: string;
   toDate?: string;
@@ -149,6 +168,17 @@ export const getAdminAttendanceDashboard = async (
   const response = await api.get<{ data: AdminAttendanceDashboardResponse }>(
     "/attendance/admin/dashboard",
     { params },
+  );
+  return response.data.data;
+};
+
+export const getEmployeeAttendanceCalendar = async (
+  employeeId: string,
+  month: string,
+): Promise<AttendanceCalendarResponse> => {
+  const response = await api.get<{ data: AttendanceCalendarResponse }>(
+    `/attendance/admin/employees/${employeeId}/calendar`,
+    { params: { month } },
   );
   return response.data.data;
 };

@@ -23,6 +23,11 @@ import type {
   JobPriority,
   JobStatus,
 } from "@/features/jobs/types/job.types";
+import {
+  employeeDisplayLabel,
+  employeeJobStatusLabel,
+  useEmployeeLanguage,
+} from "@/features/employee-portal/i18n";
 
 const ALL_STATUSES = "ALL";
 const PAGE_SIZE = 10;
@@ -41,26 +46,56 @@ const jobStatuses: JobStatus[] = [
   "CANCELLED",
 ];
 
-function formatLabel(value?: string) {
-  if (!value) return "Not available";
-  return value
+function formatLabel(
+  value: string | undefined,
+  t: ReturnType<typeof useEmployeeLanguage>["t"],
+) {
+  if (!value) return t("Not available");
+  if (jobStatuses.includes(value as JobStatus)) {
+    return employeeJobStatusLabel(value, t);
+  }
+  const formatted = value
     .toLowerCase()
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+  const labels: Record<string, Parameters<typeof t>[0]> = {
+    "Daily Cleaning": "Daily Cleaning",
+    "Weekly Mopping": "Weekly Mopping",
+    Repair: "Repair",
+    Maintenance: "Maintenance",
+    Installation: "Installation",
+    Inspection: "Inspection",
+    Emergency: "Emergency",
+    Low: "Low",
+    Medium: "Medium",
+    High: "High",
+    Critical: "Critical",
+  };
+  return labels[formatted] ? t(labels[formatted]) : formatted;
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return "Not available";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Not available" : date.toLocaleString();
-}
-
-function formatScheduledDate(value: string) {
+function formatDate(
+  value: string | null | undefined,
+  language: "ta" | "en",
+  t: ReturnType<typeof useEmployeeLanguage>["t"],
+) {
+  if (!value) return t("Not available");
   const date = new Date(value);
   return Number.isNaN(date.getTime())
-    ? "Not available"
-    : date.toLocaleDateString("en-IN", {
+    ? t("Not available")
+    : date.toLocaleString(language === "ta" ? "ta-IN" : "en-IN");
+}
+
+function formatScheduledDate(
+  value: string,
+  language: "ta" | "en",
+  t: ReturnType<typeof useEmployeeLanguage>["t"],
+) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? t("Not available")
+    : date.toLocaleDateString(language === "ta" ? "ta-IN" : "en-IN", {
         timeZone: "Asia/Kolkata",
         year: "numeric",
         month: "short",
@@ -70,10 +105,11 @@ function formatScheduledDate(value: string) {
 
 function getRecurringMaintenanceLabel(
   maintenanceType: "DAILY_CLEANING" | "WEEKLY_MOPPING",
+  t: ReturnType<typeof useEmployeeLanguage>["t"],
 ) {
   return maintenanceType === "DAILY_CLEANING"
-    ? "Daily Cleaning"
-    : "Weekly Mopping";
+    ? t("Daily Cleaning")
+    : t("Weekly Mopping");
 }
 
 function getStatusVariant(status: JobStatus) {
@@ -96,14 +132,24 @@ function getATM(job: Job) {
   return typeof job.atmId === "object" && job.atmId !== null ? job.atmId : null;
 }
 
-function getErrorMessage(error: unknown) {
+function getErrorMessage(
+  error: unknown,
+  fallback: string,
+  language: "ta" | "en",
+  t: ReturnType<typeof useEmployeeLanguage>["t"],
+) {
   if (isAxiosError<{ message?: string }>(error)) {
-    return error.response?.data?.message || "Could not load your jobs.";
+    return employeeDisplayLabel(
+      language === "en" ? error.response?.data?.message || fallback : fallback,
+      t,
+    );
   }
-  return error instanceof Error ? error.message : "Could not load your jobs.";
+  return language === "en" && error instanceof Error
+    ? employeeDisplayLabel(error.message, t)
+    : fallback;
 }
 
-function JobsSkeleton() {
+function JobsSkeleton({ label }: { label: string }) {
   return (
     <div className="grid gap-4 md:grid-cols-2" role="status">
       {Array.from({ length: 4 }, (_, index) => (
@@ -112,13 +158,14 @@ function JobsSkeleton() {
           className="h-52 animate-pulse rounded-lg border bg-muted/40"
         />
       ))}
-      <p className="sr-only">Loading your jobs...</p>
+      <p className="sr-only">{label}</p>
     </div>
   );
 }
 
 export default function EmployeeJobsPage() {
   const navigate = useNavigate();
+  const { t, language } = useEmployeeLanguage();
   const [status, setStatus] = useState<JobStatus | typeof ALL_STATUSES>(
     ALL_STATUSES,
   );
@@ -145,8 +192,8 @@ export default function EmployeeJobsPage() {
     return (
       <div className="space-y-6 p-4 sm:p-6" role="status">
         <div className="h-8 w-40 animate-pulse rounded bg-muted" />
-        <div className="h-9 animate-pulse rounded-lg bg-muted" />
-        <JobsSkeleton />
+        <div className="h-11 animate-pulse rounded-lg bg-muted" />
+        <JobsSkeleton label={t("Loading your jobs...")} />
       </div>
     );
   }
@@ -154,13 +201,13 @@ export default function EmployeeJobsPage() {
   if (isError) {
     return (
       <main className="p-4 sm:p-6">
-        <h1 className="text-2xl font-bold">My Jobs</h1>
+        <h1 className="text-2xl font-bold sm:text-3xl">{t("My Jobs")}</h1>
         <div className="mt-6 max-w-xl rounded-lg border border-destructive/30 bg-destructive/5 p-5">
           <p className="font-medium text-destructive">
-            Could not load your jobs.
+            {t("Could not load your jobs.")}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            {getErrorMessage(error)}
+            {getErrorMessage(error, t("Could not load your jobs."), language, t)}
           </p>
           <Button
             type="button"
@@ -169,7 +216,7 @@ export default function EmployeeJobsPage() {
             onClick={() => void refetch()}
             disabled={isFetching}
           >
-            {isFetching ? "Retrying..." : "Retry"}
+            {isFetching ? t("Retrying...") : t("Retry")}
           </Button>
         </div>
       </main>
@@ -184,10 +231,10 @@ export default function EmployeeJobsPage() {
             className="size-6 text-primary"
             aria-hidden="true"
           />
-          <h1 className="text-2xl font-bold">My Jobs</h1>
+          <h1 className="text-2xl font-bold sm:text-3xl">{t("My Jobs")}</h1>
         </div>
         <p className="mt-2 text-sm text-muted-foreground">
-          {pagination?.total ?? 0} assigned job(s)
+          {t("Assigned jobs: {count}", { count: pagination?.total ?? 0 })}
         </p>
       </header>
 
@@ -197,7 +244,7 @@ export default function EmployeeJobsPage() {
             htmlFor="my-jobs-search"
             className="mb-2 block text-sm font-medium"
           >
-            Search this page
+            {t("Search this page")}
           </label>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -206,13 +253,18 @@ export default function EmployeeJobsPage() {
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Job ID, title, or ATM"
-              className="h-9 w-full rounded-lg border border-input bg-transparent pl-9 pr-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              placeholder={t("Job ID, title, or ATM")}
+              className="h-12 w-full rounded-lg border border-input bg-transparent pl-9 pr-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             />
           </div>
         </div>
         <div>
-          <label className="mb-2 block text-sm font-medium">Status</label>
+          <label
+            htmlFor="my-jobs-status"
+            className="mb-2 block text-sm font-medium"
+          >
+            {t("Status")}
+          </label>
           <Select
             value={status}
             onValueChange={(value) => {
@@ -220,14 +272,14 @@ export default function EmployeeJobsPage() {
               setPage(1);
             }}
           >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="All statuses" />
+            <SelectTrigger id="my-jobs-status" className="min-h-12 w-full text-base">
+              <SelectValue placeholder={t("All statuses")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={ALL_STATUSES}>All statuses</SelectItem>
+              <SelectItem value={ALL_STATUSES}>{t("All statuses")}</SelectItem>
               {jobStatuses.map((jobStatus) => (
                 <SelectItem key={jobStatus} value={jobStatus}>
-                  {formatLabel(jobStatus)}
+                  {formatLabel(jobStatus, t)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -239,23 +291,23 @@ export default function EmployeeJobsPage() {
         <div className="rounded-lg border border-dashed p-8 text-center">
           <p className="font-medium">
             {status === ALL_STATUSES
-              ? "No jobs assigned yet."
-              : "No jobs found for this status."}
+              ? t("No jobs assigned yet.")
+              : t("No jobs found for this status.")}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Assigned jobs will appear here.
+            {t("Assigned jobs will appear here.")}
           </p>
         </div>
       ) : visibleJobs.length === 0 ? (
         <div className="rounded-lg border border-dashed p-8 text-center">
-          <p className="font-medium">No jobs on this page match your search.</p>
+          <p className="font-medium">{t("No jobs on this page match your search.")}</p>
           <Button
             type="button"
             variant="link"
-            className="mt-2"
+            className="mt-2 min-h-11"
             onClick={() => setSearch("")}
           >
-            Clear search
+            {t("Clear search")}
           </Button>
         </div>
       ) : (
@@ -275,7 +327,7 @@ export default function EmployeeJobsPage() {
                       </CardTitle>
                     </div>
                     <Badge variant={getStatusVariant(job.status)}>
-                      {formatLabel(job.status)}
+                      {formatLabel(job.status, t)}
                     </Badge>
                   </div>
                   {job.description && (
@@ -286,7 +338,7 @@ export default function EmployeeJobsPage() {
                   {job.rejectionReason && (
                     <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
                       <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
-                        Returned for rework
+                        {t("Returned for rework")}
                       </p>
                       <p className="mt-1 break-words text-sm text-muted-foreground">
                         {job.rejectionReason}
@@ -296,17 +348,20 @@ export default function EmployeeJobsPage() {
                   {job.recurringMaintenance?.source === "RECURRING" && (
                     <div className="space-y-1.5">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary">Recurring</Badge>
+                        <Badge variant="secondary">{t("Recurring")}</Badge>
                         <span className="text-sm font-medium">
                           {getRecurringMaintenanceLabel(
                             job.recurringMaintenance.maintenanceType,
+                            t,
                           )}
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Scheduled:{" "}
+                        {t("Scheduled")}:{" "}
                         {formatScheduledDate(
                           job.recurringMaintenance.scheduledDate,
+                          language,
+                          t,
                         )}
                       </p>
                     </div>
@@ -315,9 +370,9 @@ export default function EmployeeJobsPage() {
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                     <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground">ATM</p>
+                      <p className="text-xs text-muted-foreground">{t("ATM")}</p>
                       <p className="break-words font-medium">
-                        {atm?.atmId || "Not available"}
+                        {atm?.atmId || t("Not available")}
                       </p>
                       {atm?.locationName && (
                         <p className="break-words text-xs text-muted-foreground">
@@ -326,41 +381,43 @@ export default function EmployeeJobsPage() {
                       )}
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Work type</p>
-                      <p className="font-medium">{formatLabel(job.workType)}</p>
+                      <p className="text-xs text-muted-foreground">{t("Work type")}</p>
+                      <p className="font-medium">{formatLabel(job.workType, t)}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Priority</p>
+                      <p className="text-xs text-muted-foreground">{t("Priority")}</p>
                       <Badge variant={getPriorityVariant(job.priority)}>
-                        {formatLabel(job.priority)}
+                        {formatLabel(job.priority, t)}
                       </Badge>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">Created</p>
-                      <p className="font-medium">{formatDate(job.createdAt)}</p>
+                      <p className="text-xs text-muted-foreground">{t("Created")}</p>
+                      <p className="font-medium">
+                        {formatDate(job.createdAt, language, t)}
+                      </p>
                     </div>
                     {job.assignedAt && (
                       <div className="col-span-2">
                         <p className="text-xs text-muted-foreground">
-                          Assigned
+                          {t("Assigned")}
                         </p>
                         <p className="font-medium">
-                          {formatDate(job.assignedAt)}
+                          {formatDate(job.assignedAt, language, t)}
                         </p>
                       </div>
                     )}
                   </div>
                   {job.isReassigned && (
-                    <Badge variant="outline">Reassigned</Badge>
+                    <Badge variant="outline">{t("Reassigned")}</Badge>
                   )}
                   <div className="border-t pt-3">
                     <Button
                       type="button"
                       variant="outline"
-                      className="w-full sm:w-auto"
+                      className="min-h-11 w-full sm:w-auto"
                       onClick={() => navigate(`/employee/jobs/${job._id}`)}
                     >
-                      View details
+                      {t("View details")}
                     </Button>
                   </div>
                 </CardContent>
@@ -373,27 +430,32 @@ export default function EmployeeJobsPage() {
       {pagination && pagination.totalPages > 1 && (
         <div className="flex items-center justify-between gap-3 border-t pt-4">
           <p className="text-sm text-muted-foreground">
-            Page {pagination.page} of {pagination.totalPages}
+            {t("Page {page} of {pages}", {
+              page: pagination.page,
+              pages: pagination.totalPages,
+            })}
           </p>
           <div className="flex gap-2">
             <Button
               type="button"
               variant="outline"
               size="sm"
+              className="min-h-11"
               onClick={() => setPage((current) => current - 1)}
               disabled={page <= 1 || isFetching}
             >
               <ChevronLeft />
-              Previous
+              {t("Previous")}
             </Button>
             <Button
               type="button"
               variant="outline"
               size="sm"
+              className="min-h-11"
               onClick={() => setPage((current) => current + 1)}
               disabled={page >= pagination.totalPages || isFetching}
             >
-              Next
+              {t("Next")}
               <ChevronRight />
             </Button>
           </div>

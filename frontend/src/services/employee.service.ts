@@ -1,5 +1,20 @@
 import api from "@/lib/axios";
 
+export interface EmployeeDistrictReference {
+  _id: string;
+  districtName?: string;
+}
+
+export interface EmployeeRegionReference {
+  _id: string;
+  name?: string;
+}
+
+export interface EmployeeATMReference {
+  _id: string;
+  atmId?: string;
+}
+
 export interface Employee {
   _id: string;
   employeeCode: string;
@@ -22,6 +37,9 @@ export interface Employee {
   districtIds: string[];
   assignedAtmIds: string[];
   regionIds: string[];
+  districts?: Array<EmployeeDistrictReference | null>;
+  regions?: Array<EmployeeRegionReference | null>;
+  assignedAtms?: Array<EmployeeATMReference | null>;
 
   supervisorId?: string | null;
   salary?: number;

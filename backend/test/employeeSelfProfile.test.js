@@ -270,6 +270,75 @@ test("self-profile route is employee-only and registered before the arbitrary-ID
   );
 });
 
+test("admin employee detail populates readable assignment names and preserves relationship IDs", async () => {
+  const capture = {};
+  const employee = {
+    _id: employeeDocumentId,
+    userId: { _id: linkedUserId, firstName: "Asha" },
+    districtIds: ["64b000000000000000000010", "64b000000000000000000013"],
+    regionIds: ["64b000000000000000000011"],
+    assignedAtmIds: ["64b000000000000000000012"],
+    async populate(paths) {
+      capture.relationPopulate = paths;
+      this.districtIds = [
+        { _id: "64b000000000000000000010", districtName: "Central" },
+        null,
+      ];
+      this.regionIds = [
+        { _id: "64b000000000000000000011", name: "Central Region" },
+      ];
+      this.assignedAtmIds = [
+        { _id: "64b000000000000000000012", atmId: "ATM0042" },
+      ];
+      return this;
+    },
+    toObject() {
+      return {
+        _id: this._id,
+        userId: this.userId,
+        districtIds: this.districtIds,
+        regionIds: this.regionIds,
+        assignedAtmIds: this.assignedAtmIds,
+      };
+    },
+  };
+  const originalFindById = Employee.findById;
+  Employee.findById = (id) => {
+    capture.id = id;
+    return makeQuery(employee, capture);
+  };
+
+  try {
+    const { status, body } = await invoke(viewEmployeeById, {
+      params: { employeeId: employeeDocumentId },
+    });
+    assert.equal(status, 200);
+    assert.equal(capture.id, employeeDocumentId);
+    assert.deepEqual(capture.populate, [
+      ["userId", "firstName lastName email userType"],
+    ]);
+    assert.deepEqual(capture.relationPopulate, [
+      { path: "districtIds", select: "districtName" },
+      { path: "regionIds", select: "name" },
+      { path: "assignedAtmIds", select: "atmId" },
+    ]);
+    assert.deepEqual(body.data.districtIds, [
+      "64b000000000000000000010",
+      "64b000000000000000000013",
+    ]);
+    assert.deepEqual(body.data.regionIds, ["64b000000000000000000011"]);
+    assert.deepEqual(body.data.assignedAtmIds, ["64b000000000000000000012"]);
+    assert.deepEqual(body.data.districts, [
+      { districtName: "Central" },
+      null,
+    ]);
+    assert.deepEqual(body.data.regions, [{ name: "Central Region" }]);
+    assert.deepEqual(body.data.assignedAtms, [{ atmId: "ATM0042" }]);
+  } finally {
+    Employee.findById = originalFindById;
+  }
+});
+
 test("supervisor employee list preserves direct-report scope and excludes salary", async () => {
   const capture = {};
   const report = {

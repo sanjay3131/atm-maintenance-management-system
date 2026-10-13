@@ -191,9 +191,41 @@ export const viewEmployeeById = asyncHandler(async (req, res) => {
       .json(new ApiResponse(404, "Employee not found", null));
   }
 
+  const districtIds = (employee.districtIds ?? []).map(String);
+  const regionIds = (employee.regionIds ?? []).map(String);
+  const assignedAtmIds = (employee.assignedAtmIds ?? []).map(String);
+  await employee.populate([
+    { path: "districtIds", select: "districtName" },
+    { path: "regionIds", select: "name" },
+    { path: "assignedAtmIds", select: "atmId" },
+  ]);
+  const employeeDetails = employee.toObject();
+
   return res
     .status(200)
-    .json(new ApiResponse(200, employee, "Employee retrieved successfully"));
+    .json(
+      new ApiResponse(
+        200,
+        {
+          ...employeeDetails,
+          districtIds,
+          regionIds,
+          assignedAtmIds,
+          districts: (employee.districtIds ?? []).map((district) =>
+            district?.districtName
+              ? { districtName: district.districtName }
+              : null,
+          ),
+          regions: (employee.regionIds ?? []).map((region) =>
+            region?.name ? { name: region.name } : null,
+          ),
+          assignedAtms: (employee.assignedAtmIds ?? []).map((atm) =>
+            atm?.atmId ? { atmId: atm.atmId } : null,
+          ),
+        },
+        "Employee retrieved successfully",
+      ),
+    );
 });
 
 export const getMyEmployeeProfile = asyncHandler(async (req, res) => {

@@ -6,6 +6,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { LoaderCircle } from "lucide-react";
+import { useEmployeeLanguage } from "@/features/employee-portal/i18n";
 
 interface ConfirmMaterialUsageRemovalDialogProps {
   open: boolean;
@@ -22,6 +23,8 @@ export default function ConfirmMaterialUsageRemovalDialog({
   onOpenChange,
   onConfirm,
 }: ConfirmMaterialUsageRemovalDialogProps) {
+  const { t } = useEmployeeLanguage();
+
   return (
     <Dialog
       open={open}
@@ -30,10 +33,9 @@ export default function ConfirmMaterialUsageRemovalDialog({
       }}
     >
       <DialogContent>
-        <DialogTitle>Remove material usage?</DialogTitle>
+        <DialogTitle>{t("Remove material usage?")}</DialogTitle>
         <DialogDescription className="mt-2">
-          This removes the recorded {itemName} entry from this Job only. It will
-          not change the Item Master.
+          {t("This removes the recorded {item} entry from this Job only. It will not change the Item Master.", { item: itemName })}
         </DialogDescription>
         <div className="mt-6 flex justify-end gap-2">
           <Button
@@ -42,7 +44,7 @@ export default function ConfirmMaterialUsageRemovalDialog({
             onClick={() => onOpenChange(false)}
             disabled={isPending}
           >
-            Keep entry
+            {t("Keep entry")}
           </Button>
           <Button
             type="button"
@@ -51,7 +53,7 @@ export default function ConfirmMaterialUsageRemovalDialog({
             disabled={isPending}
           >
             {isPending && <LoaderCircle className="animate-spin" />}
-            Remove entry
+            {t("Remove entry")}
           </Button>
         </div>
       </DialogContent>

@@ -10,6 +10,7 @@ import District from "../districts/district.models.js";
 import { JOB_STATUS } from "../../utils/jobStatus.js";
 import { getJobPerformanceForUser } from "../jobs/jobPerformance.service.js";
 import { z } from "zod";
+import mongoose from "mongoose";
 
 const employeePerformanceDetailsQuerySchema = z
   .object({
@@ -417,7 +418,14 @@ export const getEmployeePerformance = asyncHandler(async (req, res) => {
     throw new ApiError(403, "Access denied");
   }
 
-  const { period = "month" } = req.query; // "week", "month", "year"
+  const { period = "month", employeeId } = req.query; // "week", "month", "year"
+  if (
+    employeeId !== undefined &&
+    (typeof employeeId !== "string" ||
+      !/^[a-fA-F0-9]{24}$/.test(employeeId))
+  ) {
+    throw new ApiError(400, "Invalid employeeId");
+  }
 
   let dateFilter = {};
   const now = new Date();
@@ -439,7 +447,9 @@ export const getEmployeePerformance = asyncHandler(async (req, res) => {
     {
       $match: {
         isDeleted: false,
-        assignedEmployeeId: { $exists: true, $ne: null },
+        assignedEmployeeId: employeeId
+          ? new mongoose.Types.ObjectId(employeeId)
+          : { $exists: true, $ne: null },
         status: { $ne: JOB_STATUS.CANCELLED },
         ...dateFilter,
       },

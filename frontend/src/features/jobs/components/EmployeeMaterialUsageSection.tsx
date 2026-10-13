@@ -19,45 +19,54 @@ import {
   useJobMaterialUsage,
 } from "../hooks/useJobMaterialUsage";
 import type { Job } from "../types/job.types";
+import { useEmployeeLanguage } from "@/features/employee-portal/i18n";
 
-function formatRecordedAt(value?: string) {
+function formatRecordedAt(value: string | undefined, language: "ta" | "en") {
   if (!value) return null;
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toLocaleString();
+  return Number.isNaN(date.getTime())
+    ? null
+    : date.toLocaleString(language === "ta" ? "ta-IN" : undefined);
 }
 
-function getUsageReadError(error: unknown) {
+function getUsageReadError(
+  error: unknown,
+  t: ReturnType<typeof useEmployeeLanguage>["t"],
+) {
   if (isAxiosError(error) && error.response?.status === 403) {
-    return "This Job is no longer assigned to you, so its material history is unavailable.";
+    return t("This Job is no longer assigned to you, so its material history is unavailable.");
   }
   if (isAxiosError(error) && error.response?.status === 404) {
-    return "This Job is no longer available.";
+    return t("This Job is no longer available.");
   }
-  return "Could not load material history. Check your connection and retry.";
+  return t("Could not load material history. Check your connection and retry.");
 }
 
-function getCreateError(error: unknown) {
+function getCreateError(
+  error: unknown,
+  t: ReturnType<typeof useEmployeeLanguage>["t"],
+) {
   if (isAxiosError<{ message?: string }>(error)) {
     const status = error.response?.status;
     const message = error.response?.data?.message ?? "";
 
     if (status === 403) {
-      return "This Job is no longer assigned to you. Refresh the Job before trying again.";
+      return t("This Job is no longer assigned to you. Refresh the Job before trying again.");
     }
     if (status === 404) {
-      return "The Job or selected Item is no longer available. Refresh and choose an active Item.";
+      return t("The Job or selected Item is no longer available. Refresh and choose an active Item.");
     }
     if (
       status === 400 &&
       message.toLowerCase().includes("job status")
     ) {
-      return "This Job is no longer in progress. Refresh the Job to see its current status.";
+      return t("This Job is no longer in progress. Refresh the Job to see its current status.");
     }
     if (status === 400) {
-      return "Check the selected Item and quantity, then try again.";
+      return t("Check the selected Item and quantity, then try again.");
     }
   }
-  return "Could not record material usage. Check your connection and try again.";
+  return t("Could not record material usage. Check your connection and try again.");
 }
 
 export default function EmployeeMaterialUsageSection({
@@ -65,6 +74,7 @@ export default function EmployeeMaterialUsageSection({
 }: {
   job: Job;
 }) {
+  const { t, language } = useEmployeeLanguage();
   const canRecord = job.status === "IN_PROGRESS";
   const [itemId, setItemId] = useState("");
   const [quantity, setQuantity] = useState("1");
@@ -84,7 +94,7 @@ export default function EmployeeMaterialUsageSection({
     if (!usageToRemove || deleteMutation.isPending) return;
     if (!canRecord) {
       setUsageToRemove(null);
-      toast.error("Material usage can only be removed while the Job is in progress.");
+      toast.error(t("Material usage can only be removed while the Job is in progress."));
       return;
     }
 
@@ -93,17 +103,17 @@ export default function EmployeeMaterialUsageSection({
       {
         onSuccess: () => {
           setUsageToRemove(null);
-          toast.success("Material usage removed.");
+          toast.success(t("Material usage removed."));
         },
         onError: (error) => {
           if (isAxiosError(error) && error.response?.status === 403) {
-            toast.error("This Job is no longer assigned to you.");
+            toast.error(t("This Job is no longer assigned to you."));
           } else if (isAxiosError(error) && error.response?.status === 400) {
             toast.error(
-              "Material usage can only be removed while the Job is in progress.",
+              t("Material usage can only be removed while the Job is in progress."),
             );
           } else {
-            toast.error("Could not remove material usage. Refresh and try again.");
+            toast.error(t("Could not remove material usage. Refresh and try again."));
           }
         },
       },
@@ -116,11 +126,11 @@ export default function EmployeeMaterialUsageSection({
 
     const parsedQuantity = Number(quantity);
     if (!itemId) {
-      setValidationError("Select an Item.");
+      setValidationError(t("Select an Item."));
       return;
     }
     if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
-      setValidationError("Quantity must be a finite number greater than zero.");
+      setValidationError(t("Quantity must be a finite number greater than zero."));
       return;
     }
 
@@ -131,9 +141,9 @@ export default function EmployeeMaterialUsageSection({
         onSuccess: () => {
           setItemId("");
           setQuantity("1");
-          toast.success("Material usage recorded.");
+          toast.success(t("Material usage recorded."));
         },
-        onError: (error) => toast.error(getCreateError(error)),
+        onError: (error) => toast.error(getCreateError(error, t)),
       },
     );
   };
@@ -141,7 +151,7 @@ export default function EmployeeMaterialUsageSection({
   return (
     <Card className="min-w-0 overflow-hidden">
       <CardHeader className="p-4 sm:p-6">
-        <CardTitle>Materials Used</CardTitle>
+        <CardTitle>{t("Materials Used")}</CardTitle>
       </CardHeader>
       <CardContent className="min-w-0 space-y-5 p-4 pt-0 sm:p-6 sm:pt-0">
         {canRecord ? (
@@ -154,7 +164,7 @@ export default function EmployeeMaterialUsageSection({
                 className="text-sm font-medium"
                 htmlFor={`material-item-${job._id}`}
               >
-                Active Item
+                {t("Active Item")}
               </label>
               {itemsQuery.isLoading ? (
                 <div
@@ -162,12 +172,12 @@ export default function EmployeeMaterialUsageSection({
                   role="status"
                 >
                   <LoaderCircle className="size-4 animate-spin" />
-                  Loading Items...
+                  {t("Loading Items...")}
                 </div>
               ) : itemsQuery.isError ? (
                 <div className="space-y-2">
                   <p role="alert" className="text-sm text-destructive">
-                    Could not load active Items.
+                    {t("Could not load active Items.")}
                   </p>
                   <Button
                     type="button"
@@ -176,7 +186,7 @@ export default function EmployeeMaterialUsageSection({
                     onClick={() => void itemsQuery.refetch()}
                     disabled={itemsQuery.isFetching}
                   >
-                    {itemsQuery.isFetching ? "Retrying..." : "Retry"}
+                    {itemsQuery.isFetching ? t("Retrying...") : t("Retry")}
                   </Button>
                 </div>
               ) : (
@@ -194,13 +204,13 @@ export default function EmployeeMaterialUsageSection({
                   <SelectTrigger
                     id={`material-item-${job._id}`}
                     className="min-h-11 w-full"
-                    aria-label="Active Item"
+                    aria-label={t("Active Item")}
                   >
                     <SelectValue
                       placeholder={
                         (itemsQuery.data?.length ?? 0) > 0
-                          ? "Select an Item"
-                          : "No active Items available"
+                          ? t("Select an Item")
+                          : t("No active Items available")
                       }
                     >
                       {selectedItem
@@ -219,7 +229,7 @@ export default function EmployeeMaterialUsageSection({
               )}
               {itemsQuery.isSuccess && itemsQuery.data.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  No active Items are available.
+                  {t("No active Items are available.")}
                 </p>
               )}
             </div>
@@ -229,7 +239,7 @@ export default function EmployeeMaterialUsageSection({
                 className="text-sm font-medium"
                 htmlFor={`material-quantity-${job._id}`}
               >
-                Quantity
+                {t("Quantity")}
               </label>
               <input
                 id={`material-quantity-${job._id}`}
@@ -263,7 +273,7 @@ export default function EmployeeMaterialUsageSection({
               ) : (
                 <PackagePlus />
               )}
-              {createMutation.isPending ? "Recording..." : "Add Material"}
+              {createMutation.isPending ? t("Recording...") : t("Add Material")}
             </Button>
             {validationError && (
               <p
@@ -276,21 +286,20 @@ export default function EmployeeMaterialUsageSection({
           </form>
         ) : (
           <p className="rounded-md bg-muted/40 p-3 text-sm text-muted-foreground">
-            New material usage can only be recorded while the Job is in
-            progress.
+            {t("New material usage can only be recorded while the Job is in progress.")}
           </p>
         )}
 
-        <section aria-label="Recorded materials" aria-live="polite">
+        <section aria-label={t("Recorded materials")} aria-live="polite">
           {usageQuery.isLoading ? (
             <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground" role="status">
               <LoaderCircle className="size-4 animate-spin" />
-              Loading material history...
+              {t("Loading material history...")}
             </div>
           ) : usageQuery.isError ? (
             <div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
               <p role="alert" className="text-sm text-destructive">
-                {getUsageReadError(usageQuery.error)}
+                {getUsageReadError(usageQuery.error, t)}
               </p>
               <Button
                 type="button"
@@ -299,17 +308,17 @@ export default function EmployeeMaterialUsageSection({
                 onClick={() => void usageQuery.refetch()}
                 disabled={usageQuery.isFetching}
               >
-                {usageQuery.isFetching ? "Retrying..." : "Retry"}
+                {usageQuery.isFetching ? t("Retrying...") : t("Retry")}
               </Button>
             </div>
           ) : usageEntries.length === 0 ? (
             <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-              No materials have been recorded for this Job.
+              {t("No materials have been recorded for this Job.")}
             </p>
           ) : (
             <ul className="divide-y rounded-md border">
               {usageEntries.map((entry) => {
-                const recordedAt = formatRecordedAt(entry.createdAt);
+                const recordedAt = formatRecordedAt(entry.createdAt, language);
                 return (
                   <li
                     key={entry._id}
@@ -330,7 +339,7 @@ export default function EmployeeMaterialUsageSection({
                           type="button"
                           variant="ghost"
                           size="icon"
-                          aria-label={`Remove ${entry.itemNameSnapshot} usage`}
+                          aria-label={t("Remove {item} usage", { item: entry.itemNameSnapshot })}
                           onClick={() =>
                             setUsageToRemove({
                               _id: entry._id,
@@ -352,7 +361,7 @@ export default function EmployeeMaterialUsageSection({
       </CardContent>
       <ConfirmMaterialUsageRemovalDialog
         open={Boolean(usageToRemove)}
-        itemName={usageToRemove?.itemNameSnapshot ?? "material"}
+        itemName={usageToRemove?.itemNameSnapshot ?? t("material")}
         isPending={deleteMutation.isPending}
         onOpenChange={(open) => {
           if (!open) setUsageToRemove(null);

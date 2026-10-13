@@ -18,6 +18,11 @@ import {
 } from "@/components/ui/dialog";
 import EmployeeEditForm from "@/features/employees/components/EmployeeEditForm";
 import { useEmployee } from "@/features/employees/hooks/useEmployee";
+import EmployeePerformance from "@/features/dashboard/components/EmployeePerformance";
+import EmployeeAttendanceCalendar from "@/features/attendance/components/EmployeeAttendanceCalendar";
+import { useJobs } from "@/features/jobs/hooks/useJobs";
+
+const JOBS_PAGE_LIMIT = 10;
 
 function formatDate(value: string | null | undefined) {
   if (!value) return "—";
@@ -30,6 +35,14 @@ function formatStatus(status: string) {
   return status === "on_leave"
     ? "On Leave"
     : status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function formatJobStatus(status: string) {
+  return status
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function getStatusVariant(status: string) {
@@ -97,6 +110,24 @@ function DetailList({
   );
 }
 
+function assignmentNames(
+  values: Array<
+    | string
+    | { districtName?: string; name?: string; atmId?: string }
+    | null
+  >,
+  getName: (value: { districtName?: string; name?: string; atmId?: string }) =>
+    | string
+    | undefined,
+  unavailableLabel: string,
+) {
+  return values.map((value) =>
+    value && typeof value !== "string"
+      ? getName(value) || unavailableLabel
+      : unavailableLabel,
+  );
+}
+
 function DetailsSkeleton() {
   return (
     <div className="space-y-6 p-4 sm:p-6" role="status">
@@ -122,9 +153,23 @@ export default function EmployeeDetailsPage() {
   const [isEditOpen, setIsEditOpen] = useState(
     searchParams.get("edit") === "true",
   );
+  const [jobsPageState, setJobsPageState] = useState({
+    employeeId,
+    page: 1,
+  });
+  const jobsPage =
+    jobsPageState.employeeId === employeeId ? jobsPageState.page : 1;
   const isValidEmployeeId = /^[a-fA-F0-9]{24}$/.test(employeeId);
   const employeeQuery = useEmployee(employeeId);
   const employee = employeeQuery.data;
+  const employeeJobsQuery = useJobs(
+    {
+      page: jobsPage,
+      limit: JOBS_PAGE_LIMIT,
+      ...(employee?.userId?._id ? { employeeId: employee.userId._id } : {}),
+    },
+    Boolean(isValidEmployeeId && employee?.userId?._id),
+  );
 
   if (employeeQuery.isLoading) {
     return <DetailsSkeleton />;
@@ -349,22 +394,30 @@ export default function EmployeeDetailsPage() {
             <CardTitle>Geographic and ATM assignments</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="mb-3 text-sm text-muted-foreground">
-              Related records are returned as IDs by this endpoint; names are
-              not available here.
-            </p>
             <dl>
               <DetailList
-                label="District IDs"
-                values={employee.districtIds ?? []}
+                label="Districts"
+                values={assignmentNames(
+                  employee.districts ?? [],
+                  (district) => district.districtName,
+                  "District unavailable",
+                )}
               />
               <DetailList
-                label="Region IDs"
-                values={employee.regionIds ?? []}
+                label="Regions"
+                values={assignmentNames(
+                  employee.regions ?? [],
+                  (region) => region.name,
+                  "Region unavailable",
+                )}
               />
               <DetailList
-                label="Assigned ATM IDs"
-                values={employee.assignedAtmIds ?? []}
+                label="Assigned ATMs"
+                values={assignmentNames(
+                  employee.assignedAtms ?? [],
+                  (atm) => atm.atmId,
+                  "ATM unavailable",
+                )}
               />
             </dl>
           </CardContent>
@@ -388,6 +441,134 @@ export default function EmployeeDetailsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <EmployeePerformance employee={employee} />
+
+      <EmployeeAttendanceCalendar employeeId={employee._id} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Job history</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {employeeJobsQuery.isLoading ? (
+            <p className="text-sm text-muted-foreground" role="status">
+              Loading job history...
+            </p>
+          ) : employeeJobsQuery.isError ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-destructive" role="alert">
+                Failed to load job history.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void employeeJobsQuery.refetch()}
+                disabled={employeeJobsQuery.isFetching}
+              >
+                <RefreshCw
+                  className={employeeJobsQuery.isFetching ? "animate-spin" : ""}
+                />
+                {employeeJobsQuery.isFetching ? "Retrying..." : "Retry"}
+              </Button>
+            </div>
+          ) : !employeeJobsQuery.data?.jobs.length ? (
+            <p className="text-sm text-muted-foreground">
+              No job history is available for this employee.
+            </p>
+          ) : (
+            <>
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full min-w-[720px] text-sm">
+                  <caption className="sr-only">
+                    Paginated job history for {employee.employeeCode}
+                  </caption>
+                  <thead>
+                    <tr className="border-b text-left text-muted-foreground">
+                      <th className="p-3 font-medium">Job</th>
+                      <th className="p-3 font-medium">ATM</th>
+                      <th className="p-3 font-medium">Status</th>
+                      <th className="p-3 font-medium">Assigned</th>
+                      <th className="p-3 font-medium">Completed</th>
+                      <th className="p-3 font-medium">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {employeeJobsQuery.data.jobs.map((job) => (
+                      <tr key={job._id}>
+                        <td className="p-3">
+                          <p className="font-medium">{job.jobId}</p>
+                          <p className="text-muted-foreground">{job.title}</p>
+                        </td>
+                        <td className="p-3">
+                          {typeof job.atmId === "object" && job.atmId
+                            ? job.atmId.atmId || "ATM unavailable"
+                            : "ATM unavailable"}
+                        </td>
+                        <td className="p-3">
+                          <Badge variant="outline">
+                            {formatJobStatus(job.status)}
+                          </Badge>
+                        </td>
+                        <td className="p-3">{formatDate(job.assignedAt)}</td>
+                        <td className="p-3">{formatDate(job.completedAt)}</td>
+                        <td className="p-3">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              navigate(`/admin/jobs/${job._id}`)
+                            }
+                          >
+                            View job
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                  {employeeJobsQuery.data.pagination.total} job(s) · Page{" "}
+                  {employeeJobsQuery.data.pagination.page} of{" "}
+                  {Math.max(employeeJobsQuery.data.pagination.totalPages, 1)}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setJobsPageState({
+                        employeeId,
+                        page: Math.max(jobsPage - 1, 1),
+                      })
+                    }
+                    disabled={jobsPage <= 1 || employeeJobsQuery.isFetching}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setJobsPageState({ employeeId, page: jobsPage + 1 })
+                    }
+                    disabled={
+                      jobsPage >= employeeJobsQuery.data.pagination.totalPages ||
+                      employeeJobsQuery.isFetching
+                    }
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
     </main>
   );
 }

@@ -236,6 +236,18 @@ export interface MyJobPerformance {
   };
   averageCurrentAttemptCompletionHours: number | null;
   averageCurrentAttemptJobCount: number;
+  eligibleAssignedJobCount: number;
+  completedJobCount: number;
+  lastSevenDays: {
+    fromDate: string;
+    toDate: string;
+    timezone: string;
+    days: Array<{
+      date: string;
+      assigned: number;
+      completed: number;
+    }>;
+  };
 }
 
 export interface CreateJobData {
@@ -269,6 +281,7 @@ export interface ApproveJobData {
 export interface JobsQueryParams {
   page: number;
   limit: number;
+  employeeId?: string;
   customerId?: string;
   bankId?: string;
   districtId?: string;

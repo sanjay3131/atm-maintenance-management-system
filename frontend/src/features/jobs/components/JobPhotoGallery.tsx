@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { JobPhoto } from "../types/job.types";
+import { useEmployeeLanguage } from "@/features/employee-portal/i18n";
 
 type PhotoSide = "before" | "after";
 
@@ -32,12 +33,16 @@ function PhotoSection({
   photos,
   onPhotoClick,
   reducedMotion,
+  t,
+  language,
 }: {
   title: string;
   photoType: PhotoSide;
   photos?: Array<JobPhoto | null>;
   onPhotoClick: (index: number) => void;
   reducedMotion: boolean | null;
+  t: ReturnType<typeof useEmployeeLanguage>["t"];
+  language: "ta" | "en";
 }) {
   const availablePhotos = (photos ?? []).flatMap((photo, index) =>
     photo && photo.photoType === photoType && getPhotoUrl(photo)
@@ -50,12 +55,12 @@ function PhotoSection({
       <CardHeader className="flex flex-row items-center justify-between gap-2 p-4 sm:p-6">
         <CardTitle className="text-base">{title}</CardTitle>
         <span className="shrink-0 text-sm text-muted-foreground">
-          {availablePhotos.length} / 3 required
+          {t("{count} / 3 required", { count: availablePhotos.length })}
         </span>
       </CardHeader>
       <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
         {availablePhotos.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No photos uploaded.</p>
+          <p className="text-sm text-muted-foreground">{t("No photos uploaded.")}</p>
         ) : (
           <div className="grid grid-cols-2 gap-2 min-[400px]:gap-3 sm:grid-cols-3">
             {availablePhotos.map(({ photo, index }) => (
@@ -68,19 +73,19 @@ function PhotoSection({
               >
                 <button
                   type="button"
-                  aria-label={`Review ${title.toLowerCase()} ${index + 1}`}
+                  aria-label={t("Review {type} photo {number}", { type: title, number: index + 1 })}
                   className="group block min-h-11 w-full cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={() => onPhotoClick(index)}
                 >
                   <img
                     src={photo.thumbnailUrl || photo.url || undefined}
-                    alt={`${title} photo ${index + 1}`}
+                    alt={t("{type} photo {number}", { type: title, number: index + 1 })}
                     className="aspect-square w-full object-cover transition-opacity group-hover:opacity-90"
                   />
                 </button>
                 {photo.uploadedAt && (
                   <figcaption className="break-words p-2 text-xs text-muted-foreground">
-                    {new Date(photo.uploadedAt).toLocaleString()}
+                    {new Date(photo.uploadedAt).toLocaleString(language === "ta" ? "ta-IN" : undefined)}
                   </figcaption>
                 )}
               </motion.figure>
@@ -99,6 +104,7 @@ export default function JobPhotoGallery({
   beforePhotos?: Array<JobPhoto | null>;
   afterPhotos?: Array<JobPhoto | null>;
 }) {
+  const { t, language } = useEmployeeLanguage();
   const reducedMotion = useReducedMotion();
   const [activePhotoPairIndex, setActivePhotoPairIndex] = useState<
     number | null
@@ -196,21 +202,25 @@ export default function JobPhotoGallery({
   return (
     <section
       className="grid min-w-0 gap-4 lg:grid-cols-2"
-      aria-label="Job photos"
+      aria-label={t("Job photos")}
     >
       <PhotoSection
-        title="Before photos"
+        title={t("Before photos")}
         photoType="before"
         photos={beforePhotos}
         onPhotoClick={setActivePhotoPairIndex}
         reducedMotion={reducedMotion}
+        t={t}
+        language={language}
       />
       <PhotoSection
-        title="After photos"
+        title={t("After photos")}
         photoType="after"
         photos={afterPhotos}
         onPhotoClick={setActivePhotoPairIndex}
         reducedMotion={reducedMotion}
+        t={t}
+        language={language}
       />
 
       <Dialog
@@ -226,16 +236,16 @@ export default function JobPhotoGallery({
             <>
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1">
-                  <DialogTitle>Job Photos</DialogTitle>
+                  <DialogTitle>{t("Job Photos")}</DialogTitle>
                   <DialogDescription>
-                    Before and after photos for this job.
+                    {t("Before and after photos for this job.")}
                   </DialogDescription>
                 </div>
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label="Close photo review"
+                  aria-label={t("Close photo review")}
                   onClick={() => setActivePhotoPairIndex(null)}
                 >
                   <X />
@@ -245,12 +255,12 @@ export default function JobPhotoGallery({
                 {[
                   {
                     side: "before" as const,
-                    label: "Before",
+                    label: t("Before"),
                     photo: activePairBefore,
                   },
                   {
                     side: "after" as const,
-                    label: "After",
+                    label: t("After"),
                     photo: activePairAfter,
                   },
                 ].map(({ side, label, photo }) => {
@@ -261,7 +271,7 @@ export default function JobPhotoGallery({
                       {photo && src ? (
                         <button
                           type="button"
-                          aria-label={`Open ${label.toLowerCase()} photo ${activePhotoPairIndex + 1} full size`}
+                          aria-label={t("Open {type} photo {number} full size", { type: label, number: activePhotoPairIndex + 1 })}
                           className="flex aspect-[4/3] w-full cursor-zoom-in items-center justify-center overflow-hidden rounded-md border bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           onClick={() =>
                             openFullImage(side, activePhotoPairIndex)
@@ -269,7 +279,7 @@ export default function JobPhotoGallery({
                         >
                           <img
                             src={src}
-                            alt={`${label} photo ${activePhotoPairIndex + 1}`}
+                            alt={t("{type} photo {number}", { type: label, number: activePhotoPairIndex + 1 })}
                             className="max-h-full max-w-full object-contain"
                           />
                         </button>
@@ -278,7 +288,7 @@ export default function JobPhotoGallery({
                           className="flex aspect-[4/3] items-center justify-center rounded-md border border-dashed bg-muted/20 text-sm text-muted-foreground"
                           role="status"
                         >
-                          No photo available
+                          {t("No photo available")}
                         </div>
                       )}
                     </section>
@@ -301,7 +311,7 @@ export default function JobPhotoGallery({
                   }
                 >
                   <ChevronLeft />
-                  Previous
+                  {t("Previous")}
                 </Button>
                 <Button
                   type="button"
@@ -316,7 +326,7 @@ export default function JobPhotoGallery({
                     )
                   }
                 >
-                  Next
+                  {t("Next")}
                   <ChevronRight />
                 </Button>
               </div>
@@ -336,9 +346,9 @@ export default function JobPhotoGallery({
             <>
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <DialogTitle>Full-size photo</DialogTitle>
+                  <DialogTitle>{t("Full-size photo")}</DialogTitle>
                   <DialogDescription className="mt-1">
-                    {activeFullPhoto.side === "before" ? "Before" : "After"} ·{" "}
+                    {t(activeFullPhoto.side === "before" ? "Before" : "After")} ·{" "}
                     {activeFullPhoto.pairIndex + 1}
                   </DialogDescription>
                 </div>
@@ -346,7 +356,7 @@ export default function JobPhotoGallery({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  aria-label="Close full-size photo"
+                  aria-label={t("Close full-size photo")}
                   onClick={() => setActiveFullImageIndex(null)}
                 >
                   <X />
@@ -355,12 +365,15 @@ export default function JobPhotoGallery({
               <div className="mt-4 flex min-h-[35vh] items-center justify-center rounded-md bg-black/90 p-2 sm:min-h-[40vh]">
                 <img
                   src={activeFullPhoto.src}
-                  alt={`${activeFullPhoto.side} photo ${activeFullPhoto.pairIndex + 1}`}
+                  alt={t("{type} photo {number}", {
+                    type: t(activeFullPhoto.side === "before" ? "Before" : "After"),
+                    number: activeFullPhoto.pairIndex + 1,
+                  })}
                   className="max-h-[70vh] max-w-full object-contain"
                 />
               </div>
               <p className="mt-3 text-center text-sm text-muted-foreground">
-                {activeFullPhoto.side === "before" ? "Before" : "After"} ·{" "}
+                {t(activeFullPhoto.side === "before" ? "Before" : "After")} ·{" "}
                 {activeFullPhoto.pairIndex + 1} · {activeFullImageIndex + 1} /{" "}
                 {reviewPhotos.length}
               </p>
@@ -373,7 +386,7 @@ export default function JobPhotoGallery({
                   onClick={() => moveFullImage(-1)}
                 >
                   <ChevronLeft />
-                  Previous
+                  {t("Previous")}
                 </Button>
                 <Button
                   type="button"
@@ -382,7 +395,7 @@ export default function JobPhotoGallery({
                   disabled={activeFullImageIndex >= reviewPhotos.length - 1}
                   onClick={() => moveFullImage(1)}
                 >
-                  Next
+                  {t("Next")}
                   <ChevronRight />
                 </Button>
               </div>

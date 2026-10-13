@@ -171,16 +171,23 @@ function matchesFilters(
   return true;
 }
 
-export default function EmployeePerformance() {
+export default function EmployeePerformance({
+  employee: viewedEmployee,
+}: {
+  employee?: Employee;
+} = {}) {
   const {
     data,
     isLoading,
     isFetching,
     refetch: refetchPerformance,
-  } = useEmployeePerformance();
+  } = useEmployeePerformance(
+    viewedEmployee?.userId?._id,
+    !viewedEmployee || Boolean(viewedEmployee.userId?._id),
+  );
   const reducedMotion = useReducedMotion();
-  const employeesQuery = useEmployees();
-  const districtsQuery = useDistricts();
+  const employeesQuery = useEmployees(!viewedEmployee);
+  const districtsQuery = useDistricts(!viewedEmployee);
   const [selectedEmployeeDocumentId, setSelectedEmployeeDocumentId] = useState<
     string | null
   >(null);
@@ -202,7 +209,7 @@ export default function EmployeePerformance() {
       ]),
     );
 
-    return (employeesQuery.data ?? [])
+    return (viewedEmployee ? [viewedEmployee] : (employeesQuery.data ?? []))
       .map((employee) => {
         const userId = employeeId(employee);
         const performance = userId
@@ -240,7 +247,7 @@ export default function EmployeePerformance() {
           (left.employeeCode ?? "").localeCompare(right.employeeCode ?? "") ||
           left.employeeId.localeCompare(right.employeeId),
       );
-  }, [data?.performance, employeesQuery.data]);
+  }, [data?.performance, employeesQuery.data, viewedEmployee]);
   const performanceRows = allPerformanceRows.filter((row) =>
     matchesFilters(row, {
       search,
@@ -250,6 +257,7 @@ export default function EmployeePerformance() {
   );
   const pickerRows = performanceRows;
   const visiblePerformanceRows = useMemo(() => {
+    if (viewedEmployee) return performanceRows;
     if (search.trim()) return performanceRows;
 
     const topPerformers = performanceRows
@@ -268,16 +276,18 @@ export default function EmployeePerformance() {
       return [...topPerformers, selectedRow];
     }
     return topPerformers;
-  }, [performanceRows, search, selectedEmployeeDocumentId]);
+  }, [performanceRows, search, selectedEmployeeDocumentId, viewedEmployee]);
 
   const selectedPerformanceRow = performanceRows.find(
     (row) =>
-      selectedEmployeeDocumentId &&
-      row.employee._id === selectedEmployeeDocumentId,
+      (viewedEmployee?._id ?? selectedEmployeeDocumentId) &&
+      row.employee._id === (viewedEmployee?._id ?? selectedEmployeeDocumentId),
   );
-  const activeSelectedEmployeeDocumentId = selectedPerformanceRow
-    ? selectedEmployeeDocumentId
-    : null;
+  const activeSelectedEmployeeDocumentId = viewedEmployee
+    ? viewedEmployee._id
+    : selectedPerformanceRow
+      ? selectedEmployeeDocumentId
+      : null;
   const selectedPickerRow =
     pickerRows.find(
       (row) => row.employee._id === activeSelectedEmployeeDocumentId,
@@ -367,13 +377,16 @@ export default function EmployeePerformance() {
         <CardHeader className="p-4 sm:p-5">
           <CardTitle className="text-base">Employee Performance</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Leaderboard for assigned, non-deleted jobs created this month.
+            {viewedEmployee
+              ? `Performance for ${viewedEmployee.userId?.firstName ?? "this employee"} ${viewedEmployee.userId?.lastName ?? ""} based on assigned, non-deleted jobs created this month.`
+              : "Leaderboard for assigned, non-deleted jobs created this month."}{" "}
             Cancelled jobs are excluded from the total; completed jobs include
             COMPLETED, VERIFIED, APPROVED, and CLOSED statuses.
           </p>
         </CardHeader>
         <CardContent className="space-y-5 p-4 pt-0 sm:p-5 sm:pt-0">
-          <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {!viewedEmployee && (
+            <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="sm:col-span-2 lg:col-span-2">
               <label
                 htmlFor="employee-performance-search"
@@ -611,6 +624,7 @@ export default function EmployeePerformance() {
               </Button>
             </div>
           </div>
+          )}
 
           {districtsQuery.isError && (
             <p className="text-sm text-destructive" role="alert">
@@ -662,7 +676,9 @@ export default function EmployeePerformance() {
             <div className="min-w-0 overflow-x-auto rounded-lg border">
               <table className="w-full min-w-[640px] text-sm">
                 <caption className="sr-only">
-                  {search.trim()
+                  {viewedEmployee
+                    ? "Job completion performance for the selected employee."
+                    : search.trim()
                     ? "Matching employee job completion performance, sorted by completion rate from highest to lowest."
                     : "Top five employee job completion rates, sorted from highest to lowest."}
                 </caption>
@@ -686,14 +702,19 @@ export default function EmployeePerformance() {
                   {visiblePerformanceRows.map((employee) => (
                     <tr
                       key={employee.employeeId}
-                      tabIndex={0}
+                      tabIndex={viewedEmployee ? undefined : 0}
                       aria-selected={
                         employee.employee._id ===
                         activeSelectedEmployeeDocumentId
                       }
                       aria-label={`View performance for ${employee.name}`}
-                      onClick={() => selectEmployee(employee.employee)}
+                      onClick={
+                        viewedEmployee
+                          ? undefined
+                          : () => selectEmployee(employee.employee)
+                      }
                       onKeyDown={(event) => {
+                        if (viewedEmployee) return;
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
                           selectEmployee(employee.employee);
@@ -778,7 +799,8 @@ export default function EmployeePerformance() {
               </table>
             </div>
           )}
-          {!search.trim() &&
+          {!viewedEmployee &&
+            !search.trim() &&
             performanceRows.some((row) => row.completionRate !== null) && (
               <p className="text-xs text-muted-foreground">
                 Showing the top five performers

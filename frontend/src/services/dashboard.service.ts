@@ -150,12 +150,13 @@ export const getRecentActivity = async (
 
 export const getEmployeePerformance = async (
   period: "week" | "month" | "year" = "month",
+  employeeId?: string,
 ): Promise<{
   performance: EmployeePerformance[];
   period: string;
 }> => {
   const response = await api.get("/dashboard/employee-performance", {
-    params: { period },
+    params: { period, ...(employeeId ? { employeeId } : {}) },
   });
 
   return response.data.data;

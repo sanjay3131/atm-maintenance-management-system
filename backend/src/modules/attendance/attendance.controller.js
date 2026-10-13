@@ -5,6 +5,7 @@ import {
   checkOutForEmployee,
   correctAttendance,
   getAdminAttendanceDashboard,
+  getEmployeeAttendanceCalendar,
   getAttendanceRecord,
   listAttendanceStatusOverrideAudit,
   listAttendanceRecords,
@@ -53,6 +54,19 @@ export const getAttendanceRecords = asyncHandler(async (req, res) => {
     .status(200)
     .json(new ApiResponse(200, result, "Attendance records fetched"));
 });
+
+export const getEmployeeAttendanceCalendarRecords = asyncHandler(
+  async (req, res) => {
+    const result = await getEmployeeAttendanceCalendar({
+      employeeId: req.validatedParams.employeeId,
+      month: req.validatedQuery.month,
+      actor: req.user,
+    });
+    return res
+      .status(200)
+      .json(new ApiResponse(200, result, "Employee attendance calendar fetched"));
+  },
+);
 
 export const getAdminAttendanceDashboardRecords = asyncHandler(
   async (req, res) => {

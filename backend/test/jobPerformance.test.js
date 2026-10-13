@@ -8,6 +8,7 @@ import {
 import jobsRouter from "../src/modules/jobs/jobs.routes.js";
 import { getMyJobPerformance } from "../src/modules/jobs/jobs.controller.js";
 import { myJobPerformanceQuerySchema } from "../src/modules/jobs/jobs.validation.js";
+import { getLastSevenDaysRange } from "../src/modules/jobs/jobPerformance.service.js";
 import { JOB_STATUS } from "../src/utils/jobStatus.js";
 
 const employeeUserId = "64b000000000000000000001";
@@ -29,22 +30,38 @@ const invoke = (handler, req) =>
     handler(req, res, (error) => resolve({ error }));
   });
 
-async function withAggregates({ status = [], average = [], events = [] }, callback) {
+async function withAggregates(
+  {
+    status = [],
+    average = [],
+    eligibleJobs = [],
+    completedJobs = [],
+    events = [],
+    weeklyActivity = [],
+  },
+  callback,
+) {
   const originalJobAggregate = Job.aggregate;
   const originalHistoryAggregate = JobHistory.aggregate;
   const jobPipelines = [];
-  let historyPipeline;
+  const historyPipelines = [];
+  const jobResults = [status, average, eligibleJobs, completedJobs];
+  const historyResults = [events, weeklyActivity];
   Job.aggregate = async (pipeline) => {
     jobPipelines.push(pipeline);
-    return jobPipelines.length === 1 ? status : average;
+    return jobResults[jobPipelines.length - 1] ?? [];
   };
   JobHistory.aggregate = async (pipeline) => {
-    historyPipeline = pipeline;
-    return events;
+    historyPipelines.push(pipeline);
+    return historyResults[historyPipelines.length - 1] ?? [];
   };
 
   try {
-    await callback({ jobPipelines, getHistoryPipeline: () => historyPipeline });
+    await callback({
+      jobPipelines,
+      getHistoryPipeline: (index = 0) => historyPipelines[index],
+      historyPipelines,
+    });
   } finally {
     Job.aggregate = originalJobAggregate;
     JobHistory.aggregate = originalHistoryAggregate;
@@ -54,6 +71,29 @@ async function withAggregates({ status = [], average = [], events = [] }, callba
 const employeeRequest = (query = {}) => ({
   query,
   user: { _id: employeeUserId, userType: "employee" },
+});
+
+test("seven-day performance range crosses month and year boundaries in Asia/Kolkata", () => {
+  const range = getLastSevenDaysRange(new Date("2026-01-01T19:00:00.000Z"));
+
+  assert.equal(range.fromDate, "2025-12-27");
+  assert.equal(range.toDate, "2026-01-02");
+  assert.deepEqual(range.dates, [
+    "2025-12-27",
+    "2025-12-28",
+    "2025-12-29",
+    "2025-12-30",
+    "2025-12-31",
+    "2026-01-01",
+    "2026-01-02",
+  ]);
+  assert.deepEqual(
+    [range.fromInclusive, range.toExclusive],
+    [
+      new Date("2025-12-26T18:30:00.000Z"),
+      new Date("2026-01-02T18:30:00.000Z"),
+    ],
+  );
 });
 
 test("employee receives only their own performance summary using User ID", async () => {
@@ -97,7 +137,21 @@ test("employee receives only their own performance summary using User ID", async
         },
         averageCurrentAttemptCompletionHours: 2,
         averageCurrentAttemptJobCount: 1,
+        eligibleAssignedJobCount: 0,
+        completedJobCount: 0,
+        lastSevenDays: {
+          fromDate: result.body.data.lastSevenDays.fromDate,
+          toDate: result.body.data.lastSevenDays.toDate,
+          timezone: "Asia/Kolkata",
+          days: result.body.data.lastSevenDays.days,
+        },
       });
+      assert.equal(result.body.data.lastSevenDays.days.length, 7);
+      assert.ok(
+        result.body.data.lastSevenDays.days.every(
+          (day) => day.assigned === 0 && day.completed === 0,
+        ),
+      );
 
       assert.equal(
         jobPipelines[0][0].$match.assignedEmployeeId,
@@ -227,6 +281,95 @@ test("completion events remain attributed to the performing employee across reas
       false,
     );
   });
+});
+
+test("dashboard totals deduplicate assigned jobs and weekly buckets use India business dates", async () => {
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const todayDate = new Date(`${today}T00:00:00Z`);
+  const dayKey = (offset) => {
+    const date = new Date(todayDate);
+    date.setUTCDate(date.getUTCDate() + offset);
+    return date.toISOString().slice(0, 10);
+  };
+  const businessBoundary = (dateKey) =>
+    new Date(Date.parse(`${dateKey}T00:00:00.000Z`) - 330 * 60_000);
+  const yesterday = dayKey(-1);
+
+  await withAggregates(
+    {
+      eligibleJobs: [{ eligibleAssignedJobCount: 3 }],
+      completedJobs: [{ completedJobCount: 2 }],
+      weeklyActivity: [
+        { _id: { date: yesterday, activity: "assigned" }, count: 2 },
+        { _id: { date: yesterday, activity: "completed" }, count: 1 },
+        { _id: { date: today, activity: "assigned" }, count: 1 },
+      ],
+    },
+    async ({ jobPipelines, historyPipelines }) => {
+      const result = await invoke(
+        getMyJobPerformance,
+        employeeRequest({ fromDate: "2026-05-01", toDate: "2026-05-31" }),
+      );
+
+      assert.equal(result.error, undefined);
+      assert.equal(result.body.data.eligibleAssignedJobCount, 3);
+      assert.equal(result.body.data.completedJobCount, 2);
+      assert.equal(result.body.data.lastSevenDays.timezone, "Asia/Kolkata");
+      assert.equal(result.body.data.lastSevenDays.days.length, 7);
+      assert.deepEqual(
+        result.body.data.lastSevenDays.days.filter(
+          ({ assigned, completed }) => assigned || completed,
+        ),
+        [
+          { date: yesterday, assigned: 2, completed: 1 },
+          { date: today, assigned: 1, completed: 0 },
+        ],
+      );
+
+      const eligibleMatch = jobPipelines[2][0].$match;
+      assert.equal(eligibleMatch.isDeleted, false);
+      assert.equal(eligibleMatch.status.$ne, JOB_STATUS.CANCELLED);
+      assert.deepEqual(eligibleMatch.$or, [
+        { assignedEmployeeId: employeeUserId },
+        { "reassignmentHistory.fromEmployee": employeeUserId },
+        { "reassignmentHistory.toEmployee": employeeUserId },
+      ]);
+      assert.deepEqual(jobPipelines[3][0].$match, {
+        assignedEmployeeId: employeeUserId,
+        isDeleted: false,
+        status: {
+          $in: [
+            JOB_STATUS.COMPLETED,
+            JOB_STATUS.VERIFIED,
+            JOB_STATUS.APPROVED,
+            JOB_STATUS.CLOSED,
+          ],
+        },
+      });
+      assert.deepEqual(jobPipelines[3][1], { $group: { _id: "$_id" } });
+      assert.deepEqual(
+        historyPipelines[1][2].$match.activityAt,
+        {
+          $type: "date",
+          $gte: businessBoundary(dayKey(-6)),
+          $lt: businessBoundary(dayKey(1)),
+        },
+      );
+      assert.deepEqual(historyPipelines[1][1].$addFields.activityAt.$cond[1], {
+        $ifNull: ["$details.completedAt", "$performedAt"],
+      });
+      assert.deepEqual(
+        historyPipelines[1][0].$match.$or[1]["details.assignedTo"].$in,
+        [employeeUserId],
+      );
+      assert.equal(historyPipelines[1][5].$match["job.isDeleted"], false);
+    },
+  );
 });
 
 test("employee performance route is authenticated and employee-role-only", () => {

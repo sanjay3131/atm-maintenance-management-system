@@ -149,7 +149,8 @@ const rejectSubmissionForRework = async ({ job, req, remarks }) => {
 
   if (assignedEmployeeEligible) {
     job.status = JOB_STATUS.ASSIGNED;
-    job.assignedAt = new Date();
+    const assignedAt = new Date();
+    job.assignedAt = assignedAt;
     job.assignedBy = req.user._id;
     await logJobHistory({
       jobId: job._id,
@@ -160,6 +161,8 @@ const rejectSubmissionForRework = async ({ job, req, remarks }) => {
       details: {
         reason: "Returned to the assigned employee for rework",
         rejectionReason,
+        assignedTo: job.assignedEmployeeId,
+        assignedAt,
       },
       req,
     });
@@ -348,10 +351,11 @@ export const assignJob = asyncHandler(async (req, res) => {
   await findEmployeeEligibleForJob(job, employeeId);
 
   const oldStatus = job.status;
+  const assignedAt = new Date();
   job.assignedEmployeeId = employeeId;
   job.assignedBy = req.user._id;
   job.status = JOB_STATUS.ASSIGNED;
-  job.assignedAt = new Date();
+  job.assignedAt = assignedAt;
   job.updatedBy = req.user._id;
   await job.save();
 
@@ -361,7 +365,7 @@ export const assignJob = asyncHandler(async (req, res) => {
     fromStatus: oldStatus,
     toStatus: JOB_STATUS.ASSIGNED,
     performedBy: req.user._id,
-    details: { assignedTo: employeeId },
+    details: { assignedTo: employeeId, assignedAt },
     req,
   });
 
@@ -496,7 +500,8 @@ export const completeJob = asyncHandler(async (req, res) => {
 
   const oldStatus = job.status;
   job.status = JOB_STATUS.COMPLETED;
-  job.completedAt = new Date();
+  const completedAt = new Date();
+  job.completedAt = completedAt;
   job.employeeGpsAtCompletion = {
     latitude,
     longitude,
@@ -518,6 +523,7 @@ export const completeJob = asyncHandler(async (req, res) => {
     details: {
       gpsDistance: distance,
       gpsAccuracy: accuracy,
+      completedAt,
       employeeLocation: { latitude, longitude },
       atmLocation: {
         latitude: atm.location.coordinates[1],
@@ -745,6 +751,7 @@ export const reassignJob = asyncHandler(async (req, res) => {
 
   const oldEmployeeId = job.assignedEmployeeId;
   const oldStatus = job.status;
+  const assignedAt = new Date();
   const previousAttempt =
     oldStatus === JOB_STATUS.REJECTED
       ? getPreviousAttemptDetails(job)
@@ -755,7 +762,7 @@ export const reassignJob = asyncHandler(async (req, res) => {
     fromEmployee: oldEmployeeId,
     toEmployee: employeeId,
     reason,
-    reassignedAt: new Date(),
+    reassignedAt: assignedAt,
     reassignedBy: req.user._id,
   });
 
@@ -764,7 +771,7 @@ export const reassignJob = asyncHandler(async (req, res) => {
   job.assignedBy = req.user._id;
   job.reassignmentReason = reason;
   job.status = JOB_STATUS.ASSIGNED;
-  job.assignedAt = new Date();
+  job.assignedAt = assignedAt;
   job.updatedBy = req.user._id;
   await job.save();
 
@@ -778,6 +785,7 @@ export const reassignJob = asyncHandler(async (req, res) => {
       fromEmployee: oldEmployeeId,
       toEmployee: employeeId,
       reason,
+      assignedAt,
       ...(previousAttempt ? { previousAttempt } : {}),
     },
     req,

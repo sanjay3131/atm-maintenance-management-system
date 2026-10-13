@@ -1,14 +1,25 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { isAxiosError } from "axios";
 import {
   Activity,
   BriefcaseBusiness,
+  CheckCircle2,
   ClipboardList,
   Clock3,
   FileCheck2,
   CalendarClock,
   UserRound,
+  type LucideIcon,
 } from "lucide-react";
+import {
+  BarElement,
+  CategoryScale,
+  Chart as ChartJS,
+  Legend,
+  LinearScale,
+  Tooltip,
+} from "chart.js";
+import { Bar } from "react-chartjs-2";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,62 +29,69 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { SkeletonBlock } from "@/features/dashboard/components/DashboardSkeleton";
 import { useMyAMC } from "@/features/amc/hooks/useMyAMC";
 import { useMyEmployeeProfile } from "@/features/employees/hooks/useMyEmployeeProfile";
 import { useMyJobPerformance } from "@/features/jobs/hooks/useMyJobPerformance";
-import { useMyJobs } from "@/features/jobs/hooks/useMyJobs";
 import type { AMCStatus } from "@/services/amc.service";
-import type {
-  JobPerformancePeriod,
-  JobStatus,
-} from "@/features/jobs/types/job.types";
+import type { JobPerformancePeriod } from "@/features/jobs/types/job.types";
+import {
+  employeeErrorMessage,
+  useEmployeeLanguage,
+  type EmployeeTranslationKey,
+} from "@/features/employee-portal/i18n";
 
-const JOB_STATUSES: JobStatus[] = [
-  "PENDING",
-  "ASSIGNED",
-  "ACCEPTED",
-  "IN_PROGRESS",
-  "ON_HOLD",
-  "COMPLETED",
-  "VERIFIED",
-  "APPROVED",
-  "CLOSED",
-  "REJECTED",
-  "CANCELLED",
-];
+ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
-const PERIODS: Array<{ value: JobPerformancePeriod; label: string }> = [
+const PERIODS: Array<{
+  value: JobPerformancePeriod;
+  label: EmployeeTranslationKey;
+}> = [
   { value: "week", label: "This week" },
   { value: "month", label: "This month" },
   { value: "year", label: "This year" },
 ];
 
-const AMC_STATUSES: Array<{ value: AMCStatus; label: string }> = [
+const AMC_STATUSES: Array<{
+  value: AMCStatus;
+  label: EmployeeTranslationKey;
+}> = [
   { value: "COMPLETED", label: "Completed" },
   { value: "PENDING", label: "Pending" },
   { value: "IN_PROGRESS", label: "In progress" },
   { value: "OVERDUE", label: "Overdue" },
 ];
 
-function formatStatus(status: JobStatus) {
-  return status
-    .toLowerCase()
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function formatDuration(hours: number | null | undefined) {
-  if (hours == null || !Number.isFinite(hours)) return "Not available";
-  if (hours < 1) return `${Math.round(hours * 60)} min`;
-  return `${hours.toLocaleString(undefined, { maximumFractionDigits: 2 })} hr`;
-}
-
-function getErrorMessage(error: unknown, fallback: string) {
-  if (isAxiosError<{ message?: string }>(error)) {
-    return error.response?.data?.message || fallback;
+function formatDuration(
+  hours: number | null | undefined,
+  language: "ta" | "en",
+) {
+  if (hours == null || !Number.isFinite(hours)) return "—";
+  if (hours < 1) {
+    return `${Math.round(hours * 60)} ${language === "ta" ? "நிமி." : "min"}`;
   }
-  return error instanceof Error ? error.message : fallback;
+  return `${hours.toLocaleString(language === "ta" ? "ta-IN" : "en-IN", {
+    maximumFractionDigits: 2,
+  })} ${language === "ta" ? "மணி" : "hr"}`;
+}
+
+function getErrorMessage(
+  error: unknown,
+  fallback: string,
+  t: ReturnType<typeof useEmployeeLanguage>["t"],
+  language: "ta" | "en",
+) {
+  if (isAxiosError<{ message?: string }>(error)) {
+    return employeeErrorMessage(
+      error.response?.data?.message || fallback,
+      "Please try again.",
+      language,
+      t,
+    );
+  }
+  return error instanceof Error
+    ? employeeErrorMessage(error.message, "Please try again.", language, t)
+    : fallback;
 }
 
 function QueryError({
@@ -81,11 +99,13 @@ function QueryError({
   message,
   retry,
   isFetching,
+  t,
 }: {
   title: string;
   message: string;
   retry: () => void;
   isFetching: boolean;
+  t: ReturnType<typeof useEmployeeLanguage>["t"];
 }) {
   return (
     <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
@@ -95,11 +115,11 @@ function QueryError({
         type="button"
         variant="outline"
         size="sm"
-        className="mt-3"
+        className="mt-3 min-h-11"
         onClick={retry}
         disabled={isFetching}
       >
-        {isFetching ? "Retrying..." : "Retry"}
+        {isFetching ? t("Retrying...") : t("Retry")}
       </Button>
     </div>
   );
@@ -107,56 +127,156 @@ function QueryError({
 
 function EmployeeDashboardPage() {
   const navigate = useNavigate();
+  const { t, language } = useEmployeeLanguage();
   const [period, setPeriod] = useState<JobPerformancePeriod>("month");
   const now = new Date();
   const [amcMonth, setAmcMonth] = useState(now.getMonth() + 1);
   const [amcYear, setAmcYear] = useState(now.getFullYear());
   const profileQuery = useMyEmployeeProfile();
-  const jobsQuery = useMyJobs({ page: 1, limit: 1 });
   const performanceQuery = useMyJobPerformance(period);
   const amcQuery = useMyAMC(amcMonth, amcYear);
+  const statusCounts = performanceQuery.data?.currentAssignedJobs.byStatus;
+  const completedAssignedCount =
+    (statusCounts?.COMPLETED ?? 0) +
+    (statusCounts?.VERIFIED ?? 0) +
+    (statusCounts?.APPROVED ?? 0) +
+    (statusCounts?.CLOSED ?? 0);
+  const eligibleAssignedCount =
+    performanceQuery.data?.eligibleAssignedJobCount ?? 0;
+  const completedEligibleCount =
+    performanceQuery.data?.completedJobCount ?? 0;
+  const completionPercent =
+    eligibleAssignedCount > 0
+      ? (completedEligibleCount / eligibleAssignedCount) * 100
+      : 0;
+  const displayedCompletionPercent = Math.round(
+    Math.min(100, Math.max(0, completionPercent)),
+  );
+  const numberLocale = language === "ta" ? "ta-IN" : "en-IN";
+  const activityDays = performanceQuery.data?.lastSevenDays.days;
+  const chartDateFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(numberLocale, {
+        day: "numeric",
+        month: "short",
+        timeZone: "Asia/Kolkata",
+      }),
+    [numberLocale],
+  );
+  const chartData = useMemo(
+    () => ({
+      labels: (activityDays ?? []).map((day) =>
+        chartDateFormatter.format(
+          new Date(`${day.date}T12:00:00+05:30`),
+        ),
+      ),
+      datasets: [
+        {
+          label: t("Assigned jobs"),
+          data: (activityDays ?? []).map((day) => day.assigned),
+          backgroundColor: "#2563EB",
+          borderRadius: 5,
+          maxBarThickness: 28,
+        },
+        {
+          label: t("Completed job count"),
+          data: (activityDays ?? []).map((day) => day.completed),
+          backgroundColor: "#0D9488",
+          borderRadius: 5,
+          maxBarThickness: 28,
+        },
+      ],
+    }),
+    [activityDays, chartDateFormatter, t],
+  );
+  const hasWeeklyActivity = (activityDays ?? []).some(
+    ({ assigned, completed }) => assigned > 0 || completed > 0,
+  );
 
   const profile = profileQuery.data;
   const employeeName = [profile?.user?.firstName, profile?.user?.lastName]
     .filter(Boolean)
     .join(" ");
+  const summaryCards: Array<{
+    label: EmployeeTranslationKey;
+    count: number;
+    Icon: LucideIcon;
+    tone: string;
+    iconTone: string;
+  }> = [
+    {
+      label: "Total currently assigned",
+      count: Math.max(
+        0,
+        (performanceQuery.data?.currentAssignedJobs.total ?? 0) -
+          (statusCounts?.CANCELLED ?? 0),
+      ),
+      Icon: BriefcaseBusiness,
+      tone: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300",
+      iconTone: "bg-blue-100 dark:bg-blue-900/70",
+    },
+    {
+      label: "Pending jobs",
+      count: statusCounts?.PENDING ?? 0,
+      Icon: Clock3,
+      tone: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300",
+      iconTone: "bg-amber-100 dark:bg-amber-900/70",
+    },
+    {
+      label: "In-progress jobs",
+      count: statusCounts?.IN_PROGRESS ?? 0,
+      Icon: Activity,
+      tone: "border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-300",
+      iconTone: "bg-violet-100 dark:bg-violet-900/70",
+    },
+    {
+      label: "Completed jobs",
+      count: completedAssignedCount,
+      Icon: CheckCircle2,
+      tone: "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300",
+      iconTone: "bg-emerald-100 dark:bg-emerald-900/70",
+    },
+  ];
 
   return (
-    <main className="space-y-6 p-4 sm:p-6">
+    <main className="space-y-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-3">
             <UserRound className="size-6 text-primary" aria-hidden="true" />
-            <h1 className="text-2xl font-bold tracking-tight">
-              Employee Dashboard
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+                {t("Employee Dashboard")}
             </h1>
           </div>
           {profileQuery.isLoading ? (
             <p className="mt-2 text-sm text-muted-foreground" role="status">
-              Loading your profile...
+              {t("Loading your profile...")}
             </p>
           ) : profileQuery.isError ? (
             <div className="mt-3 max-w-xl">
               <QueryError
-                title="Could not load your profile."
+                title={t("Could not load your profile.")}
                 message={getErrorMessage(
                   profileQuery.error,
-                  "Please try again.",
+                  t("Please try again."),
+                  t,
+                  language,
                 )}
                 retry={() => void profileQuery.refetch()}
                 isFetching={profileQuery.isFetching}
+                t={t}
               />
             </div>
           ) : profile ? (
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {employeeName && (
                 <p className="text-sm text-muted-foreground">
-                  Welcome, {employeeName}
+                  {t("Welcome, {name}", { name: employeeName })}
                 </p>
               )}
               {profile.employeeCode && (
                 <Badge variant="outline">
-                  Employee code: {profile.employeeCode}
+                  {t("Employee code: {code}", { code: profile.employeeCode })}
                 </Badge>
               )}
             </div>
@@ -165,19 +285,19 @@ function EmployeeDashboardPage() {
         <Button
           type="button"
           variant="outline"
-          className="w-full sm:w-auto"
+          className="min-h-12 w-full sm:w-auto"
           onClick={() => navigate("/employee/attendance")}
         >
           <CalendarClock aria-hidden="true" />
-          My Attendance
+          {t("My Attendance")}
         </Button>
         <Button
           type="button"
-          className="w-full sm:w-auto"
+          className="min-h-12 w-full sm:w-auto"
           onClick={() => navigate("/employee/jobs")}
         >
           <ClipboardList aria-hidden="true" />
-          My Jobs
+          {t("My Jobs")}
         </Button>
       </header>
 
@@ -188,72 +308,238 @@ function EmployeeDashboardPage() {
             aria-hidden="true"
           />
           <h2 id="assigned-jobs-heading" className="text-lg font-semibold">
-            Currently Assigned Jobs
+            {t("Currently Assigned Jobs")}
           </h2>
         </div>
 
-        {jobsQuery.isLoading ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" role="status">
-            <p className="text-sm text-muted-foreground">
-              Loading assigned jobs...
-            </p>
+        {performanceQuery.isLoading ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" role="status">
+            {Array.from({ length: 4 }, (_, index) => (
+              <SkeletonBlock key={index} className="h-28 rounded-xl" />
+            ))}
+            <span className="sr-only">{t("Loading assigned jobs...")}</span>
           </div>
-        ) : jobsQuery.isError ? (
+        ) : performanceQuery.isError ? (
           <QueryError
-            title="Could not load your assigned jobs."
-            message={getErrorMessage(jobsQuery.error, "Please try again.")}
-            retry={() => void jobsQuery.refetch()}
-            isFetching={jobsQuery.isFetching}
-          />
-        ) : jobsQuery.data ? (
-          <div className="space-y-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Total currently assigned
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold">
-                  {jobsQuery.data.pagination.total}
-                </p>
-              </CardContent>
-            </Card>
-
-            {jobsQuery.data.pagination.total === 0 ? (
-              <div className="rounded-lg border border-dashed p-5 text-center text-sm text-muted-foreground">
-                No jobs are currently assigned to you.
-              </div>
-            ) : (
-              <div
-                className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
-                aria-label="Currently assigned jobs by status"
-              >
-                {JOB_STATUSES.map((status) => {
-                  const count = jobsQuery.data.statusCounts[status];
-                  return (
-                    <Card key={status}>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">
-                          {formatStatus(status)}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-2xl font-semibold">
-                          {count ?? 0}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
+            title={t("Could not load your assigned jobs.")}
+            message={getErrorMessage(
+              performanceQuery.error,
+              t("Please try again."),
+              t,
+              language,
             )}
+            retry={() => void performanceQuery.refetch()}
+            isFetching={performanceQuery.isFetching}
+            t={t}
+          />
+        ) : performanceQuery.data ? (
+          <div
+            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+            aria-label={t("Currently assigned jobs by status")}
+          >
+            {summaryCards.map(({ label, count, Icon, tone, iconTone }) => (
+              <Card
+                key={label}
+                className={`min-w-0 border shadow-sm ${tone}`}
+              >
+                <CardContent className="flex items-center justify-between gap-3 p-4 sm:p-5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">
+                      {t(label)}
+                    </p>
+                    <p className="mt-2 text-3xl font-bold tabular-nums">
+                      {count.toLocaleString(numberLocale)}
+                    </p>
+                  </div>
+                  <span
+                    className={`grid size-11 shrink-0 place-items-center rounded-xl ${iconTone}`}
+                  >
+                    <Icon className="size-5" aria-hidden="true" />
+                  </span>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         ) : (
           <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
-            Assigned-job information is not available.
+            {t("Assigned-job information is not available.")}
           </p>
         )}
+      </section>
+
+      <section
+        aria-labelledby="completion-progress-heading"
+        className="grid min-w-0 gap-4 lg:grid-cols-5"
+      >
+        <Card className="min-w-0 shadow-sm lg:col-span-2">
+          <CardHeader className="p-4 pb-2 sm:p-5 sm:pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CheckCircle2
+                className="size-5 text-emerald-600 dark:text-emerald-400"
+                aria-hidden="true"
+              />
+              <span id="completion-progress-heading">
+                {t("Completion progress")}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-2 sm:p-5 sm:pt-2">
+            {performanceQuery.isLoading ? (
+              <div className="space-y-3" role="status">
+                <SkeletonBlock className="h-8 w-24" />
+                <SkeletonBlock className="h-3 w-full rounded-full" />
+                <SkeletonBlock className="h-4 w-3/4" />
+                <span className="sr-only">{t("Loading job performance...")}</span>
+              </div>
+            ) : performanceQuery.isError ? (
+              <p className="text-sm text-muted-foreground" role="alert">
+                {t("Performance information is not available.")}
+              </p>
+            ) : performanceQuery.data ? (
+              <>
+                <div className="flex flex-wrap items-end justify-between gap-2">
+                  <p className="text-4xl font-bold tabular-nums text-blue-700 dark:text-blue-300">
+                    {t("{percent}% completed", {
+                      percent: displayedCompletionPercent.toLocaleString(
+                        numberLocale,
+                      ),
+                    })}
+                  </p>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    {t("{completed} of {eligible} eligible jobs completed", {
+                      completed: completedEligibleCount.toLocaleString(
+                        numberLocale,
+                      ),
+                      eligible: eligibleAssignedCount.toLocaleString(
+                        numberLocale,
+                      ),
+                    })}
+                  </p>
+                </div>
+                <div
+                  className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
+                  role="progressbar"
+                  aria-label={t("Completion progress")}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={displayedCompletionPercent}
+                >
+                  <div
+                    className="h-full rounded-full bg-linear-to-r from-blue-600 to-teal-500 transition-[width] duration-500 motion-reduce:transition-none"
+                    style={{ width: `${displayedCompletionPercent}%` }}
+                  />
+                </div>
+                {eligibleAssignedCount === 0 && (
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    {t("No eligible assigned jobs yet.")}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {t("Performance information is not available.")}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="min-w-0 shadow-sm lg:col-span-3">
+          <CardHeader className="p-4 pb-2 sm:p-5 sm:pb-2">
+            <CardTitle className="text-base">
+              {t("Assigned vs completed")}
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              {t("Last seven days in Asia/Kolkata")}
+            </p>
+          </CardHeader>
+          <CardContent className="min-w-0 p-4 pt-2 sm:p-5 sm:pt-2">
+            {performanceQuery.isLoading ? (
+              <SkeletonBlock className="h-56 w-full rounded-xl" />
+            ) : performanceQuery.isError ? (
+              <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
+                {t("Performance information is not available.")}
+              </p>
+            ) : performanceQuery.data ? (
+              <>
+                {!hasWeeklyActivity && (
+                  <p className="mb-3 rounded-lg border border-dashed border-teal-200 bg-teal-50/70 p-3 text-sm text-teal-900 dark:border-teal-900 dark:bg-teal-950/30 dark:text-teal-200">
+                    {t("No job activity in the last seven days.")}
+                  </p>
+                )}
+                <div
+                  className="relative h-52 min-h-0 w-full min-w-0 sm:h-60"
+                  role="img"
+                  aria-label={t(
+                    "Assigned and completed jobs for the last seven days",
+                  )}
+                  aria-describedby="employee-weekly-chart-data"
+                >
+                  <Bar
+                    data={chartData}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      interaction: { mode: "index", intersect: false },
+                      plugins: {
+                        legend: {
+                          position: "bottom",
+                          labels: {
+                            usePointStyle: true,
+                            boxWidth: 8,
+                            padding: 14,
+                          },
+                        },
+                        tooltip: {
+                          callbacks: {
+                            title: (items) => {
+                              const day =
+                                activityDays?.[items[0]?.dataIndex ?? -1];
+                              return day
+                                ? new Intl.DateTimeFormat(numberLocale, {
+                                    dateStyle: "medium",
+                                    timeZone: "Asia/Kolkata",
+                                  }).format(
+                                    new Date(`${day.date}T12:00:00+05:30`),
+                                  )
+                                : "";
+                            },
+                          },
+                        },
+                      },
+                      scales: {
+                        x: {
+                          grid: { display: false },
+                          ticks: {
+                            autoSkip: false,
+                            maxRotation: 0,
+                            minRotation: 0,
+                            font: { size: 10 },
+                          },
+                        },
+                        y: {
+                          beginAtZero: true,
+                          ticks: { precision: 0, stepSize: 1 },
+                        },
+                      },
+                    }}
+                  />
+                </div>
+                <ul id="employee-weekly-chart-data" className="sr-only">
+                  {(activityDays ?? []).map((day) => (
+                    <li key={day.date}>
+                      {day.date}: {t("Assigned jobs")} {day.assigned},{" "}
+                      {t("Completed job count")} {day.completed}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
+                {t("Performance information is not available.")}
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </section>
 
       <section aria-labelledby="performance-heading">
@@ -262,12 +548,11 @@ function EmployeeDashboardPage() {
             <div className="flex items-center gap-2">
               <Activity className="size-5 text-primary" aria-hidden="true" />
               <h2 id="performance-heading" className="text-lg font-semibold">
-                Job Performance
+                {t("Job Performance")}
               </h2>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Completion submissions are events; rework may count more than
-              once.
+              {t("Completion submissions are events; rework may count more than once.")}
             </p>
           </div>
           <div className="w-full sm:w-48">
@@ -275,7 +560,7 @@ function EmployeeDashboardPage() {
               htmlFor="performance-period"
               className="mb-1 block text-sm font-medium"
             >
-              Performance period
+              {t("Performance period")}
             </label>
             <select
               id="performance-period"
@@ -283,11 +568,11 @@ function EmployeeDashboardPage() {
               onChange={(event) =>
                 setPeriod(event.target.value as JobPerformancePeriod)
               }
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              className="h-12 w-full rounded-md border border-input bg-background px-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               {PERIODS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {t(option.label)}
                 </option>
               ))}
             </select>
@@ -297,18 +582,21 @@ function EmployeeDashboardPage() {
         {performanceQuery.isLoading ? (
           <div className="grid gap-4 md:grid-cols-2" role="status">
             <p className="text-sm text-muted-foreground">
-              Loading job performance...
+              {t("Loading job performance...")}
             </p>
           </div>
         ) : performanceQuery.isError ? (
           <QueryError
-            title="Could not load job performance."
+            title={t("Could not load job performance.")}
             message={getErrorMessage(
               performanceQuery.error,
-              "Please try again.",
+              t("Please try again."),
+              t,
+              language,
             )}
             retry={() => void performanceQuery.refetch()}
             isFetching={performanceQuery.isFetching}
+            t={t}
           />
         ) : performanceQuery.data ? (
           <div className="grid gap-4 md:grid-cols-2">
@@ -316,7 +604,7 @@ function EmployeeDashboardPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Activity className="size-4" aria-hidden="true" />
-                  Completion events
+                  {t("Completion events")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -335,27 +623,28 @@ function EmployeeDashboardPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <Clock3 className="size-4" aria-hidden="true" />
-                  Average current-attempt duration
+                  {t("Average current-attempt duration")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-3xl font-bold">
                   {formatDuration(
-                    performanceQuery.data
-                      .averageCurrentAttemptCompletionHours,
+                    performanceQuery.data.averageCurrentAttemptCompletionHours,
+                    language,
                   )}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Based on{" "}
-                  {performanceQuery.data.averageCurrentAttemptJobCount}{" "}
-                  currently assigned completed job(s) with valid timestamps.
+                  {t("Based on {count} currently assigned completed job(s) with valid timestamps.", {
+                    count:
+                      performanceQuery.data.averageCurrentAttemptJobCount,
+                  })}
                 </p>
               </CardContent>
             </Card>
           </div>
         ) : (
           <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
-            Performance information is not available.
+            {t("Performance information is not available.")}
           </p>
         )}
       </section>
@@ -366,11 +655,11 @@ function EmployeeDashboardPage() {
             <div className="flex items-center gap-2">
               <FileCheck2 className="size-5 text-primary" aria-hidden="true" />
               <h2 id="amc-progress-heading" className="text-lg font-semibold">
-                AMC Progress
+                {t("AMC Progress")}
               </h2>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Monthly AMC records assigned to you.
+              {t("Monthly AMC records assigned to you.")}
             </p>
           </div>
           <div className="grid w-full grid-cols-2 gap-3 sm:w-auto">
@@ -379,19 +668,21 @@ function EmployeeDashboardPage() {
                 htmlFor="amc-month"
                 className="mb-1 block text-sm font-medium"
               >
-                Month
+                {t("Month")}
               </label>
               <select
                 id="amc-month"
                 value={amcMonth}
                 onChange={(event) => setAmcMonth(Number(event.target.value))}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                className="h-12 w-full rounded-md border border-input bg-background px-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               >
                 {Array.from({ length: 12 }, (_, index) => {
                   const month = index + 1;
                   return (
                     <option key={month} value={month}>
-                      {new Date(2000, index, 1).toLocaleString(undefined, {
+                      {new Date(2000, index, 1).toLocaleString(
+                        language === "ta" ? "ta-IN" : "en-IN",
+                        {
                         month: "long",
                       })}
                     </option>
@@ -404,13 +695,13 @@ function EmployeeDashboardPage() {
                 htmlFor="amc-year"
                 className="mb-1 block text-sm font-medium"
               >
-                Year
+                {t("Year")}
               </label>
               <select
                 id="amc-year"
                 value={amcYear}
                 onChange={(event) => setAmcYear(Number(event.target.value))}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                className="h-12 w-full rounded-md border border-input bg-background px-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               >
                 {Array.from({ length: 6 }, (_, index) => {
                   const year = now.getFullYear() - index;
@@ -427,26 +718,30 @@ function EmployeeDashboardPage() {
 
         {amcQuery.isLoading ? (
           <div className="rounded-lg border p-5 text-sm text-muted-foreground" role="status">
-            Loading AMC progress...
+            {t("Loading AMC progress...")}
           </div>
         ) : amcQuery.isError ? (
           <QueryError
-            title="Could not load your AMC progress."
-            message={getErrorMessage(amcQuery.error, "Please try again.")}
+            title={t("Could not load your AMC progress.")}
+            message={getErrorMessage(amcQuery.error, t("Please try again."), t, language)}
             retry={() => void amcQuery.refetch()}
             isFetching={amcQuery.isFetching}
+            t={t}
           />
         ) : amcQuery.data ? (
           amcQuery.data.pagination.total === 0 ? (
             <div className="rounded-lg border border-dashed p-6 text-center">
-              <p className="font-medium">No AMC records for this period.</p>
+              <p className="font-medium">{t("No AMC records for this period.")}</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                There are no monthly AMC visits assigned to you for{" "}
-                {new Date(amcYear, amcMonth - 1, 1).toLocaleString(undefined, {
+                {t("There are no monthly AMC visits assigned to you for {period}.", {
+                  period: new Date(amcYear, amcMonth - 1, 1).toLocaleString(
+                    language === "ta" ? "ta-IN" : "en-IN",
+                    {
                   month: "long",
                   year: "numeric",
+                    },
+                  ),
                 })}
-                .
               </p>
             </div>
           ) : (
@@ -456,7 +751,7 @@ function EmployeeDashboardPage() {
                   <Card key={value}>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm font-medium text-muted-foreground">
-                        {label}
+                        {t(label)}
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -470,7 +765,7 @@ function EmployeeDashboardPage() {
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Monthly completion
+                    {t("Monthly completion")}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -479,14 +774,16 @@ function EmployeeDashboardPage() {
                       ((amcQuery.data.statusCounts.COMPLETED ?? 0) /
                         amcQuery.data.pagination.total) *
                       100
-                    ).toLocaleString(undefined, {
+                    ).toLocaleString(language === "ta" ? "ta-IN" : "en-IN", {
                       maximumFractionDigits: 1,
                     })}
                     %
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {amcQuery.data.statusCounts.COMPLETED ?? 0} completed of{" "}
-                    {amcQuery.data.pagination.total} assigned AMC record(s)
+                    {t("{completed} completed of {total} assigned AMC record(s)", {
+                      completed: amcQuery.data.statusCounts.COMPLETED ?? 0,
+                      total: amcQuery.data.pagination.total,
+                    })}
                   </p>
                 </CardContent>
               </Card>
@@ -494,7 +791,7 @@ function EmployeeDashboardPage() {
           )
         ) : (
           <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
-            AMC progress is not available.
+            {t("AMC progress is not available.")}
           </p>
         )}
       </section>

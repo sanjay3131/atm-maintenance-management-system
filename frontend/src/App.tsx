@@ -6,6 +6,7 @@ import SupervisorDashboardPage from "@/pages/supervisor/SupervisorDashboardPage"
 import EmployeeDashboardPage from "@/pages/employee/EmployeeDashboardPage";
 import ProtectedRoute from "@/routes/ProtectedRoute";
 import AdminLayout from "@/layouts/AdminLayout";
+import EmployeeLayout from "@/layouts/EmployeeLayout";
 import EmployeesPage from "@/pages/admin/EmployeesPage";
 import EmployeeDetailsPage from "@/pages/admin/EmployeeDetailsPage";
 import AtmsPage from "@/pages/admin/AtmsPage";
@@ -19,6 +20,7 @@ import JobDetailsPage from "@/pages/admin/JobDetailsPage";
 import RecurringMaintenancePage from "@/pages/admin/RecurringMaintenancePage";
 import EmployeeJobsPage from "@/pages/employee/EmployeeJobsPage";
 import EmployeeAttendancePage from "@/pages/employee/EmployeeAttendancePage";
+import EmployeeLanguageProvider from "@/features/employee-portal/EmployeeLanguageProvider";
 import BanksPage from "@/pages/admin/BanksPage";
 import BankDetailPage from "@/pages/admin/BankDetailPage";
 import DistrictsPage from "@/pages/admin/DistrictsPage";
@@ -89,16 +91,24 @@ export default function App() {
         </Route>
 
         <Route element={<ProtectedRoute allowedRoles={["employee"]} />}>
-          <Route path="/employee" element={<EmployeeDashboardPage />} />
           <Route
-            path="/employee/attendance"
-            element={<EmployeeAttendancePage />}
-          />
-          <Route path="/employee/jobs" element={<EmployeeJobsPage />} />
-          <Route
-            path="/employee/jobs/:jobId"
-            element={<JobDetailsPage readOnly backPath="/employee/jobs" />}
-          />
+            element={
+              <EmployeeLanguageProvider>
+                <EmployeeLayout />
+              </EmployeeLanguageProvider>
+            }
+          >
+            <Route path="/employee" element={<EmployeeDashboardPage />} />
+            <Route
+              path="/employee/attendance"
+              element={<EmployeeAttendancePage />}
+            />
+            <Route path="/employee/jobs" element={<EmployeeJobsPage />} />
+            <Route
+              path="/employee/jobs/:jobId"
+              element={<JobDetailsPage readOnly backPath="/employee/jobs" />}
+            />
+          </Route>
         </Route>
 
         <Route path="/" element={<Navigate to="/login" replace />} />
