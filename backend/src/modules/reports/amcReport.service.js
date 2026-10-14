@@ -7,13 +7,19 @@ import ApiError from "../../utils/ApiError.js";
 /**
  * Generate AMC Audit PDF
  */
-export const generateAMCPDF = async (amcId) => {
-  const amc = await AMC.findById(amcId)
+export const generateAMCPDF = async (amcId, { customerSafe = false } = {}) => {
+  let amcQuery = AMC.findById(amcId)
     .populate(
       "atmId",
       "atmId locationName bankId address location locationConfigured",
-    )
-    .populate("employeeId", "firstName lastName email phoneNumber")
+    );
+  if (!customerSafe) {
+    amcQuery = amcQuery.populate(
+      "employeeId",
+      "firstName lastName email phoneNumber",
+    );
+  }
+  const amc = await amcQuery
     .populate("bankId", "bankName")
     .populate("districtId", "districtName");
 
@@ -36,9 +42,11 @@ export const generateAMCPDF = async (amcId) => {
   );
   doc.text(`Bank: ${amc.bankId?.bankName || "N/A"}`);
   doc.text(`District: ${amc.districtId?.districtName || "N/A"}`);
-  doc.text(
-    `Employee: ${amc.employeeId?.firstName || ""} ${amc.employeeId?.lastName || ""}`,
-  );
+  if (!customerSafe) {
+    doc.text(
+      `Employee: ${amc.employeeId?.firstName || ""} ${amc.employeeId?.lastName || ""}`,
+    );
+  }
   doc.text(`Month: ${amc.month}/${amc.year}`);
   doc.text(
     `Visit Date: ${amc.visitDate ? new Date(amc.visitDate).toLocaleDateString("en-IN") : "N/A"}`,

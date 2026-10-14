@@ -29,7 +29,15 @@ const invoke = (handler, req) =>
     handler(req, res, (error) => resolve({ error }));
   });
 
-async function withMocks({ employee = null, status = [], average = [], events = [] }, callback) {
+async function withMocks({
+  employee = null,
+  status = [],
+  average = [],
+  events = [],
+  weeklyActivity = [],
+  eligibleJobs = [],
+  lifetimeCompletedJobs = [],
+}, callback) {
   const originals = [
     [Employee, "findById", Employee.findById],
     [Job, "aggregate", Job.aggregate],
@@ -37,7 +45,8 @@ async function withMocks({ employee = null, status = [], average = [], events = 
   ];
   let employeeFilter;
   const jobPipelines = [];
-  let historyPipeline;
+  let jobAggregateCount = 0;
+  const historyPipelines = [];
 
   Employee.findById = (id) => {
     employeeFilter = id;
@@ -50,18 +59,24 @@ async function withMocks({ employee = null, status = [], average = [], events = 
   };
   Job.aggregate = async (pipeline) => {
     jobPipelines.push(pipeline);
-    return jobPipelines.length === 1 ? status : average;
+    jobAggregateCount += 1;
+    if (jobAggregateCount === 1) return status;
+    if (jobAggregateCount === 2) return average;
+    if (jobAggregateCount === 3) return eligibleJobs;
+    return lifetimeCompletedJobs;
   };
   JobHistory.aggregate = async (pipeline) => {
-    historyPipeline = pipeline;
-    return events;
+    historyPipelines.push(pipeline);
+    return pipeline[0]?.$match?.action === "gps_validated"
+      ? events
+      : weeklyActivity;
   };
 
   try {
     await callback({
       jobPipelines,
       getEmployeeFilter: () => employeeFilter,
-      getHistoryPipeline: () => historyPipeline,
+      getHistoryPipelines: () => historyPipelines,
     });
   } finally {
     for (const [target, key, original] of originals) target[key] = original;
@@ -114,6 +129,24 @@ test("Employee performance summary supports validated filtering by linked User I
 });
 
 test("Admin detail resolves Employee document ID to linked User ID for all metrics", async () => {
+  const activityDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const activityDateUTC = new Date(`${activityDate}T00:00:00.000Z`);
+  activityDateUTC.setUTCDate(activityDateUTC.getUTCDate() - 6);
+  const expectedDays = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(activityDateUTC);
+    date.setUTCDate(date.getUTCDate() + index);
+    const dateKey = date.toISOString().slice(0, 10);
+    return {
+      date: dateKey,
+      assigned: 0,
+      completed: dateKey === activityDate ? 2 : 0,
+    };
+  });
   await withMocks(
     {
       employee: {
@@ -130,8 +163,16 @@ test("Admin detail resolves Employee document ID to linked User ID for all metri
       status: [{ _id: JOB_STATUS.IN_PROGRESS, count: 3 }],
       average: [{ averageCompletionTimeMs: 3_600_000, jobCount: 1 }],
       events: [{ eventCount: 2 }],
+      eligibleJobs: [{ eligibleAssignedJobCount: 4 }],
+      lifetimeCompletedJobs: [{ completedJobCount: 3 }],
+      weeklyActivity: [
+        {
+          _id: { date: activityDate, activity: "completed" },
+          count: 2,
+        },
+      ],
     },
-    async ({ jobPipelines, getEmployeeFilter, getHistoryPipeline }) => {
+    async ({ jobPipelines, getEmployeeFilter, getHistoryPipelines }) => {
       const result = await invoke(
         getEmployeePerformanceDetails,
         adminRequest({ period: "week" }),
@@ -145,16 +186,28 @@ test("Admin detail resolves Employee document ID to linked User ID for all metri
         employeeDocumentId,
       );
       assert.equal(jobPipelines[1][0].$match.assignedEmployeeId, employeeUserId);
-      assert.equal(
-        getHistoryPipeline()[0].$match.performedBy,
-        employeeUserId,
+      const historyPipelines = getHistoryPipelines();
+      assert.equal(historyPipelines.length, 2);
+      const completionPipeline = historyPipelines.find(
+        (pipeline) => pipeline[0].$match.action === "gps_validated",
       );
-      assert.equal(getHistoryPipeline()[0].$match.action, "gps_validated");
+      assert.ok(completionPipeline);
+      assert.equal(completionPipeline[0].$match.performedBy, employeeUserId);
       assert.notEqual(
-        getHistoryPipeline()[0].$match.performedBy,
+        completionPipeline[0].$match.performedBy,
         otherEmployeeUserId,
       );
-      assert.deepEqual(getHistoryPipeline().at(-1), { $count: "eventCount" });
+      assert.deepEqual(completionPipeline.at(-1), { $count: "eventCount" });
+      const weeklyActivityPipeline = historyPipelines.find(
+        (pipeline) => pipeline[0].$match.$or,
+      );
+      assert.ok(weeklyActivityPipeline);
+      assert.deepEqual(weeklyActivityPipeline.at(-1), {
+        $group: {
+          _id: { date: "$_id.date", activity: "$_id.activity" },
+          count: { $sum: 1 },
+        },
+      });
       assert.deepEqual(result.body.data, {
         employee: { name: "Asha Rao", employeeCode: "EMP-021" },
         currentAssignedJobs: {
@@ -176,6 +229,14 @@ test("Admin detail resolves Employee document ID to linked User ID for all metri
         },
         averageCurrentAttemptCompletionHours: 1,
         averageCurrentAttemptJobCount: 1,
+        eligibleAssignedJobCount: 4,
+        completedJobCount: 3,
+        lastSevenDays: {
+          fromDate: expectedDays[0].date,
+          toDate: expectedDays[6].date,
+          timezone: "Asia/Kolkata",
+          days: expectedDays,
+        },
       });
       assert.equal("salary" in result.body.data, false);
       assert.equal("password" in result.body.data.employee, false);
@@ -257,21 +318,38 @@ test("Admin detail route requires authentication and admin roles", () => {
 test("Admin detail retains Asia/Kolkata boundaries and current-state cancellation rules", async () => {
   await withMocks(
     { employee: { _id: employeeDocumentId, userId: { _id: employeeUserId } } },
-    async ({ jobPipelines, getHistoryPipeline }) => {
+    async ({ jobPipelines, getHistoryPipelines }) => {
       const result = await invoke(
         getEmployeePerformanceDetails,
         adminRequest({ period: "month" }),
       );
       assert.equal(result.error, undefined);
-      const range = getHistoryPipeline()[0].$match.performedAt;
+      const historyPipelines = getHistoryPipelines();
+      const completionPipeline = historyPipelines.find(
+        (pipeline) => pipeline[0].$match.action === "gps_validated",
+      );
+      assert.ok(completionPipeline);
+      const weeklyActivityPipeline = historyPipelines.find(
+        (pipeline) => pipeline[0].$match.$or,
+      );
+      assert.ok(weeklyActivityPipeline);
+      const range = completionPipeline[0].$match.performedAt;
       assert.equal(
         range.$gte.getUTCHours() === 18 && range.$gte.getUTCMinutes() === 30,
         true,
       );
-      assert.deepEqual(getHistoryPipeline()[3].$match, {
+      assert.deepEqual(completionPipeline[3].$match, {
         "job.isDeleted": false,
         "job.status": { $ne: JOB_STATUS.CANCELLED },
       });
+      assert.ok(
+        weeklyActivityPipeline.some(
+          (stage) =>
+            stage.$match?.activityAt?.$gte instanceof Date &&
+            stage.$match.activityAt.$gte.getUTCHours() === 18 &&
+            stage.$match.activityAt.$gte.getUTCMinutes() === 30,
+        ),
+      );
       assert.deepEqual(jobPipelines[1][1].$match.$expr, {
         $gte: ["$completedAt", "$startedAt"],
       });

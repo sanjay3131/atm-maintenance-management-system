@@ -507,7 +507,11 @@ test("blocks moves with unresolved Jobs, AMC records, or active recurring plans"
             error.statusCode === 409 && error.message.includes(scenario.message),
         );
         if (scenario.counts.jobs) {
-          assert.equal(captured.jobQuery.status.$ne, JOB_STATUS.CLOSED);
+          assert.deepEqual(captured.jobQuery.status.$nin, [
+            JOB_STATUS.CLOSED,
+            JOB_STATUS.CANCELLED,
+          ]);
+          assert.equal(captured.jobQuery.status.$ne, undefined);
         }
         if (scenario.counts.amcs) {
           assert.deepEqual(captured.amcQuery.status.$in, [

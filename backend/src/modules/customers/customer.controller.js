@@ -7,8 +7,16 @@ import Customer from "./customer.model.js";
 import ATM from "../atms/atm.model.js";
 import Bank from "../banks/bank.model.js";
 import Job from "../jobs/jobs.model.js";
+import AMC from "../amc/amc.model.js";
 import { sanitizeUser } from "../../utils/sanitizeUser.js";
 import { hashPassword } from "../auth/auth.utils.js";
+import {
+  getActiveCustomerForUser,
+  sameCustomerId,
+  toCustomerSafeAMC,
+  toCustomerSafeJobPhoto,
+  toCustomerSafeJob,
+} from "./customerAccess.js";
 import {
   buildATMGeographicQuery,
   escapeRegex,
@@ -34,6 +42,42 @@ const validateCustomerId = (id) => {
   if (!/^[0-9a-fA-F]{24}$/.test(id)) {
     throw new ApiError(400, "Invalid customer ID");
   }
+};
+
+const customerPortalATMFields =
+  "atmId locationName address installationType status bankId districtId regionId";
+
+const populateCustomerPortalATM = (query) =>
+  query
+    .populate("bankId", "bankName")
+    .populate("districtId", "districtName")
+    .populate("regionId", "name");
+
+const toCustomerPortalATM = (atm) => ({
+  _id: atm._id,
+  atmId: atm.atmId,
+  locationName: atm.locationName,
+  address: atm.address,
+  installationType: atm.installationType,
+  status: atm.status,
+  bank: atm.bankId?.bankName ?? null,
+  district: atm.districtId?.districtName ?? null,
+  region: atm.regionId?.name ?? null,
+});
+
+const getCustomerPortalPagination = (query) => {
+  const page = Number(query.page ?? 1);
+  const limit = Number(query.limit ?? 20);
+  if (
+    !Number.isInteger(page) ||
+    page < 1 ||
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > 100
+  ) {
+    throw new ApiError(400, "Invalid pagination");
+  }
+  return { page, limit, skip: (page - 1) * limit };
 };
 
 // ============================================
@@ -383,6 +427,10 @@ export const getCustomerById = asyncHandler(async (req, res) => {
   const { id } = req.params;
   validateCustomerId(id);
 
+  const authenticatedCustomer =
+    req.user.userType === "customer"
+      ? await getActiveCustomerForUser(req.user)
+      : null;
   const customer = await Customer.findById(id).populate(
     "userId",
     "firstName lastName email phoneNumber status",
@@ -392,12 +440,11 @@ export const getCustomerById = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Customer not found");
   }
 
-  // Customers can only view their own profile
   if (
-    req.user.userType === "customer" &&
-    customer.userId._id.toString() !== req.user._id.toString()
+    authenticatedCustomer &&
+    !sameCustomerId(customer._id, authenticatedCustomer._id)
   ) {
-    throw new ApiError(403, "You can only view your own profile");
+    throw new ApiError(404, "Customer not found");
   }
 
   const [assignedATMs, bank] = await Promise.all([
@@ -447,6 +494,10 @@ export const updateCustomer = asyncHandler(async (req, res) => {
   validateCustomerId(id);
   const isAdmin =
     req.user.userType === "admin" || req.user.userType === "superAdmin";
+  const authenticatedCustomer =
+    req.user.userType === "customer"
+      ? await getActiveCustomerForUser(req.user)
+      : null;
 
   const customer = await Customer.findById(id);
 
@@ -455,8 +506,13 @@ export const updateCustomer = asyncHandler(async (req, res) => {
   }
 
   // Only admin or the customer themselves can update
-  const isSelf = customer.userId.toString() === req.user._id.toString();
+  const isSelf =
+    authenticatedCustomer &&
+    sameCustomerId(customer._id, authenticatedCustomer._id);
 
+  if (authenticatedCustomer && !isSelf) {
+    throw new ApiError(404, "Customer not found");
+  }
   if (!isAdmin && !isSelf) {
     throw new ApiError(
       403,
@@ -532,34 +588,141 @@ export const deleteCustomer = asyncHandler(async (req, res) => {
 // CUSTOMER PORTAL APIs
 // ============================================
 
-/**
- * Get Approved Jobs for Customer
- * Customers can ONLY see jobs that are APPROVED or CLOSED
- * And only for ATMs linked to this customer
- */
-export const getCustomerJobs = asyncHandler(async (req, res) => {
-  // This endpoint is called by the logged-in customer
-  const customer = await Customer.findOne({
-    userId: req.user._id,
+export const getCustomerPortalProfile = asyncHandler(async (req, res) => {
+  const customer = await getActiveCustomerForUser(req.user);
+  const totalATMs = await ATM.countDocuments({
+    customer: customer._id,
     isDeleted: false,
   });
 
-  if (!customer) {
-    throw new ApiError(404, "Customer profile not found");
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        profile: {
+          _id: customer._id,
+          customerName: customer.customerName,
+          customerEmail: customer.customerEmail,
+          customerPhone: customer.customerPhone,
+          bankName: customer.bankName ?? "",
+        },
+        totalATMs,
+      },
+      "Customer portal profile fetched",
+    ),
+  );
+});
+
+export const getCustomerPortalATMs = asyncHandler(async (req, res) => {
+  const customer = await getActiveCustomerForUser(req.user);
+  const { page, limit, skip } = getCustomerPortalPagination(req.query);
+  const query = { customer: customer._id, isDeleted: false };
+  const [atms, total] = await Promise.all([
+    populateCustomerPortalATM(
+      ATM.find(query)
+        .select(customerPortalATMFields)
+        .sort({ atmId: 1, _id: 1 })
+        .skip(skip)
+        .limit(limit),
+    ),
+    ATM.countDocuments(query),
+  ]);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        atms: atms.map(toCustomerPortalATM),
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      },
+      "Customer ATMs fetched",
+    ),
+  );
+});
+
+export const getCustomerPortalATMById = asyncHandler(async (req, res) => {
+  const customer = await getActiveCustomerForUser(req.user);
+  const { atmId } = req.params;
+  if (!/^[0-9a-fA-F]{24}$/.test(atmId)) {
+    throw new ApiError(404, "ATM not found");
   }
 
-  const { status, page = 1, limit = 10 } = req.query;
+  const atm = await populateCustomerPortalATM(
+    ATM.findOne({
+      _id: atmId,
+      customer: customer._id,
+      isDeleted: false,
+    }).select(customerPortalATMFields),
+  );
+  if (!atm) throw new ApiError(404, "ATM not found");
 
-  // Build query: Only approved/closed jobs for customer's ATMs
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, toCustomerPortalATM(atm), "Customer ATM fetched"),
+    );
+});
+
+export const getCustomerPortalAMCs = asyncHandler(async (req, res) => {
+  const customer = await getActiveCustomerForUser(req.user);
+  const { page, limit, skip } = getCustomerPortalPagination(req.query);
   const query = {
-    atmId: { $in: customer.atmIds },
-    status: { $in: ["VERIFIED", "APPROVED", "CLOSED"] },
+    customerId: customer._id,
+    status: "COMPLETED",
     isDeleted: false,
   };
+  const [amcs, total] = await Promise.all([
+    AMC.find(query)
+      .populate("atmId", "atmId locationName address")
+      .sort({ year: -1, month: -1, completedAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    AMC.countDocuments(query),
+  ]);
 
-  // Optional status filter
-  if (status) {
-    query.status = status;
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        amcs: amcs.map(toCustomerSafeAMC),
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      },
+      "Customer AMC records fetched",
+    ),
+  );
+});
+
+/**
+ * Get customer-visible Jobs owned by this customer in their historical snapshot.
+ */
+export const getCustomerJobs = asyncHandler(async (req, res) => {
+  const customer = await getActiveCustomerForUser(req.user);
+  const { status, page = 1, limit = 10, atmId } = req.query;
+  const customerVisibleStatuses = ["VERIFIED", "APPROVED", "CLOSED"];
+  if (status && !customerVisibleStatuses.includes(status)) {
+    throw new ApiError(400, "Invalid customer-visible job status");
+  }
+
+  const query = {
+    customerId: customer._id,
+    status: status || { $in: customerVisibleStatuses },
+    isDeleted: false,
+  };
+  if (atmId) {
+    if (typeof atmId !== "string" || !/^[0-9a-fA-F]{24}$/.test(atmId)) {
+      throw new ApiError(400, "Invalid ATM ID");
+    }
+    query.atmId = atmId;
   }
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -578,7 +741,7 @@ export const getCustomerJobs = asyncHandler(async (req, res) => {
     new ApiResponse(
       200,
       {
-        jobs,
+        jobs: jobs.map(toCustomerSafeJob),
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
@@ -593,23 +756,15 @@ export const getCustomerJobs = asyncHandler(async (req, res) => {
 
 /**
  * Get Single Job Detail (Customer Portal)
- * Only if job is APPROVED/CLOSED and belongs to customer's ATM
+ * Only if the historical customer snapshot matches and the Job is customer-visible.
  */
 export const getCustomerJobDetail = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
-
-  const customer = await Customer.findOne({
-    userId: req.user._id,
-    isDeleted: false,
-  });
-
-  if (!customer) {
-    throw new ApiError(404, "Customer profile not found");
-  }
+  const customer = await getActiveCustomerForUser(req.user);
 
   const job = await Job.findOne({
     _id: jobId,
-    atmId: { $in: customer.atmIds },
+    customerId: customer._id,
     status: { $in: ["VERIFIED", "APPROVED", "CLOSED"] },
     isDeleted: false,
   })
@@ -625,7 +780,13 @@ export const getCustomerJobDetail = asyncHandler(async (req, res) => {
 
   return res
     .status(200)
-    .json(new ApiResponse(200, job, "Job detail fetched successfully"));
+    .json(
+      new ApiResponse(
+        200,
+        toCustomerSafeJob(job),
+        "Job detail fetched successfully",
+      ),
+    );
 });
 
 /**
@@ -633,22 +794,17 @@ export const getCustomerJobDetail = asyncHandler(async (req, res) => {
  */
 export const getCustomerJobPhotos = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
-
-  const customer = await Customer.findOne({
-    userId: req.user._id,
-    isDeleted: false,
-  });
-
-  if (!customer) {
-    throw new ApiError(404, "Customer profile not found");
-  }
+  const customer = await getActiveCustomerForUser(req.user);
 
   const job = await Job.findOne({
     _id: jobId,
-    atmId: { $in: customer.atmIds },
+    customerId: customer._id,
     status: { $in: ["VERIFIED", "APPROVED", "CLOSED"] },
     isDeleted: false,
-  }).populate("beforePhotos afterPhotos");
+  }).populate([
+    { path: "beforePhotos", select: "jobId url thumbnailUrl photoType uploadedAt isExpired" },
+    { path: "afterPhotos", select: "jobId url thumbnailUrl photoType uploadedAt isExpired" },
+  ]);
 
   if (!job) {
     throw new ApiError(404, "Job not found");
@@ -658,8 +814,22 @@ export const getCustomerJobPhotos = asyncHandler(async (req, res) => {
     new ApiResponse(
       200,
       {
-        beforePhotos: job.beforePhotos || [],
-        afterPhotos: job.afterPhotos || [],
+        beforePhotos: (job.beforePhotos || [])
+          .filter(
+            (photo) =>
+              photo &&
+              !photo.isExpired &&
+              sameCustomerId(photo.jobId, job._id),
+          )
+          .map(toCustomerSafeJobPhoto),
+        afterPhotos: (job.afterPhotos || [])
+          .filter(
+            (photo) =>
+              photo &&
+              !photo.isExpired &&
+              sameCustomerId(photo.jobId, job._id),
+          )
+          .map(toCustomerSafeJobPhoto),
       },
       "Photos fetched successfully",
     ),

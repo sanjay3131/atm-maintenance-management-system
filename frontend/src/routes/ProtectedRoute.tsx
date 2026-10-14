@@ -29,6 +29,10 @@ export default function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
       return <Navigate to="/employee" replace />;
     }
 
+    if (user.userType === "customer") {
+      return <Navigate to="/customer" replace />;
+    }
+
     return <Navigate to="/login" replace />;
   }
 

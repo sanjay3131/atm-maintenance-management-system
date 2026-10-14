@@ -32,6 +32,8 @@ export default function LoginPage() {
         navigate("/supervisor");
       } else if (loggedInUser.userType === "employee") {
         navigate("/employee");
+      } else if (loggedInUser.userType === "customer") {
+        navigate("/customer");
       } else {
         setError("Unknown user role.");
       }

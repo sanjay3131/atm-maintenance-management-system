@@ -136,6 +136,14 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     throw new ApiError(401, "Unauthorized");
   }
 
+  if (user.status === "blocked") {
+    throw new ApiError(403, "Your account has been blocked");
+  }
+
+  if (user.status === "inactive") {
+    throw new ApiError(403, "Your account has been deactivated");
+  }
+
   if (!user.refreshToken) {
     throw new ApiError(401, "Invalid refresh token");
   }

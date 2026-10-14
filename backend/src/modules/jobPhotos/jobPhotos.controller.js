@@ -4,7 +4,11 @@ import ApiError from "../../utils/ApiError.js";
 import cloudinary from "../../config/cloudinary.js";
 import JobPhoto from "./jobPhotos.model.js";
 import Job from "../jobs/jobs.model.js";
-import Customer from "../customers/customer.model.js";
+import {
+  getActiveCustomerForUser,
+  sameCustomerId,
+  toCustomerSafeJobPhoto,
+} from "../customers/customerAccess.js";
 import { deleteSinglePhoto } from "../../config/cloudinaryCleanup.js";
 
 // ============================================
@@ -212,17 +216,14 @@ export const getJobPhotos = asyncHandler(async (req, res) => {
   const isSupervisor = req.user.userType === "supervisor";
 
   if (isCustomer) {
-    const customer = await Customer.findOne({
-      userId: req.user._id,
-      isDeleted: false,
-    });
+    const customer = await getActiveCustomerForUser(req.user);
 
-    if (!customer || job.customerId?.toString() !== customer._id.toString()) {
-      throw new ApiError(403, "Access denied");
+    if (!sameCustomerId(job.customerId, customer._id)) {
+      throw new ApiError(404, "Job not found");
     }
 
     if (!["VERIFIED", "APPROVED", "CLOSED"].includes(job.status)) {
-      throw new ApiError(403, "This job is not yet approved for viewing");
+      throw new ApiError(404, "Job not found");
     }
   } else if (!isAdmin && !isAssigned && !isSupervisor) {
     throw new ApiError(403, "Access denied");
@@ -237,7 +238,15 @@ export const getJobPhotos = asyncHandler(async (req, res) => {
 
   return res
     .status(200)
-    .json(new ApiResponse(200, { photos }, "Photos fetched successfully"));
+    .json(
+      new ApiResponse(
+        200,
+        {
+          photos: isCustomer ? photos.map(toCustomerSafeJobPhoto) : photos,
+        },
+        "Photos fetched successfully",
+      ),
+    );
 });
 
 // ============================================

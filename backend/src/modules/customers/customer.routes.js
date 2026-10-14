@@ -15,7 +15,16 @@ import {
   getCustomerJobs,
   getCustomerJobDetail,
   getCustomerJobPhotos,
+  getCustomerPortalProfile,
+  getCustomerPortalATMs,
+  getCustomerPortalATMById,
+  getCustomerPortalAMCs,
 } from "./customer.controller.js";
+import {
+  exportCustomerAMCReport,
+  exportCustomerJobReport,
+  getCustomerReportSummary,
+} from "./customerReports.controller.js";
 
 const router = Router();
 
@@ -39,6 +48,55 @@ router.get(
 );
 
 // These are accessed by customers (userType: "customer")
+router.get(
+  "/portal/profile",
+  verifyAccessToken,
+  authorizeRoles("customer"),
+  getCustomerPortalProfile,
+);
+
+router.get(
+  "/portal/atms",
+  verifyAccessToken,
+  authorizeRoles("customer"),
+  getCustomerPortalATMs,
+);
+
+router.get(
+  "/portal/atms/:atmId",
+  verifyAccessToken,
+  authorizeRoles("customer"),
+  getCustomerPortalATMById,
+);
+
+router.get(
+  "/portal/amcs",
+  verifyAccessToken,
+  authorizeRoles("customer"),
+  getCustomerPortalAMCs,
+);
+
+router.get(
+  "/portal/reports/summary",
+  verifyAccessToken,
+  authorizeRoles("customer"),
+  getCustomerReportSummary,
+);
+
+router.get(
+  "/portal/reports/jobs.xlsx",
+  verifyAccessToken,
+  authorizeRoles("customer"),
+  exportCustomerJobReport,
+);
+
+router.get(
+  "/portal/reports/amcs.xlsx",
+  verifyAccessToken,
+  authorizeRoles("customer"),
+  exportCustomerAMCReport,
+);
+
 router.get(
   "/portal/jobs",
   verifyAccessToken,

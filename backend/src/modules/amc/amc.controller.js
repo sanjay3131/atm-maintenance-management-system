@@ -16,7 +16,11 @@ import { validateChecklist } from "./amcChecklist.js";
 import Notification from "../notification/notification.model.js";
 import User from "../users/user.model.js";
 import mongoose from "mongoose";
-import Customer from "../customers/customer.model.js";
+import {
+  getActiveCustomerForUser,
+  sameCustomerId,
+  toCustomerSafeAMC,
+} from "../customers/customerAccess.js";
 
 // ============================================
 // 1. MANUAL GENERATE AMC
@@ -163,19 +167,18 @@ export const getAMCById = asyncHandler(async (req, res) => {
   }
 
   if (isCustomer) {
-    const customer = await Customer.findOne({
-      userId: req.user._id,
-      isDeleted: false,
-    });
+    const customer = await getActiveCustomerForUser(req.user);
     if (
-      !customer ||
-      amc.customerId?._id?.toString() !== customer._id.toString()
+      !sameCustomerId(amc.customerId, customer._id) ||
+      amc.status !== AMC_STATUS.COMPLETED
     ) {
-      throw new ApiError(403, "Access denied");
+      throw new ApiError(404, "AMC not found");
     }
-    if (amc.status !== AMC_STATUS.COMPLETED) {
-      throw new ApiError(403, "AMC not yet completed");
-    }
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(200, toCustomerSafeAMC(amc), "AMC fetched"),
+      );
   }
 
   return res.status(200).json(new ApiResponse(200, amc, "AMC fetched"));
@@ -539,12 +542,12 @@ export const downloadAMCReport = asyncHandler(async (req, res) => {
   }
 
   if (isCustomer) {
-    const customer = await Customer.findOne({
-      userId: req.user._id,
-      isDeleted: false,
-    });
-    if (!customer || amc.customerId?.toString() !== customer._id.toString()) {
-      throw new ApiError(403, "Access denied");
+    const customer = await getActiveCustomerForUser(req.user);
+    if (
+      !sameCustomerId(amc.customerId, customer._id) ||
+      amc.status !== AMC_STATUS.COMPLETED
+    ) {
+      throw new ApiError(404, "AMC not found");
     }
   }
 
@@ -562,7 +565,9 @@ export const downloadAMCReport = asyncHandler(async (req, res) => {
   }
 
   const { generateAMCPDF } = await import("../reports/amcReport.service.js");
-  const { buffer, filename } = await generateAMCPDF(id);
+  const { buffer, filename } = await generateAMCPDF(id, {
+    customerSafe: isCustomer,
+  });
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);

@@ -4,7 +4,11 @@ import ApiError from "../../utils/ApiError.js";
 import cloudinary from "../../config/cloudinary.js";
 import AMCPhoto from "./amcPhoto.model.js";
 import AMC from "../amc/amc.model.js";
-import Customer from "../customers/customer.model.js";
+import {
+  getActiveCustomerForUser,
+  sameCustomerId,
+  toCustomerSafeAMCPhoto,
+} from "../customers/customerAccess.js";
 import { AMC_CONFIG, AMC_STATUS } from "../amc/amc.config.js";
 
 export const uploadAMCPhotos = asyncHandler(async (req, res) => {
@@ -123,12 +127,12 @@ export const getAMCPhotos = asyncHandler(async (req, res) => {
   const isEmployee = amc.employeeId?.toString() === req.user._id.toString();
 
   if (req.user.userType === "customer") {
-    const customer = await Customer.findOne({
-      userId: req.user._id,
-      isDeleted: false,
-    });
-    if (!customer || amc.customerId?.toString() !== customer._id.toString()) {
-      throw new ApiError(403, "Access denied");
+    const customer = await getActiveCustomerForUser(req.user);
+    if (
+      !sameCustomerId(amc.customerId, customer._id) ||
+      amc.status !== AMC_STATUS.COMPLETED
+    ) {
+      throw new ApiError(404, "AMC not found");
     }
   }
 
@@ -156,7 +160,18 @@ export const getAMCPhotos = asyncHandler(async (req, res) => {
 
   return res
     .status(200)
-    .json(new ApiResponse(200, { photos }, "AMC photos fetched"));
+    .json(
+      new ApiResponse(
+        200,
+        {
+          photos:
+            req.user.userType === "customer"
+              ? photos.map(toCustomerSafeAMCPhoto)
+              : photos,
+        },
+        "AMC photos fetched",
+      ),
+    );
 });
 
 export const deleteAMCPhoto = asyncHandler(async (req, res) => {

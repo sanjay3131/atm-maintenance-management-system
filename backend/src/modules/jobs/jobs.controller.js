@@ -1,7 +1,12 @@
 import asyncHandler from "../../utils/asyncHandler.js";
 import ApiResponse from "../../utils/ApiResponse.js";
 import ApiError from "../../utils/ApiError.js";
-import Customer from "../customers/customer.model.js";
+import {
+  getActiveCustomerForUser,
+  sameCustomerId,
+  toCustomerSafeHistory,
+  toCustomerSafeJob,
+} from "../customers/customerAccess.js";
 import Employee from "../employees/employee.model.js";
 import Job from "./jobs.model.js";
 import JobHistory from "./jobHistory.model.js";
@@ -283,13 +288,11 @@ export const createJob = asyncHandler(async (req, res) => {
 
   const atm = await ATM.findById(atmId);
   if (!atm || atm.isDeleted) throw new ApiError(404, "ATM not found");
+  const atmCustomerId = atm.customer?._id ?? atm.customer;
   if (customerId) {
-    const customer = await Customer.findOne({
-      _id: customerId,
-      isActive: true,
-      isDeleted: false,
-    });
-    if (!customer) throw new ApiError(404, "Customer not found");
+    if (!sameCustomerId(customerId, atmCustomerId)) {
+      throw new ApiError(400, "Customer must match the ATM's assigned customer");
+    }
   }
 
   const jobId = await generateJobId();
@@ -301,7 +304,7 @@ export const createJob = asyncHandler(async (req, res) => {
     description,
     atmId,
     complaintId,
-    customerId,
+    customerId: atmCustomerId,
     workType: workType || "repair",
     priority: priority || "medium",
     status: JOB_STATUS.PENDING,
@@ -823,6 +826,23 @@ export const getAllJobs = asyncHandler(async (req, res) => {
     search,
   } = req.query;
   const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
+  const isCustomer = req.user.userType === "customer";
+  const customer = isCustomer
+    ? await getActiveCustomerForUser(req.user)
+    : null;
+  const customerVisibleStatuses = [
+    JOB_STATUS.VERIFIED,
+    JOB_STATUS.APPROVED,
+    JOB_STATUS.CLOSED,
+  ];
+
+  if (
+    isCustomer &&
+    status !== undefined &&
+    !customerVisibleStatuses.includes(status)
+  ) {
+    throw new ApiError(400, "Invalid customer-visible job status");
+  }
 
   if (bankId && !isAdmin) {
     throw new ApiError(403, "Only admins can filter jobs by bank");
@@ -846,16 +866,6 @@ export const getAllJobs = asyncHandler(async (req, res) => {
   if (!isAdmin) {
     if (req.user.userType === "employee")
       query.assignedEmployeeId = req.user._id;
-    else if (req.user.userType === "customer") {
-      const customer = await Customer.findOne({
-        userId: req.user._id,
-        isDeleted: false,
-      }).select("_id");
-      query.customerId = customer?._id ?? { $in: [] };
-      query.status = {
-        $in: [JOB_STATUS.VERIFIED, JOB_STATUS.APPROVED, JOB_STATUS.CLOSED],
-      };
-    }
   }
 
   if (status) query.status = status;
@@ -910,6 +920,11 @@ export const getAllJobs = asyncHandler(async (req, res) => {
     ];
   }
 
+  if (isCustomer) {
+    query.customerId = customer._id;
+    query.status = status || { $in: customerVisibleStatuses };
+  }
+
   const skip = (parseInt(page) - 1) * parseInt(limit);
 
   const jobs = await Job.find(query)
@@ -924,7 +939,7 @@ export const getAllJobs = asyncHandler(async (req, res) => {
   const total = await Job.countDocuments(query);
 
   let statusCounts;
-  if (bankId || districtId || regionId) {
+  if ((bankId || districtId || regionId) && !isCustomer) {
     const groupedCounts = await Job.aggregate([
       { $match: { isDeleted: false, atmId: { $in: matchingATMIds ?? [] } } },
       {
@@ -946,7 +961,7 @@ export const getAllJobs = asyncHandler(async (req, res) => {
     new ApiResponse(
       200,
       {
-        jobs,
+        jobs: isCustomer ? jobs.map(toCustomerSafeJob) : jobs,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
@@ -969,7 +984,22 @@ export const getJobById = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Job not found");
   }
 
-  const job = await Job.findById(id)
+  const isCustomer = req.user.userType === "customer";
+  const customer = isCustomer
+    ? await getActiveCustomerForUser(req.user)
+    : null;
+  const jobQuery = isCustomer
+    ? Job.findOne({
+        _id: id,
+        customerId: customer._id,
+        status: {
+          $in: [JOB_STATUS.VERIFIED, JOB_STATUS.APPROVED, JOB_STATUS.CLOSED],
+        },
+        isDeleted: false,
+      })
+    : Job.findById(id);
+
+  const job = await jobQuery
     .populate(
       "atmId",
       "atmId locationName bank address districtId regionId location locationConfigured",
@@ -995,23 +1025,16 @@ export const getJobById = asyncHandler(async (req, res) => {
   const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
   const isAssigned =
     job.assignedEmployeeId?._id?.toString() === req.user._id.toString();
-  const isCustomer = req.user.userType === "customer";
+  if (!isCustomer && !isAdmin && !isAssigned) {
+    throw new ApiError(403, "Access denied");
+  }
 
   if (isCustomer) {
-    const customer = await Customer.findOne({
-      userId: req.user._id,
-      isDeleted: false,
-    }).select("_id");
-    if (job.customerId?._id?.toString() !== customer?._id?.toString())
-      throw new ApiError(403, "Access denied");
-    if (
-      ![JOB_STATUS.VERIFIED, JOB_STATUS.APPROVED, JOB_STATUS.CLOSED].includes(
-        job.status,
-      )
-    )
-      throw new ApiError(403, "Job not yet approved");
-  } else if (!isAdmin && !isAssigned) {
-    throw new ApiError(403, "Access denied");
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(200, toCustomerSafeJob(job), "Job fetched successfully"),
+      );
   }
 
   const responseJob = await addEmployeeCodes(job);
@@ -1107,33 +1130,55 @@ export const getMyJobPerformance = asyncHandler(async (req, res) => {
 // ============================================
 export const getJobHistory = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const isCustomer = req.user.userType === "customer";
   const job = await Job.findById(id);
-  if (!job || job.isDeleted) throw new ApiError(404, "Job not found");
+  if (!job || job.isDeleted) {
+    throw new ApiError(
+      404,
+      isCustomer ? "Job history not found" : "Job not found",
+    );
+  }
 
   const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
   const isAssigned =
     job.assignedEmployeeId?.toString() === req.user._id.toString();
-  const isCustomer = req.user.userType === "customer";
 
   if (isCustomer) {
-    const customer = await Customer.findOne({
-      userId: req.user._id,
-      isDeleted: false,
-    }).select("_id");
-    if (job.customerId?.toString() !== customer?._id?.toString()) {
-      throw new ApiError(403, "Access denied");
+    const customer = await getActiveCustomerForUser(req.user);
+    if (
+      !sameCustomerId(job.customerId, customer._id) ||
+      ![JOB_STATUS.VERIFIED, JOB_STATUS.APPROVED, JOB_STATUS.CLOSED].includes(
+        job.status,
+      )
+    ) {
+      throw new ApiError(404, "Job history not found");
     }
   } else if (!isAdmin && !isAssigned) {
     throw new ApiError(403, "Access denied");
   }
 
-  const history = await JobHistory.find({ jobId: id })
-    .populate("performedBy", "firstName lastName userType")
-    .sort({ performedAt: -1 });
+  let historyQuery = JobHistory.find({ jobId: id });
+  if (isCustomer) {
+    historyQuery = historyQuery.select(
+      "_id action fromStatus toStatus performedAt",
+    );
+  } else {
+    historyQuery = historyQuery.populate(
+      "performedBy",
+      "firstName lastName userType",
+    );
+  }
+  const history = await historyQuery.sort({ performedAt: -1 });
 
   return res
     .status(200)
-    .json(new ApiResponse(200, history, "Job history fetched"));
+    .json(
+      new ApiResponse(
+        200,
+        isCustomer ? history.map(toCustomerSafeHistory) : history,
+        "Job history fetched",
+      ),
+    );
 });
 
 // ============================================

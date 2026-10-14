@@ -30,6 +30,17 @@ import CustomersPage from "@/pages/admin/CustomersPage";
 import CustomerDetailsPage from "@/pages/admin/CustomerDetailsPage";
 import ItemsPage from "@/pages/admin/ItemsPage";
 import AdminAttendancePage from "@/pages/admin/AdminAttendancePage";
+import CustomerPortalLayout from "@/layouts/CustomerPortalLayout";
+import {
+  CustomerAMCDetailsPage,
+  CustomerAMCsPage,
+  CustomerATMDetailsPage,
+  CustomerATMsPage,
+  CustomerDashboardPage,
+  CustomerJobDetailsPage,
+  CustomerJobsPage,
+  CustomerReportsPage,
+} from "@/pages/customer/CustomerPortalPages";
 
 export default function App() {
   return (
@@ -107,6 +118,31 @@ export default function App() {
             <Route
               path="/employee/jobs/:jobId"
               element={<JobDetailsPage readOnly backPath="/employee/jobs" />}
+            />
+          </Route>
+        </Route>
+
+        <Route element={<ProtectedRoute allowedRoles={["customer"]} />}>
+          <Route element={<CustomerPortalLayout />}>
+            <Route path="/customer" element={<CustomerDashboardPage />} />
+            <Route path="/customer/atms" element={<CustomerATMsPage />} />
+            <Route
+              path="/customer/atms/:atmId"
+              element={<CustomerATMDetailsPage />}
+            />
+            <Route path="/customer/jobs" element={<CustomerJobsPage />} />
+            <Route
+              path="/customer/jobs/:jobId"
+              element={<CustomerJobDetailsPage />}
+            />
+            <Route path="/customer/amcs" element={<CustomerAMCsPage />} />
+            <Route
+              path="/customer/reports"
+              element={<CustomerReportsPage />}
+            />
+            <Route
+              path="/customer/amcs/:amcId"
+              element={<CustomerAMCDetailsPage />}
             />
           </Route>
         </Route>
