@@ -413,6 +413,19 @@ test("mounted routes enforce customer scope, status, photo ownership, and operat
           },
         });
 
+      await t.test("customers cannot assign ATMs through the admin assignment endpoint", async () => {
+        const response = await request(
+          `/customers/${ids.customerA}/atms`,
+          ids.userA,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ atmIds: [ids.atmA] }),
+          },
+        );
+        assert.equal(response.status, 403);
+      });
+
       await t.test("customer profile and ATM APIs use current server-side assignment", async () => {
         const profileResponse = await request(
           `/customers/portal/profile?customerId=${ids.customerB}`,

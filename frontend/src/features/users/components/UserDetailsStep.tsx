@@ -1,14 +1,25 @@
 import { useForm } from "react-hook-form";
+import type { Bank } from "@/features/banks/types/bank.types";
+import BankSelectField from "./BankSelectField";
 import type { UserDetailsForm } from "../types/user.types";
 
 interface UserDetailsStepProps {
   defaultValues: UserDetailsForm;
   onNext: (data: UserDetailsForm) => void;
+  customerBank?: {
+    value: string;
+    banks: Bank[];
+    isLoading: boolean;
+    isError: boolean;
+    onChange: (value: string) => void;
+    onRetry: () => void;
+  };
 }
 
 export default function UserDetailsStep({
   defaultValues,
   onNext,
+  customerBank,
 }: UserDetailsStepProps) {
   const {
     register,
@@ -21,7 +32,9 @@ export default function UserDetailsStep({
   return (
     <form onSubmit={handleSubmit(onNext)} className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold">User Details</h2>
+        <h2 className="text-xl font-semibold">
+          {customerBank ? "User Information" : "User Details"}
+        </h2>
 
         <p className="mt-1 text-sm text-gray-500">
           Enter the common details for this user.
@@ -96,6 +109,18 @@ export default function UserDetailsStep({
             </p>
           )}
         </div>
+
+        {customerBank && (
+          <BankSelectField
+            id="customer-user-bank"
+            value={customerBank.value}
+            banks={customerBank.banks}
+            isLoading={customerBank.isLoading}
+            isError={customerBank.isError}
+            onChange={customerBank.onChange}
+            onRetry={customerBank.onRetry}
+          />
+        )}
 
         {/* Password */}
         <div className="md:col-span-2">

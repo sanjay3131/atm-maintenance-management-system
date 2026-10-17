@@ -21,3 +21,13 @@ export const updateCustomerSchema = z.object({
   districtIds: z.array(objectIdSchema).optional(),
   isActive: z.boolean().optional(),
 }).passthrough();
+
+export const addCustomerATMsSchema = z.object({
+  atmIds: z
+    .array(objectIdSchema)
+    .min(1, "Select at least one ATM")
+    .refine(
+      (ids) => new Set(ids.map((id) => id.toLowerCase())).size === ids.length,
+      "Duplicate ATM assignments are not allowed",
+    ),
+});

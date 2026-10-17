@@ -10,6 +10,7 @@ import {
   withEmployeeAssignmentTransaction,
 } from "../employees/employeeAssignment.service.js";
 import Customer from "../customers/customer.model.js";
+import Bank from "../banks/bank.model.js";
 import { generateEmployeeCode } from "../employees/employee.utils.js";
 import {
   guardUserEligibilityChange,
@@ -286,8 +287,23 @@ export const createEmployeeUser = asyncHandler(async (req, res) => {
     );
 });
 
-export const createUserWizard = asyncHandler(async (req, res) => {
-  const { user: userData, role, employee, customer } = req.body;
+const createUserForRole = async (
+  req,
+  res,
+  role,
+  requireActiveCustomerBank = false,
+) => {
+  const { user: userData, employee, customer } = req.body;
+
+  if (role === "customer" && requireActiveCustomerBank) {
+    const bank = await Bank.findOne({
+      bankName: customer.bankName,
+      isActive: true,
+    });
+    if (!bank) {
+      throw new ApiError(400, "Select an active bank");
+    }
+  }
 
   const existingUser = await User.findOne({
     $or: [
@@ -380,4 +396,12 @@ export const createUserWizard = asyncHandler(async (req, res) => {
       "User created successfully",
     ),
   );
-});
+};
+
+export const createUserWizard = asyncHandler(async (req, res) =>
+  createUserForRole(req, res, req.body.role),
+);
+
+export const createCustomerUserWizard = asyncHandler(async (req, res) =>
+  createUserForRole(req, res, "customer", true),
+);

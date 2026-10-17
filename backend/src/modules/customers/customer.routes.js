@@ -3,10 +3,12 @@ import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
 import { authorizeRoles } from "../../middlewares/role.middleware.js";
 import { validateRequest } from "../../middlewares/validate.middleware.js";
 import {
+  addCustomerATMsSchema,
   createCustomerSchema,
   updateCustomerSchema,
 } from "./customer.validation.js";
 import {
+  addCustomerATMs,
   createCustomer,
   getAllCustomers,
   getCustomerById,
@@ -127,6 +129,14 @@ router.get(
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin", "customer"),
   getCustomerById,
+);
+
+router.post(
+  "/:id/atms",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(addCustomerATMsSchema),
+  addCustomerATMs,
 );
 
 router.put(

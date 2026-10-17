@@ -23,3 +23,11 @@ export const createUserWizard = async (
 
   return response.data.data;
 };
+
+export const createCustomerWizard = async (
+  payload: Pick<CreateUserFormData, "user" | "customer">,
+): Promise<CreateUserWizardResponse> => {
+  const response = await api.post("/users/wizard/customer", payload);
+
+  return response.data.data;
+};

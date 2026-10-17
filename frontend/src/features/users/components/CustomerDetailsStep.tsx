@@ -1,20 +1,39 @@
 import { useForm } from "react-hook-form";
+import type { Bank } from "@/features/banks/types/bank.types";
+import BankSelectField from "./BankSelectField";
 import type { CustomerDetailsForm } from "../types/user.types";
 
 interface CustomerDetailsStepProps {
   defaultValues: CustomerDetailsForm;
   onSubmit: (data: CustomerDetailsForm) => void;
   onBack: () => void;
+  onFieldChange: (
+    field: "customerName" | "customerEmail" | "customerPhone" | "bankName",
+    value: string,
+  ) => void;
+  banks: Bank[];
+  isBanksLoading: boolean;
+  isBanksError: boolean;
+  onRetryBanks: () => void;
+  isCreating?: boolean;
 }
 
 export default function CustomerDetailsStep({
   defaultValues,
   onSubmit,
   onBack,
+  onFieldChange,
+  banks,
+  isBanksLoading,
+  isBanksError,
+  onRetryBanks,
+  isCreating = false,
 }: CustomerDetailsStepProps) {
   const {
     register,
     handleSubmit,
+    setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<CustomerDetailsForm>({
     defaultValues,
@@ -44,6 +63,8 @@ export default function CustomerDetailsStep({
                 value: 2,
                 message: "Customer name must be at least 2 characters",
               },
+              onChange: (event) =>
+                onFieldChange("customerName", event.target.value),
             })}
             className="w-full rounded-md border px-3 py-2"
             placeholder="Customer name"
@@ -70,6 +91,8 @@ export default function CustomerDetailsStep({
                 value: /^\S+@\S+\.\S+$/,
                 message: "Please enter a valid email address",
               },
+              onChange: (event) =>
+                onFieldChange("customerEmail", event.target.value),
             })}
             className="w-full rounded-md border px-3 py-2"
             placeholder="customer@example.com"
@@ -96,6 +119,8 @@ export default function CustomerDetailsStep({
                 value: 10,
                 message: "Phone number must be at least 10 digits",
               },
+              onChange: (event) =>
+                onFieldChange("customerPhone", event.target.value),
             })}
             className="w-full rounded-md border px-3 py-2"
             placeholder="9876543210"
@@ -108,16 +133,24 @@ export default function CustomerDetailsStep({
           )}
         </div>
 
-        {/* Bank Name */}
         <div>
-          <label className="mb-1 block text-sm font-medium">Bank Name</label>
-
           <input
+            type="hidden"
             {...register("bankName", {
               required: "Bank name is required",
             })}
-            className="w-full rounded-md border px-3 py-2"
-            placeholder=" Eg : Karur Vysya Bank"
+          />
+          <BankSelectField
+            id="customer-details-bank"
+            value={watch("bankName")}
+            banks={banks}
+            isLoading={isBanksLoading}
+            isError={isBanksError}
+            onChange={(value) => {
+              setValue("bankName", value, { shouldValidate: true });
+              onFieldChange("bankName", value);
+            }}
+            onRetry={onRetryBanks}
           />
           {errors.bankName && (
             <p className="mt-1 text-sm text-red-500">
@@ -131,7 +164,7 @@ export default function CustomerDetailsStep({
         <button
           type="button"
           onClick={onBack}
-          disabled={isSubmitting}
+          disabled={isSubmitting || isCreating}
           className="rounded-md border px-5 py-2 text-sm font-medium hover:bg-gray-50"
         >
           Back
@@ -139,10 +172,10 @@ export default function CustomerDetailsStep({
 
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={isSubmitting || isCreating}
           className="rounded-md bg-black px-5 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isSubmitting ? "Creating..." : "Create Customer"}
+          {isCreating ? "Creating..." : "Create Customer"}
         </button>
       </div>
     </form>

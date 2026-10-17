@@ -2,10 +2,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
 import ATM from "../src/modules/atms/atm.model.js";
+import Bank from "../src/modules/banks/bank.model.js";
 import Customer from "../src/modules/customers/customer.model.js";
 import User from "../src/modules/users/user.model.js";
-import { createUserWizard } from "../src/modules/users/user.controller.js";
 import {
+  createCustomerUserWizard,
+  createUserWizard,
+} from "../src/modules/users/user.controller.js";
+import {
+  addCustomerATMsSchema,
+} from "../src/modules/customers/customer.validation.js";
+import {
+  createCustomerUserWizardSchema,
+} from "../src/modules/users/user-wizard.validate.js";
+import {
+  addATMsToCustomerInTransaction,
   assignATMCustomerInTransaction,
   softDeleteATMAndUnlinkCustomer,
   softDeleteCustomerIfUnassigned,
@@ -19,6 +30,8 @@ import {
 const atmId = "64b000000000000000000001";
 const customerAId = "64b000000000000000000002";
 const customerBId = "64b000000000000000000003";
+const secondAtmId = "64b000000000000000000007";
+const existingCustomerAtmId = "64b000000000000000000008";
 
 function query(value) {
   return {
@@ -67,6 +80,8 @@ function createState({ inactive = false, deleted = false } = {}) {
       _id: atmId,
       isDeleted: false,
       customer: customerAId,
+      bankId: "64b000000000000000000004",
+      districtId: "64b000000000000000000005",
       async save() {},
     },
     customers: new Map([
@@ -86,6 +101,8 @@ function createState({ inactive = false, deleted = false } = {}) {
           _id: customerBId,
           isActive: !inactive,
           isDeleted: deleted,
+          bankName: "Example Bank",
+          districtIds: [],
           atmIds: [],
           userId: "user-id",
           async save() {},
@@ -137,18 +154,30 @@ function modelOverrides(state) {
         ),
     ],
     [
+        Bank,
+        "findOne",
+        () => query({
+          _id: "64b000000000000000000004",
+          bankName: "Example Bank",
+          isActive: true,
+        }),
+    ],
+    [
       Customer,
       "updateMany",
       async (filter, update) => {
         state.updateManyCalls.push({ filter, update });
+        const assignedATMId = filter.atmIds;
         for (const customer of state.customers.values()) {
           if (
             (!filter._id?.$ne ||
               String(customer._id) !== String(filter._id.$ne)) &&
-            customer.atmIds.some((id) => String(id) === String(atmId))
+            customer.atmIds.some(
+              (id) => String(id) === String(assignedATMId),
+            )
           ) {
             customer.atmIds = customer.atmIds.filter(
-              (id) => String(id) !== String(atmId),
+              (id) => String(id) !== String(assignedATMId),
             );
           }
         }
@@ -200,8 +229,173 @@ test("repeated assignment removes duplicates and retains exactly one reverse ID"
     await assignment(state);
     await assignment(state);
   });
-
   assert.deepEqual(state.customers.get(customerBId).atmIds, [atmId]);
+});
+
+test("adding multiple ATMs appends ownership and keeps ATM and customer links reciprocal", async () => {
+  const state = createState();
+  const secondATM = {
+    ...state.atm,
+    _id: secondAtmId,
+    async save() {},
+  };
+  state.customers.get(customerAId).atmIds.push(secondAtmId);
+  state.customers.get(customerBId).atmIds = [existingCustomerAtmId];
+  const overrides = modelOverrides(state).map(([target, key, value]) =>
+    target === ATM && key === "findOne"
+      ? [
+          target,
+          key,
+          (filter) =>
+            query(
+              filter._id === secondAtmId
+                ? secondATM
+                : filter._id === atmId
+                  ? state.atm
+                  : null,
+            ),
+        ]
+      : [target, key, value],
+  );
+  await withOverrides(overrides, async () => {
+    await withCustomerAssignmentTransaction((session) =>
+      addATMsToCustomerInTransaction({
+        customerId: customerBId,
+        atmIds: [atmId, secondAtmId],
+        updatedBy: "admin-id",
+        session,
+      }),
+    );
+  });
+
+  assert.equal(String(state.atm.customer), customerBId);
+  assert.equal(String(secondATM.customer), customerBId);
+  assert.deepEqual(state.customers.get(customerAId).atmIds, []);
+  assert.deepEqual(state.customers.get(customerBId).atmIds, [
+    existingCustomerAtmId,
+    atmId,
+    secondAtmId,
+  ]);
+});
+
+test("customer ATM assignment rejects duplicate IDs and incompatible bank ownership", async () => {
+  const duplicateIds = addCustomerATMsSchema.safeParse({
+    atmIds: [atmId, atmId.toUpperCase()],
+  });
+  assert.equal(duplicateIds.success, false);
+
+  const state = createState();
+  state.atm.bankId = "64b000000000000000000006";
+  await withOverrides(modelOverrides(state), async () => {
+    await assert.rejects(
+      addATMsToCustomerInTransaction({
+        customerId: customerBId,
+        atmIds: [atmId],
+        updatedBy: "admin-id",
+        session: {},
+      }),
+      /ATM bank does not match/,
+    );
+  });
+  assert.equal(String(state.atm.customer), customerAId);
+  assert.deepEqual(state.customers.get(customerAId).atmIds, [atmId]);
+  assert.deepEqual(state.customers.get(customerBId).atmIds, []);
+});
+
+test("customer ATM assignment rejects ATMs outside the customer's assigned districts", async () => {
+  const state = createState();
+  state.customers.get(customerBId).districtIds = [
+    "64b000000000000000000009",
+  ];
+  await withOverrides(modelOverrides(state), async () => {
+    await assert.rejects(
+      addATMsToCustomerInTransaction({
+        customerId: customerBId,
+        atmIds: [atmId],
+        updatedBy: "admin-id",
+        session: {},
+      }),
+      /ATM district is not assigned/,
+    );
+  });
+  assert.equal(String(state.atm.customer), customerAId);
+  assert.deepEqual(state.customers.get(customerAId).atmIds, [atmId]);
+});
+
+test("customer-specific user wizard ignores a client-supplied role", async () => {
+  const user = {
+    _id: "user-id",
+    userType: "customer",
+    toObject: () => ({
+      _id: "user-id",
+      firstName: "Wizard",
+      email: "wizard-customer@example.com",
+      userType: "customer",
+    }),
+  };
+  let createdUser;
+  let createdCustomer;
+  const payload = {
+    user: {
+      firstName: "Wizard",
+      lastName: "Customer",
+      email: "wizard-customer@example.com",
+      password: "password123",
+      phoneNumber: "1234567890",
+    },
+    customer: {
+      customerName: "Wizard Customer",
+      customerEmail: "wizard-customer@example.com",
+      customerPhone: "1234567890",
+      bankName: "Example Bank",
+      districtIds: [],
+    },
+    role: "supervisor",
+  };
+  const parsed = createCustomerUserWizardSchema.safeParse(payload);
+  assert.equal(parsed.success, true);
+  assert.equal("role" in parsed.data, false);
+
+  await withOverrides(
+    [
+      [User, "findOne", async () => null],
+      [
+        Bank,
+        "findOne",
+        async () => ({
+          _id: "64b000000000000000000004",
+          bankName: "Example Bank",
+          isActive: true,
+        }),
+      ],
+      [
+        User,
+        "create",
+        async (data) => {
+          createdUser = data;
+          return user;
+        },
+      ],
+      [
+        Customer,
+        "create",
+        async (data) => {
+          createdCustomer = data;
+          return data;
+        },
+      ],
+    ],
+    async () => {
+      await invoke(createCustomerUserWizard, {
+        user: { _id: "admin-id" },
+        body: payload,
+      });
+    },
+  );
+
+  assert.equal(createdUser.userType, "customer");
+  assert.equal(createdCustomer.userId, "user-id");
+  assert.equal(createdCustomer.bankName, "Example Bank");
 });
 
 test("rejects nonexistent, inactive, and deleted destination Customers without changing links", async (t) => {

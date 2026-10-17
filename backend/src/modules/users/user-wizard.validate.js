@@ -71,3 +71,10 @@ export const createUserWizardSchema = z
       });
     }
   });
+
+export const createCustomerUserWizardSchema = z.object({
+  user: userSchema,
+  customer: customerSchema.extend({
+    bankName: z.string().trim().min(1, "Bank name is required"),
+  }),
+});

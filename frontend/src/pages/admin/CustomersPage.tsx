@@ -482,9 +482,12 @@ export default function CustomersPage() {
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogTitle className="sr-only">Create a customer</DialogTitle>
           <DialogDescription className="sr-only">
-            Create a user account and select the customer role.
+            Create a user account and customer profile.
           </DialogDescription>
-          <CreateUserWizard onClose={() => setShowCreateWizard(false)} />
+          <CreateUserWizard
+            customerOnly
+            onClose={() => setShowCreateWizard(false)}
+          />
         </DialogContent>
       </Dialog>
 

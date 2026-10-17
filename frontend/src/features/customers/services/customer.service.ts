@@ -192,6 +192,13 @@ export const updateCustomer = async (
   return response.data.data;
 };
 
+export const addCustomerATMs = async (
+  id: string,
+  atmIds: string[],
+): Promise<void> => {
+  await api.post(`/customers/${id}/atms`, { atmIds });
+};
+
 export const deactivateCustomer = async (id: string): Promise<void> => {
   await api.delete(`/customers/${id}`);
 };

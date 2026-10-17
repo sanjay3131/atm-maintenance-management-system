@@ -1,9 +1,20 @@
 import { useState } from "react";
+import { useBanks } from "@/features/banks/hooks/useBanks";
 import UserDetailsStep from "./UserDetailsStep";
 import RoleSelectionStep from "./RoleSelectionStep";
 import EmployeeDetailsStep from "./EmployeeDetailsStep";
 import CustomerDetailsStep from "./CustomerDetailsStep";
-import { useCreateUserWizard } from "../hooks/user.hooks";
+import {
+  useCreateCustomerWizard,
+  useCreateUserWizard,
+} from "../hooks/user.hooks";
+import {
+  createCustomerWizardPayload,
+  getCustomerWizardSteps,
+  prefillCustomerDetails,
+  type CustomerEditedFields,
+  type CustomerIdentityField,
+} from "../utils/customerWizard";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -44,10 +55,15 @@ const initialCustomerDetails: CustomerDetailsForm = {
 
 export default function CreateUserWizard({
   onClose,
+  customerOnly = false,
 }: {
   onClose?: () => void;
+  customerOnly?: boolean;
 }) {
   const createUserMutation = useCreateUserWizard();
+  const createCustomerMutation = useCreateCustomerWizard();
+  const { data: banks = [], isLoading: isBanksLoading, isError: isBanksError, refetch: refetchBanks } =
+    useBanks({ isActive: true });
   const queryClient = useQueryClient();
   const handleCreateSuccess = () => {
     toast.success("User created successfully!");
@@ -59,6 +75,7 @@ export default function CreateUserWizard({
     setRole("");
     setEmployeeDetails(initialEmployeeDetails);
     setCustomerDetails(initialCustomerDetails);
+    setCustomerEditedFields({});
 
     onClose?.();
   };
@@ -80,9 +97,16 @@ export default function CreateUserWizard({
   const [customerDetails, setCustomerDetails] = useState<CustomerDetailsForm>(
     initialCustomerDetails,
   );
+  const [customerEditedFields, setCustomerEditedFields] =
+    useState<CustomerEditedFields>({});
 
   const handleUserDetailsNext = (data: UserDetailsForm) => {
     setUserDetails(data);
+    if (customerOnly) {
+      setCustomerDetails((current) =>
+        prefillCustomerDetails(data, current, customerEditedFields),
+      );
+    }
     setStep(2);
   };
 
@@ -110,18 +134,40 @@ export default function CreateUserWizard({
   const handleCustomerSubmit = (data: CustomerDetailsForm) => {
     setCustomerDetails(data);
 
-    createUserMutation.mutate(
-      {
-        user: userDetails,
-        role: "customer",
-        customer: data,
-      },
-      {
-        onSuccess: handleCreateSuccess,
-        onError: handleCreateError,
-      },
+    if (customerOnly) {
+      createCustomerMutation.mutate(
+        createCustomerWizardPayload(userDetails, data),
+        {
+          onSuccess: handleCreateSuccess,
+          onError: handleCreateError,
+        },
+      );
+    } else {
+      createUserMutation.mutate(
+        {
+          user: userDetails,
+          role: "customer",
+          customer: data,
+        },
+        {
+          onSuccess: handleCreateSuccess,
+          onError: handleCreateError,
+        },
+      );
+    }
+  };
+
+  const handleCustomerFieldChange = (
+    field: CustomerIdentityField,
+    value: string,
+  ) => {
+    setCustomerDetails((current) => ({ ...current, [field]: value }));
+    setCustomerEditedFields((current) =>
+      current[field] ? current : { ...current, [field]: true },
     );
   };
+
+  const visibleSteps = getCustomerWizardSteps(customerOnly);
 
   return (
     <div className="relative mx-auto w-fit rounded-xl border bg-white p-6 shadow-sm">
@@ -136,7 +182,7 @@ export default function CreateUserWizard({
       )}
       {/* Step indicator */}
       <div className="mb-8 flex items-center justify-between ">
-        {[1, 2, 3].map((item) => (
+        {visibleSteps.map((item, index) => (
           <div key={item} className="flex items-center ">
             <div
               className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold ${
@@ -148,7 +194,7 @@ export default function CreateUserWizard({
               {item}
             </div>
 
-            {item !== 3 && (
+            {index < visibleSteps.length - 1 && (
               <div
                 className={`mx-2 h-1 w-24 ${
                   step > item ? "bg-black" : "bg-gray-200"
@@ -164,11 +210,28 @@ export default function CreateUserWizard({
         <UserDetailsStep
           defaultValues={userDetails}
           onNext={handleUserDetailsNext}
+          {...(customerOnly
+            ? {
+                customerBank: {
+                  value: customerDetails.bankName,
+                  banks,
+                  isLoading: isBanksLoading,
+                  isError: isBanksError,
+                  onChange: (value: string) => {
+                    setCustomerDetails((current) => ({
+                      ...current,
+                      bankName: value,
+                    }));
+                  },
+                  onRetry: () => void refetchBanks(),
+                },
+              }
+            : {})}
         />
       )}
 
       {/* Step 2 */}
-      {step === 2 && (
+      {!customerOnly && step === 2 && (
         <RoleSelectionStep
           value={role}
           onNext={handleRoleNext}
@@ -177,7 +240,7 @@ export default function CreateUserWizard({
       )}
 
       {/* Step 3 - Employee */}
-      {step === 3 && role === "employee" && (
+      {!customerOnly && step === 3 && role === "employee" && (
         <EmployeeDetailsStep
           defaultValues={employeeDetails}
           onSubmit={handleEmployeeSubmit}
@@ -186,16 +249,27 @@ export default function CreateUserWizard({
       )}
 
       {/* Step 3 - Customer */}
-      {step === 3 && role === "customer" && (
+      {((customerOnly && step === 2) ||
+        (!customerOnly && step === 3 && role === "customer")) && (
         <CustomerDetailsStep
           defaultValues={customerDetails}
           onSubmit={handleCustomerSubmit}
-          onBack={() => setStep(2)}
+          onBack={() => setStep(customerOnly ? 1 : 2)}
+          onFieldChange={handleCustomerFieldChange}
+          banks={banks}
+          isBanksLoading={isBanksLoading}
+          isBanksError={isBanksError}
+          onRetryBanks={() => void refetchBanks()}
+          isCreating={
+            customerOnly
+              ? createCustomerMutation.isPending
+              : createUserMutation.isPending
+          }
         />
       )}
 
       {/* Step 3 - Supervisor */}
-      {step === 3 && role === "supervisor" && (
+      {!customerOnly && step === 3 && role === "supervisor" && (
         <div className="space-y-6">
           <div>
             <h2 className="text-xl font-semibold">Supervisor</h2>

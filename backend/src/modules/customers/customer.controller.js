@@ -22,7 +22,11 @@ import {
   escapeRegex,
   parsePagination,
 } from "../../utils/geographicQuery.js";
-import { softDeleteCustomerIfUnassigned } from "./customerAssignment.service.js";
+import {
+  addATMsToCustomerInTransaction,
+  softDeleteCustomerIfUnassigned,
+  withCustomerAssignmentTransaction,
+} from "./customerAssignment.service.js";
 
 const customerATMFields =
   "atmId locationName bankId districtId regionId address installationType status";
@@ -558,6 +562,26 @@ export const updateCustomer = asyncHandler(async (req, res) => {
     .json(
       new ApiResponse(200, updatedCustomer, "Customer updated successfully"),
     );
+});
+
+export const addCustomerATMs = asyncHandler(async (req, res) => {
+  validateCustomerId(req.params.id);
+  await withCustomerAssignmentTransaction((session) =>
+    addATMsToCustomerInTransaction({
+      customerId: req.params.id,
+      atmIds: req.body.atmIds,
+      updatedBy: req.user._id,
+      session,
+    }),
+  );
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      { customerId: req.params.id, addedATMIds: req.body.atmIds },
+      "ATMs assigned to customer successfully",
+    ),
+  );
 });
 
 /**

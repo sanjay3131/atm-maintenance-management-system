@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  addCustomerATMs,
   deactivateCustomer,
   getAdminCustomers,
   updateCustomer,
@@ -42,6 +43,24 @@ export const useDeactivateCustomer = () => {
     mutationFn: deactivateCustomer,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["customers"] });
+    },
+  });
+};
+
+export const useAddCustomerATMs = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, atmIds }: { id: string; atmIds: string[] }) =>
+      addCustomerATMs(id, atmIds),
+    onSuccess: async (_result, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["customers"] }),
+        queryClient.invalidateQueries({
+          queryKey: [...CUSTOMER_DETAIL_QUERY_KEY, variables.id],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["atms"] }),
+      ]);
     },
   });
 };
