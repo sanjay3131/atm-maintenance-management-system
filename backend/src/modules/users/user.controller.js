@@ -12,10 +12,12 @@ import {
 import Customer from "../customers/customer.model.js";
 import Bank from "../banks/bank.model.js";
 import { generateEmployeeCode } from "../employees/employee.utils.js";
+import { resolveSupervisorId } from "../employees/employeeSupervisor.service.js";
 import {
   guardUserEligibilityChange,
   withAMCResponsibilityTransaction,
 } from "../amc/amcResponsibility.service.js";
+import { throwEmployeeUserIdConflict } from "../employees/employeeUserIdIndex.js";
 
 export const getAllUsers = asyncHandler(async (req, res) => {
   const isAdmin =
@@ -42,6 +44,19 @@ export const getAllUsers = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, { users }, "Users listed successfully"));
+});
+
+export const getSupervisors = asyncHandler(async (req, res) => {
+  const supervisors = await User.find({
+    userType: "supervisor",
+    status: "active",
+  })
+    .select("_id firstName lastName email status")
+    .sort({ firstName: 1, lastName: 1 });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, { supervisors }, "Supervisors fetched"));
 });
 
 // get user by id
@@ -294,6 +309,11 @@ const createUserForRole = async (
   requireActiveCustomerBank = false,
 ) => {
   const { user: userData, employee, customer } = req.body;
+  let supervisorId = null;
+
+  if (role === "employee" && employee.supervisorId) {
+    supervisorId = await resolveSupervisorId(employee.supervisorId);
+  }
 
   if (role === "customer" && requireActiveCustomerBank) {
     const bank = await Bank.findOne({
@@ -347,6 +367,7 @@ const createUserForRole = async (
         districtIds: employee.districtIds,
         assignedAtmIds: [],
         regionIds: employee.regionIds,
+        supervisorId,
         salary: employee.salary,
         createdBy: req.user._id,
       };
@@ -383,7 +404,7 @@ const createUserForRole = async (
   } catch (error) {
     await User.findByIdAndDelete(user._id);
 
-    throw error;
+    throwEmployeeUserIdConflict(error);
   }
 
   return res.status(201).json(

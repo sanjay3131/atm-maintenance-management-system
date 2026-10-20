@@ -12,6 +12,8 @@ import {
   assignATMsSchema,
   assignDistrictsSchema,
   createEmployeeSchema,
+  employeeIdParamsSchema,
+  employeeUserIdParamsSchema,
   updateEmployeeSchema,
   validateRequest,
 } from "./employee.validate.js";
@@ -25,6 +27,7 @@ router.post(
   "/create/:userId",
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin"),
+  validateRequest(employeeUserIdParamsSchema, "params"),
   validateRequest(createEmployeeSchema),
   createEmployee,
 );
@@ -34,6 +37,7 @@ router.patch(
   "/update/:employeeId",
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin"),
+  validateRequest(employeeIdParamsSchema, "params"),
   validateRequest(updateEmployeeSchema),
   updateEmployee,
 );

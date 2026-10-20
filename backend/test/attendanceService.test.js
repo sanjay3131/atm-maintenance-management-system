@@ -376,6 +376,29 @@ test("Supervisor attendance listing and detail are limited to direct reports", a
   );
 });
 
+test("Supervisor loses direct-ID attendance access immediately after reassignment or unassignment", async () => {
+  const employee = makeEmployee();
+  await withMocks({ employee, records: [makeAttendance()] }, async () => {
+    const ownRecord = await getAttendanceRecord(
+      attendanceId,
+      actor(supervisorId, "supervisor"),
+    );
+    assert.equal(ownRecord._id, attendanceId);
+
+    employee.supervisorId = "64b000000000000000000099";
+    await assert.rejects(
+      getAttendanceRecord(attendanceId, actor(supervisorId, "supervisor")),
+      (error) => error.statusCode === 403,
+    );
+
+    employee.supervisorId = null;
+    await assert.rejects(
+      getAttendanceRecord(attendanceId, actor(supervisorId, "supervisor")),
+      (error) => error.statusCode === 403,
+    );
+  });
+});
+
 test("self check-in requires active Employee and linked active employee User", async () => {
   for (const inactive of [
     makeEmployee({ employeeStatus: "inactive" }),

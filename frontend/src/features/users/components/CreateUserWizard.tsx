@@ -41,6 +41,7 @@ const initialEmployeeDetails: EmployeeDetailsForm = {
   districtIds: [],
   assignedAtmIds: [],
   regionIds: [],
+  supervisorId: null,
   salary: undefined,
 };
 

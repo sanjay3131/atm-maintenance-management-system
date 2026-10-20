@@ -16,6 +16,21 @@ export interface CreateUserWizardResponse {
   role: "employee" | "supervisor" | "customer";
 }
 
+export interface SupervisorOption {
+  _id: string;
+  firstName: string;
+  lastName?: string;
+  email: string;
+  status: string;
+}
+
+export const getSupervisors = async (): Promise<SupervisorOption[]> => {
+  const response = await api.get<{ data: { supervisors: SupervisorOption[] } }>(
+    "/users/supervisors",
+  );
+  return response.data.data.supervisors;
+};
+
 export const createUserWizard = async (
   payload: CreateUserFormData,
 ): Promise<CreateUserWizardResponse> => {

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { EMPLOYEE_USER_ID_INDEX } from "./employeeUserIdIndex.js";
 
 const employeeSchema = new mongoose.Schema(
   {
@@ -81,7 +82,10 @@ const employeeSchema = new mongoose.Schema(
 
 // employeeSchema.index({ employeeCode: 1 });
 
-employeeSchema.index({ userId: 1 });
+employeeSchema.index(
+  EMPLOYEE_USER_ID_INDEX.fields,
+  EMPLOYEE_USER_ID_INDEX.options,
+);
 
 employeeSchema.index({ status: 1 });
 

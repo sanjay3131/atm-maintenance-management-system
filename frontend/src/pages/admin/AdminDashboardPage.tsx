@@ -160,7 +160,11 @@ function StatusMetric({
 
 function RecentActivitySkeleton() {
   return (
-    <div className="space-y-4" role="status" aria-label="Loading recent activity">
+    <div
+      className="space-y-4"
+      role="status"
+      aria-label="Loading recent activity"
+    >
       {Array.from({ length: 4 }, (_, index) => (
         <div key={index} className="flex items-center justify-between gap-4">
           <div className="min-w-0 flex-1 space-y-2">
@@ -197,8 +201,14 @@ function AttentionRequired({
     >
       <Card className="min-w-0 border-t-2 border-t-amber-500 shadow-sm">
         <CardHeader className="p-4 sm:p-5">
-          <CardTitle id="attention-required-title" className="flex items-center gap-2 text-base">
-            <AlertCircle aria-hidden="true" className="size-5 text-amber-600 dark:text-amber-400" />
+          <CardTitle
+            id="attention-required-title"
+            className="flex items-center gap-2 text-base"
+          >
+            <AlertCircle
+              aria-hidden="true"
+              className="size-5 text-amber-600 dark:text-amber-400"
+            />
             Attention Required
           </CardTitle>
           <p className="text-sm text-muted-foreground">
@@ -278,7 +288,11 @@ function AttentionRequired({
 
 function activityStatusVariant(status: string) {
   const normalizedStatus = status.toUpperCase();
-  if (["COMPLETED", "VERIFIED", "APPROVED", "CLOSED", "RESOLVED"].includes(normalizedStatus)) {
+  if (
+    ["COMPLETED", "VERIFIED", "APPROVED", "CLOSED", "RESOLVED"].includes(
+      normalizedStatus,
+    )
+  ) {
     return "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200";
   }
   if (["IN_PROGRESS", "ACCEPTED"].includes(normalizedStatus)) {
@@ -289,6 +303,12 @@ function activityStatusVariant(status: string) {
   }
   if (["CANCELLED"].includes(normalizedStatus)) {
     return "border-muted-foreground/30 bg-muted text-muted-foreground";
+  }
+  if (["ASSIGNED"].includes(normalizedStatus)) {
+    return "border-yellow-200 bg-yellow-50 text-yellow-800 dark:border-yellow-900 dark:bg-yellow-950 dark:text-yellow-200";
+  }
+  if (["OPEN"].includes(normalizedStatus)) {
+    return "border-yellow-200 bg-yellow-50 text-yellow-800 dark:border-yellow-900 dark:bg-yellow-950 dark:text-yellow-200";
   }
   return "border-border bg-background text-foreground";
 }
@@ -374,7 +394,7 @@ export default function AdminDashboardPage() {
         variants={metricContainerVariants}
         initial={reducedMotion ? false : "hidden"}
         animate="visible"
-        className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
+        className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4"
       >
         {cards.map((card) => (
           <DashboardMetric
@@ -407,11 +427,31 @@ export default function AdminDashboardPage() {
               <CardTitle className="text-base">Job Status</CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 sm:p-5">
-              <StatusMetric label="Pending" value={data.jobs.pending} color="text-amber-700 dark:text-amber-300" />
-              <StatusMetric label="Assigned" value={data.jobs.assigned} color="text-sky-700 dark:text-sky-300" />
-              <StatusMetric label="In Progress" value={data.jobs.inProgress} color="text-blue-700 dark:text-blue-300" />
-              <StatusMetric label="Completed" value={data.jobs.completed} color="text-emerald-700 dark:text-emerald-300" />
-              <StatusMetric label="Cancelled" value={data.jobs.cancelled} color="text-muted-foreground" />
+              <StatusMetric
+                label="Pending"
+                value={data.jobs.pending}
+                color="text-amber-700 dark:text-amber-300"
+              />
+              <StatusMetric
+                label="Assigned"
+                value={data.jobs.assigned}
+                color="text-sky-700 dark:text-sky-300"
+              />
+              <StatusMetric
+                label="In Progress"
+                value={data.jobs.inProgress}
+                color="text-blue-700 dark:text-blue-300"
+              />
+              <StatusMetric
+                label="Completed"
+                value={data.jobs.completed}
+                color="text-emerald-700 dark:text-emerald-300"
+              />
+              <StatusMetric
+                label="Cancelled"
+                value={data.jobs.cancelled}
+                color="text-muted-foreground"
+              />
             </CardContent>
           </Card>
         </motion.div>
@@ -428,10 +468,26 @@ export default function AdminDashboardPage() {
               <CardTitle className="text-base">Complaints</CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-4 sm:p-5">
-              <StatusMetric label="Open" value={data.complaints.open} color="text-rose-700 dark:text-rose-300" />
-              <StatusMetric label="Assigned" value={data.complaints.assigned} color="text-sky-700 dark:text-sky-300" />
-              <StatusMetric label="In Progress" value={data.complaints.inProgress} color="text-blue-700 dark:text-blue-300" />
-              <StatusMetric label="Resolved" value={data.complaints.resolved} color="text-emerald-700 dark:text-emerald-300" />
+              <StatusMetric
+                label="Open"
+                value={data.complaints.open}
+                color="text-rose-700 dark:text-rose-300"
+              />
+              <StatusMetric
+                label="Assigned"
+                value={data.complaints.assigned}
+                color="text-sky-700 dark:text-sky-300"
+              />
+              <StatusMetric
+                label="In Progress"
+                value={data.complaints.inProgress}
+                color="text-blue-700 dark:text-blue-300"
+              />
+              <StatusMetric
+                label="Resolved"
+                value={data.complaints.resolved}
+                color="text-emerald-700 dark:text-emerald-300"
+              />
             </CardContent>
           </Card>
         </motion.div>

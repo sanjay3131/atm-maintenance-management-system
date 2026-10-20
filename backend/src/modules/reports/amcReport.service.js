@@ -7,13 +7,25 @@ import ApiError from "../../utils/ApiError.js";
 /**
  * Generate AMC Audit PDF
  */
-export const generateAMCPDF = async (amcId, { customerSafe = false } = {}) => {
-  let amcQuery = AMC.findById(amcId)
-    .populate(
+export const generateAMCPDF = async (
+  amcId,
+  { customerSafe = false, supervisorSafe = false } = {},
+) => {
+  let amcQuery = AMC.findById(amcId);
+  if (supervisorSafe) {
+    amcQuery = amcQuery
+      .select(
+        "amcId atmId bankId districtId employeeId month year visitDate completedAt status checklist",
+      )
+      .populate("atmId", "atmId locationName")
+      .populate("employeeId", "firstName lastName");
+  } else {
+    amcQuery = amcQuery.populate(
       "atmId",
       "atmId locationName bankId address location locationConfigured",
     );
-  if (!customerSafe) {
+  }
+  if (!customerSafe && !supervisorSafe) {
     amcQuery = amcQuery.populate(
       "employeeId",
       "firstName lastName email phoneNumber",
@@ -54,9 +66,11 @@ export const generateAMCPDF = async (amcId, { customerSafe = false } = {}) => {
   doc.text(
     `Completed: ${amc.completedAt ? new Date(amc.completedAt).toLocaleDateString("en-IN") : "N/A"}`,
   );
-  doc.text(
-    `GPS Distance: ${amc.gpsDistance !== null ? `${amc.gpsDistance}m` : "N/A"}`,
-  );
+  if (!supervisorSafe) {
+    doc.text(
+      `GPS Distance: ${amc.gpsDistance !== null ? `${amc.gpsDistance}m` : "N/A"}`,
+    );
+  }
   doc.text(`Status: ${amc.status}`);
   doc.moveDown();
 
@@ -84,18 +98,26 @@ export const generateAMCPDF = async (amcId, { customerSafe = false } = {}) => {
   doc.fontSize(14).text("Photographs", { underline: true });
   doc.moveDown(0.5);
 
-  const photos = await AMCPhoto.find({ amcId, isExpired: false }).sort({
+  let photoQuery = AMCPhoto.find({ amcId, isExpired: false });
+  if (supervisorSafe) photoQuery = photoQuery.select("_id");
+  const photos = await photoQuery.sort({
     uploadedAt: 1,
   });
   doc.text(`Total Photos: ${photos.length}`);
 
-  // Note: Embedding photos in PDF requires downloading images. For simplicity, we list URLs.
-  // In production, fetch images and embed with doc.image().
-  photos.forEach((photo, i) => {
-    doc.text(
-      `${i + 1}. ${photo.originalName || `Photo ${i + 1}`} — ${photo.url}`,
-    );
-  });
+  if (supervisorSafe) {
+    if (photos.length > 0) {
+      doc.text("Photo evidence is available in the Supervisor Portal.");
+    }
+  } else {
+    // Note: Embedding photos in PDF requires downloading images. For simplicity, we list URLs.
+    // In production, fetch images and embed with doc.image().
+    photos.forEach((photo, i) => {
+      doc.text(
+        `${i + 1}. ${photo.originalName || `Photo ${i + 1}`} — ${photo.url}`,
+      );
+    });
+  }
 
   doc.end();
 

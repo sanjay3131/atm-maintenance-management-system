@@ -21,6 +21,7 @@ import {
   sameCustomerId,
   toCustomerSafeAMC,
 } from "../customers/customerAccess.js";
+import { getBusinessDateParts } from "../jobs/recurringMaintenance.utils.js";
 
 // ============================================
 // 1. MANUAL GENERATE AMC
@@ -121,26 +122,86 @@ export const getMyAMC = asyncHandler(async (req, res) => {
 // ============================================
 // 3. GET AMC BY ID
 // ============================================
+const toSupervisorAMCResponse = (amc, detailed = false) => {
+  const record = typeof amc.toObject === "function" ? amc.toObject() : amc;
+  const response = {
+    _id: record._id,
+    amcId: record.amcId,
+    atmId:
+      record.atmId && typeof record.atmId === "object"
+        ? {
+            _id: record.atmId._id,
+            atmId: record.atmId.atmId,
+            locationName: record.atmId.locationName,
+            address: record.atmId.address,
+          }
+        : record.atmId,
+    employeeId:
+      record.employeeId && typeof record.employeeId === "object"
+        ? {
+            _id: record.employeeId._id,
+            firstName: record.employeeId.firstName,
+            lastName: record.employeeId.lastName,
+          }
+        : record.employeeId,
+    month: record.month,
+    year: record.year,
+    status: record.status,
+    deadlineDate: record.deadlineDate,
+    visitDate: record.visitDate,
+    completedAt: record.completedAt,
+  };
+
+  if (detailed) {
+    Object.assign(response, {
+      generatedAt: record.generatedAt,
+      createdAt: record.createdAt,
+      checklist: record.checklist,
+      checklistCompleted: record.checklistCompleted,
+      employeeRemarks: record.employeeRemarks,
+      photoCount: record.photoCount,
+    });
+  }
+
+  return response;
+};
+
 export const getAMCById = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  if (!mongoose.isValidObjectId(id)) {
+    throw new ApiError(400, "Invalid AMC ID");
+  }
 
-  const amc = await AMC.findById(id)
-    .populate(
-      "atmId",
-      "atmId locationName bankId address location locationConfigured locationCapturedBy locationCapturedAt",
-    )
-    .populate("employeeId", "firstName lastName email phoneNumber")
-    .populate("supervisorId", "firstName lastName")
-    .populate("customerId", "customerName customerEmail customerPhone bankName")
-    .populate("bankId", "bankName bankCode")
-    .populate("districtId", "districtName")
-    .populate("photos", "url thumbnailUrl uploadedAt gpsData");
+  const isSupervisor = req.user.userType === "supervisor";
+  let amcQuery = AMC.findById(id);
+  if (isSupervisor) {
+    amcQuery = amcQuery.select(
+      "amcId atmId employeeId month year status deadlineDate visitDate completedAt generatedAt createdAt checklist checklistCompleted employeeRemarks photoCount isDeleted",
+    );
+  }
+  const amc = isSupervisor
+    ? await amcQuery
+        .populate("atmId", "atmId locationName address")
+        .populate("employeeId", "firstName lastName")
+    : await amcQuery
+        .populate(
+          "atmId",
+          "atmId locationName bankId address location locationConfigured locationCapturedBy locationCapturedAt",
+        )
+        .populate("employeeId", "firstName lastName email phoneNumber")
+        .populate("supervisorId", "firstName lastName")
+        .populate(
+          "customerId",
+          "customerName customerEmail customerPhone bankName",
+        )
+        .populate("bankId", "bankName bankCode")
+        .populate("districtId", "districtName")
+        .populate("photos", "url thumbnailUrl uploadedAt gpsData");
 
   if (!amc || amc.isDeleted) throw new ApiError(404, "AMC not found");
 
   // Authorization
   const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
-  const isSupervisor = req.user.userType === "supervisor";
   const isEmployee = req.user.userType === "employee";
   const isCustomer = req.user.userType === "customer";
 
@@ -156,13 +217,16 @@ export const getAMCById = asyncHandler(async (req, res) => {
   }
 
   if (isSupervisor) {
-    // Supervisor can only see AMCs of their supervised employees
-    const supervisedEmployees = await Employee.find({
-      supervisorId: req.user._id,
-    }).select("userId");
-    const supervisedIds = supervisedEmployees.map((e) => e.userId.toString());
-    if (!supervisedIds.includes(amc.employeeId?._id?.toString())) {
-      throw new ApiError(403, "Access denied");
+    const employeeUserId = amc.employeeId?._id ?? amc.employeeId;
+    if (
+      !employeeUserId ||
+      !mongoose.isValidObjectId(employeeUserId) ||
+      !(await Employee.findOne({
+        supervisorId: req.user._id,
+        userId: employeeUserId,
+      }))
+    ) {
+      throw new ApiError(404, "AMC not found");
     }
   }
 
@@ -181,7 +245,13 @@ export const getAMCById = asyncHandler(async (req, res) => {
       );
   }
 
-  return res.status(200).json(new ApiResponse(200, amc, "AMC fetched"));
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      isSupervisor ? toSupervisorAMCResponse(amc, true) : amc,
+      "AMC fetched",
+    ),
+  );
 });
 
 // ============================================
@@ -349,7 +419,10 @@ export const getAllAMC = asyncHandler(async (req, res) => {
     const supervisedEmployees = await Employee.find({
       supervisorId: req.user._id,
     }).select("userId");
-    const supervisedIds = supervisedEmployees.map((e) => e.userId.toString());
+    const supervisedIds = supervisedEmployees
+      .map((employee) => employee.userId)
+      .filter((id) => id && mongoose.isValidObjectId(id))
+      .map((id) => id.toString());
     query.employeeId = { $in: supervisedIds };
   }
 
@@ -370,11 +443,18 @@ export const getAllAMC = asyncHandler(async (req, res) => {
   const skip = (parseInt(page) - 1) * parseInt(limit);
 
   const [amcs, total] = await Promise.all([
-    AMC.find(query)
-      .populate("atmId", "atmId locationName bankId address")
-      .populate("employeeId", "firstName lastName email phoneNumber")
-      .populate("bankId", "bankName")
-      .populate("districtId", "districtName")
+    (isSupervisor
+      ? AMC.find(query)
+          .select(
+            "amcId atmId employeeId month year status deadlineDate visitDate completedAt",
+          )
+          .populate("atmId", "atmId locationName address")
+          .populate("employeeId", "firstName lastName")
+      : AMC.find(query)
+          .populate("atmId", "atmId locationName bankId address")
+          .populate("employeeId", "firstName lastName email phoneNumber")
+          .populate("bankId", "bankName")
+          .populate("districtId", "districtName"))
       .sort({ year: -1, month: -1, createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit)),
@@ -385,7 +465,9 @@ export const getAllAMC = asyncHandler(async (req, res) => {
     new ApiResponse(
       200,
       {
-        amcs,
+        amcs: isSupervisor
+          ? amcs.map((amc) => toSupervisorAMCResponse(amc))
+          : amcs,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
@@ -407,8 +489,11 @@ export const getAMCDashboard = asyncHandler(async (req, res) => {
 
   const { month, year } = req.query;
   const now = new Date();
-  const queryMonth = parseInt(month) || now.getMonth() + 1;
-  const queryYear = parseInt(year) || now.getFullYear();
+  const currentMonth = isSupervisor
+    ? getBusinessDateParts(now)
+    : { month: now.getMonth() + 1, year: now.getFullYear() };
+  const queryMonth = parseInt(month) || currentMonth.month;
+  const queryYear = parseInt(year) || currentMonth.year;
 
   let filters = {};
 
@@ -416,9 +501,12 @@ export const getAMCDashboard = asyncHandler(async (req, res) => {
     const supervisedEmployees = await Employee.find({
       supervisorId: req.user._id,
     }).select("userId");
-    const supervisedIds = supervisedEmployees.map((e) => e.userId.toString());
+    const supervisedIds = supervisedEmployees
+      .map((employee) => employee.userId)
+      .filter((id) => id && mongoose.isValidObjectId(id))
+      .map((id) => new mongoose.Types.ObjectId(id));
     filters.employeeId = {
-      $in: supervisedIds.map((id) => new mongoose.Types.ObjectId(id)),
+      $in: supervisedIds,
     };
   }
 
@@ -528,6 +616,9 @@ export const getEmployeeAMCSummary = asyncHandler(async (req, res) => {
 // ============================================
 export const downloadAMCReport = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  if (!mongoose.isValidObjectId(id)) {
+    throw new ApiError(400, "Invalid AMC ID");
+  }
   const amc = await AMC.findById(id);
   if (!amc || amc.isDeleted) throw new ApiError(404, "AMC not found");
 
@@ -556,17 +647,22 @@ export const downloadAMCReport = asyncHandler(async (req, res) => {
   }
 
   if (isSupervisor) {
-    const Employee = (await import("../employees/employee.model.js")).default;
-    const supervised = await Employee.findOne({
-      supervisorId: req.user._id,
-      userId: amc.employeeId,
-    });
-    if (!supervised) throw new ApiError(403, "Access denied");
+    if (
+      !amc.employeeId ||
+      !mongoose.isValidObjectId(amc.employeeId) ||
+      !(await Employee.findOne({
+        supervisorId: req.user._id,
+        userId: amc.employeeId,
+      }))
+    ) {
+      throw new ApiError(404, "AMC not found");
+    }
   }
 
   const { generateAMCPDF } = await import("../reports/amcReport.service.js");
   const { buffer, filename } = await generateAMCPDF(id, {
     customerSafe: isCustomer,
+    supervisorSafe: isSupervisor,
   });
 
   res.setHeader("Content-Type", "application/pdf");

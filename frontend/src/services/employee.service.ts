@@ -15,6 +15,14 @@ export interface EmployeeATMReference {
   atmId?: string;
 }
 
+export interface EmployeeSupervisorReference {
+  _id: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  userType?: string;
+}
+
 export interface Employee {
   _id: string;
   employeeCode: string;
@@ -42,6 +50,7 @@ export interface Employee {
   assignedAtms?: Array<EmployeeATMReference | null>;
 
   supervisorId?: string | null;
+  supervisor?: EmployeeSupervisorReference | null;
   salary?: number;
 
   createdAt: string;
@@ -138,6 +147,7 @@ export interface CreateEmployeePayload {
   districtIds: string[];
   assignedAtmIds?: string[];
   regionIds?: string[];
+  supervisorId?: string | null;
   salary?: number;
 }
 
@@ -151,6 +161,7 @@ export interface UpdateEmployeePayload {
   regionIds?: string[];
   status?: "active" | "inactive" | "on_leave" | "resigned";
   salary?: number;
+  supervisorId?: string | null;
 }
 
 export const getEmployees = async (): Promise<Employee[]> => {

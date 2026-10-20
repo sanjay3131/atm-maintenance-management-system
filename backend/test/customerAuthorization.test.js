@@ -895,6 +895,9 @@ test("AMC detail uses historical customer ownership and requires completion", as
       params: { id: amcAId },
     });
     assert.equal(own.status, 200);
+    assert.equal(own.body.data.amcId, `AMC-${amcAId.slice(-3)}`);
+    assert.equal(own.body.data.status, "COMPLETED");
+    assert.equal("employeeId" in own.body.data, false);
 
     await assert.rejects(
       invoke(getAMCById, {
@@ -931,12 +934,17 @@ test("AMC detail uses historical customer ownership and requires completion", as
   }
 });
 
-test("admin and supervisor AMC detail authorization remains unchanged", async () => {
+test("admin and supervisor AMC details retain authorization and role-specific projections", async () => {
   const originalAmcFindById = AMC.findById;
-  const originalEmployeeFind = Employee.find;
+  const originalEmployeeFindOne = Employee.findOne;
   const record = amcRecord(amcAId, customerAId);
   AMC.findById = () => query(record);
-  Employee.find = () => query([{ userId: record.employeeId._id }]);
+  Employee.findOne = (filter) =>
+    query(
+      filter.userId === record.employeeId._id && filter.supervisorId === userBId
+        ? { userId: record.employeeId._id }
+        : null,
+    );
 
   try {
     const admin = await invoke(getAMCById, {
@@ -951,10 +959,18 @@ test("admin and supervisor AMC detail authorization remains unchanged", async ()
       params: { id: amcAId },
     });
     assert.equal(supervisor.status, 200);
-    assert.equal(supervisor.body.data.employeeId.email, "employee@example.test");
+    assert.equal(supervisor.body.data.amcId, `AMC-${amcAId.slice(-3)}`);
+    assert.deepEqual(Object.keys(supervisor.body.data.employeeId).sort(), [
+      "_id",
+      "firstName",
+      "lastName",
+    ]);
+    assert.equal(supervisor.body.data.employeeId.firstName, "Private");
+    assert.equal(supervisor.body.data.employeeId.email, undefined);
+    assert.equal(supervisor.body.data.employeeId.phoneNumber, undefined);
   } finally {
     AMC.findById = originalAmcFindById;
-    Employee.find = originalEmployeeFind;
+    Employee.findOne = originalEmployeeFindOne;
   }
 });
 

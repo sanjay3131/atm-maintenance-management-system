@@ -154,9 +154,14 @@ export const getAMCPhotos = asyncHandler(async (req, res) => {
     if (!supervised) throw new ApiError(403, "Access denied");
   }
 
-  const photos = await AMCPhoto.find({ amcId, isExpired: false })
-    .populate("uploadedBy", "firstName lastName")
-    .sort({ uploadedAt: 1 });
+  let photoQuery = AMCPhoto.find({ amcId, isExpired: false });
+  if (isSupervisor) {
+    photoQuery = photoQuery.select("_id url thumbnailUrl uploadedAt");
+  } else {
+    photoQuery = photoQuery.populate("uploadedBy", "firstName lastName");
+  }
+  photoQuery = photoQuery.sort({ uploadedAt: 1 });
+  const photos = await photoQuery;
 
   return res
     .status(200)

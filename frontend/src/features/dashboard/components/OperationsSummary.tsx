@@ -1,9 +1,4 @@
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SkeletonBlock } from "@/features/dashboard/components/DashboardSkeleton";
 import { useBankSummary } from "@/features/dashboard/hooks/useBankSummary";
 import { useDistrictSummary } from "@/features/dashboard/hooks/useDistrictSummary";
@@ -24,7 +19,7 @@ export default function OperationsSummary() {
 
   return (
     <div className="grid min-w-0 items-start gap-4 sm:grid-cols-2 lg:grid-cols-1">
-      <Card className="h-fit min-w-0 shadow-sm">
+      <Card className="h-fit min-w-0 shadow-sm overflow-hidden ">
         <CardHeader className="p-4 sm:p-5">
           <CardTitle className="text-base">District Summary</CardTitle>
           <p className="text-sm text-muted-foreground">
@@ -43,8 +38,8 @@ export default function OperationsSummary() {
               No district data available.
             </p>
           ) : districtQuery.data ? (
-            <div className="min-w-0 overflow-x-auto rounded-lg border">
-              <table className="w-full min-w-[500px] text-sm">
+            <div className="min-w-0 overflow-x-hidden rounded-lg border ">
+              <table className="w-full min-w-125 text-sm">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="p-3 font-medium">District</th>
@@ -59,16 +54,22 @@ export default function OperationsSummary() {
                       <td className="p-3 font-medium">
                         {district.districtName}
                       </td>
-                      <td className="p-3">{district.atmCount}</td>
-                      <td className="p-3">{district.activeATMs}</td>
-                      <td className="p-3">{district.maintenanceATMs}</td>
+                      <td className="p-3 text-center">{district.atmCount}</td>
+                      <td className="p-3 text-center">{district.activeATMs}</td>
+                      <td className="p-3 text-center">
+                        {district.maintenanceATMs}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           ) : districtQuery.isLoading ? (
-            <div className="space-y-3" role="status" aria-label="Loading districts">
+            <div
+              className="space-y-3"
+              role="status"
+              aria-label="Loading districts"
+            >
               {Array.from({ length: 4 }, (_, index) => (
                 <SkeletonBlock key={index} className="h-8 w-full" />
               ))}
@@ -96,8 +97,8 @@ export default function OperationsSummary() {
               No bank data available.
             </p>
           ) : bankQuery.data ? (
-            <div className="min-w-0 overflow-x-auto rounded-lg border">
-              <table className="w-full min-w-[500px] text-sm">
+            <div className="min-w-0 overflow-x-hidden rounded-lg border">
+              <table className="w-full min-w-125 text-sm">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="p-3 font-medium">Bank</th>
@@ -110,9 +111,11 @@ export default function OperationsSummary() {
                   {bankQuery.data.summary.map((bank) => (
                     <tr key={bank.bankName}>
                       <td className="p-3 font-medium">{bank.bankName}</td>
-                      <td className="p-3">{bank.totalATMs}</td>
-                      <td className="p-3">{bank.activeATMs}</td>
-                      <td className="p-3">{bank.maintenanceATMs}</td>
+                      <td className="p-3 text-center">{bank.totalATMs}</td>
+                      <td className="p-3 text-center">{bank.activeATMs}</td>
+                      <td className="p-3 text-center">
+                        {bank.maintenanceATMs}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

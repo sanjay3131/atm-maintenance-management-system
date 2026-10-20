@@ -5,6 +5,7 @@ import { useQueries } from "@tanstack/react-query";
 import { getRegionsByDistrict } from "../services/region.service";
 import { useATMs } from "../../atms/hooks/useATMs";
 import { useEffect } from "react";
+import SupervisorSelect from "@/features/employees/components/SupervisorSelect";
 
 interface EmployeeDetailsStepProps {
   defaultValues: EmployeeDetailsForm;
@@ -365,6 +366,15 @@ export default function EmployeeDetailsStep({
             </details>
           </div>
         </div>
+
+        {/* Joining Date */}
+        <SupervisorSelect
+          id="employee-supervisor"
+          value={watch("supervisorId") ?? ""}
+          onChange={(supervisorId) =>
+            setValue("supervisorId", supervisorId || null)
+          }
+        />
 
         {/* Joining Date */}
         <div>

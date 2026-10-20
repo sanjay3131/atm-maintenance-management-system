@@ -29,6 +29,8 @@ const employeeSchema = z.object({
 
   regionIds: z.array(objectIdSchema).default([]),
 
+  supervisorId: objectIdSchema.nullable().optional(),
+
   salary: z.number().nonnegative().optional(),
 });
 

@@ -7,6 +7,9 @@ const objectIdSchema = z
   .trim()
   .regex(/^[a-fA-F0-9]{24}$/, "Invalid MongoDB ObjectId");
 
+const employeeUserIdParamsSchema = z.object({ userId: objectIdSchema });
+const employeeIdParamsSchema = z.object({ employeeId: objectIdSchema });
+
 const createEmployeeSchema = z.object({
   designation: z.string().trim().min(2, "Designation is required"),
   department: z.string().trim().min(2, "Department is required"),
@@ -27,26 +30,27 @@ const createEmployeeSchema = z.object({
   districtIds: z.array(objectIdSchema),
   assignedAtmIds: z.array(objectIdSchema).optional(),
   regionIds: z.array(objectIdSchema).optional(),
+  supervisorId: objectIdSchema.nullable().optional(),
   salary: z
     .number({ invalid_type_error: "Salary must be a number" })
     .nonnegative("Salary must be zero or greater")
     .optional(),
 });
 
-const validateRequest = (schema) => {
+const validateRequest = (schema, source = "body") => {
   return asyncHandler(async (req, res, next) => {
-    const result = schema.safeParse(req.body);
+    const result = schema.safeParse(req[source]);
 
     if (!result.success) {
       const errors = result.error.issues.map((issue) => ({
-        path: issue.path.join(".") || "body",
+        path: issue.path.join(".") || source,
         message: issue.message,
       }));
 
       return next(new ApiError(400, "Validation failed", errors));
     }
 
-    req.body = result.data;
+    req[source] = result.data;
     next();
   });
 };
@@ -78,6 +82,7 @@ const updateEmployeeSchema = z
     districtIds: z.array(objectIdSchema).optional(),
     assignedAtmIds: z.array(objectIdSchema).optional(),
     regionIds: z.array(objectIdSchema).optional(),
+    supervisorId: objectIdSchema.nullable().optional(),
     status: z
       .enum(["active", "inactive", "on_leave", "resigned"], {
         errorMap: () => ({
@@ -107,6 +112,8 @@ const assignDistrictsSchema = z.object({
 
 export {
   createEmployeeSchema,
+  employeeUserIdParamsSchema,
+  employeeIdParamsSchema,
   updateEmployeeSchema,
   validateRequest,
   assignATMsSchema,

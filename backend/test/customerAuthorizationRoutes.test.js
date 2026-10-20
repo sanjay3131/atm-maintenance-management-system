@@ -401,6 +401,13 @@ test("mounted routes enforce customer scope, status, photo ownership, and operat
       ),
   }));
   override(Employee, "find", () => query([{ userId: ids.employee }]));
+  override(Employee, "findOne", (filter) =>
+    Promise.resolve(
+      filter.userId === ids.employee && filter.supervisorId === ids.supervisor
+        ? { userId: ids.employee }
+        : null,
+    ),
+  );
 
   try {
     await withServer(async (baseUrl) => {
@@ -576,7 +583,8 @@ test("mounted routes enforce customer scope, status, photo ownership, and operat
       });
 
       await t.test("customer AMC details, photos, and PDFs require the matching owner", async () => {
-        assert.equal((await request(`/amc/${ids.amcA}`, ids.userA)).status, 200);
+        const amcDetail = await request(`/amc/${ids.amcA}`, ids.userA);
+        assert.equal(amcDetail.status, 200);
         assert.equal((await request(`/amc/${ids.amcB}`, ids.userA)).status, 404);
         assert.equal(
           (await request(`/amc-photos/${ids.amcA}`, ids.userA)).status,
@@ -631,10 +639,11 @@ test("mounted routes enforce customer scope, status, photo ownership, and operat
           (await request(`/amc/${ids.amcA}`, ids.admin)).status,
           200,
         );
-        assert.equal(
-          (await request(`/amc/${ids.amcA}`, ids.supervisor)).status,
-          200,
+        const supervisorAmcDetail = await request(
+          `/amc/${ids.amcA}`,
+          ids.supervisor,
         );
+        assert.equal(supervisorAmcDetail.status, 200);
         assert.equal(
           (await request(`/amc/${ids.amcA}`, ids.employee)).status,
           200,

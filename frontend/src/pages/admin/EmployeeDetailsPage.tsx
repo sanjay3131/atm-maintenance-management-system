@@ -382,8 +382,18 @@ export default function EmployeeDetailsPage() {
                 />
               )}
               <DetailRow
-                label="Supervisor User ID"
-                value={employee.supervisorId ?? "—"}
+                label="Supervisor"
+                value={
+                  employee.supervisor
+                    ? [employee.supervisor.firstName, employee.supervisor.lastName]
+                        .filter(Boolean)
+                        .join(" ") ||
+                      employee.supervisor.email ||
+                      "Supervisor unavailable"
+                    : employee.supervisorId
+                      ? "Supervisor details unavailable"
+                      : "Unassigned"
+                }
               />
             </dl>
           </CardContent>

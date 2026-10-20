@@ -19,6 +19,8 @@ import {
   withEmployeeAssignmentTransaction,
 } from "./employeeAssignment.service.js";
 import { guardEmployeeEligibilityChange } from "../amc/amcResponsibility.service.js";
+import { resolveSupervisorId } from "./employeeSupervisor.service.js";
+import { throwEmployeeUserIdConflict } from "./employeeUserIdIndex.js";
 
 export const createEmployee = asyncHandler(async (req, res) => {
   const isAdmin =
@@ -79,8 +81,10 @@ export const createEmployee = asyncHandler(async (req, res) => {
     employmentType,
     districtIds,
     assignedAtmIds,
+    supervisorId,
     salary,
   } = req.body;
+  const resolvedSupervisorId = await resolveSupervisorId(supervisorId);
   const uniqueAssignedAtmIds = [...new Set((assignedAtmIds || []).map(String))];
 
   const employeeCode = await generateEmployeeCode();
@@ -93,22 +97,28 @@ export const createEmployee = asyncHandler(async (req, res) => {
     employmentType,
     districtIds,
     assignedAtmIds: [],
+    supervisorId: resolvedSupervisorId,
     salary,
     createdBy: req.user._id,
   };
-  const newEmployee = uniqueAssignedAtmIds.length
-    ? await withEmployeeAssignmentTransaction(async (session) => {
-        const [createdEmployee] = await Employee.create([employeeData], {
-          session,
-        });
-        return replaceEmployeeATMAssignmentsInTransaction({
-          employeeId: createdEmployee._id,
-          assignedAtmIds: uniqueAssignedAtmIds,
-          updatedBy: req.user._id,
-          session,
-        });
-      })
-    : await Employee.create(employeeData);
+  let newEmployee;
+  try {
+    newEmployee = uniqueAssignedAtmIds.length
+      ? await withEmployeeAssignmentTransaction(async (session) => {
+          const [createdEmployee] = await Employee.create([employeeData], {
+            session,
+          });
+          return replaceEmployeeATMAssignmentsInTransaction({
+            employeeId: createdEmployee._id,
+            assignedAtmIds: uniqueAssignedAtmIds,
+            updatedBy: req.user._id,
+            session,
+          });
+        })
+      : await Employee.create(employeeData);
+  } catch (error) {
+    throwEmployeeUserIdConflict(error);
+  }
 
   return res
     .status(201)
@@ -118,8 +128,47 @@ export const createEmployee = asyncHandler(async (req, res) => {
 // update employee by id (admin and superAdmin)
 
 export const updateEmployee = asyncHandler(async (req, res) => {
+  if (!["admin", "superAdmin"].includes(req.user?.userType)) {
+    throw new ApiError(403, "Access denied");
+  }
+
   const { employeeId } = req.params;
   const updatePayload = { ...req.body };
+  if (Object.hasOwn(updatePayload, "supervisorId")) {
+    const currentEmployee = await Employee.findById(employeeId);
+    if (!currentEmployee) {
+      return res
+        .status(404)
+        .json(new ApiResponse(404, "Employee not found", null));
+    }
+
+    const currentSupervisorId = currentEmployee.supervisorId?.toString() ?? null;
+    if (updatePayload.supervisorId === null) {
+      if (currentSupervisorId === null) delete updatePayload.supervisorId;
+    } else {
+      const requestedSupervisorId = updatePayload.supervisorId.toString();
+      if (requestedSupervisorId === currentSupervisorId) {
+        delete updatePayload.supervisorId;
+      } else {
+        const employeeUser = await User.findOne({
+          _id: currentEmployee.userId,
+          userType: "employee",
+          status: "active",
+        }).select("_id");
+        const effectiveEmployeeStatus =
+          updatePayload.status ?? currentEmployee.status;
+        if (effectiveEmployeeStatus !== "active" || !employeeUser) {
+          throw new ApiError(
+            400,
+            "Only active employees with active employee accounts can be assigned to a supervisor",
+          );
+        }
+        updatePayload.supervisorId = await resolveSupervisorId(
+          requestedSupervisorId,
+        );
+      }
+    }
+  }
   const hasATMUpdate = Object.prototype.hasOwnProperty.call(
     updatePayload,
     "assignedAtmIds",
@@ -194,12 +243,20 @@ export const viewEmployeeById = asyncHandler(async (req, res) => {
   const districtIds = (employee.districtIds ?? []).map(String);
   const regionIds = (employee.regionIds ?? []).map(String);
   const assignedAtmIds = (employee.assignedAtmIds ?? []).map(String);
+  const supervisorId = employee.supervisorId
+    ? String(employee.supervisorId._id ?? employee.supervisorId)
+    : null;
   await employee.populate([
     { path: "districtIds", select: "districtName" },
     { path: "regionIds", select: "name" },
     { path: "assignedAtmIds", select: "atmId" },
+    { path: "supervisorId", select: "firstName lastName email userType" },
   ]);
   const employeeDetails = employee.toObject();
+  const supervisor =
+    employee.supervisorId && typeof employee.supervisorId === "object"
+      ? employee.supervisorId
+      : null;
 
   return res
     .status(200)
@@ -208,6 +265,8 @@ export const viewEmployeeById = asyncHandler(async (req, res) => {
         200,
         {
           ...employeeDetails,
+          supervisorId,
+          supervisor,
           districtIds,
           regionIds,
           assignedAtmIds,

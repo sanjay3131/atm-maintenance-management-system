@@ -2,6 +2,8 @@ import { Router } from "express";
 import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
 import { authorizeRoles } from "../../middlewares/role.middleware.js";
 import { upload } from "../../config/multer.js";
+import { validateRequest } from "../../middlewares/validate.middleware.js";
+import { supervisorJobParamsSchema } from "../supervisor/supervisor.validation.js";
 import {
   uploadPhotos,
   getJobPhotos,
@@ -24,7 +26,8 @@ router.post(
 router.get(
   "/job/:jobId",
   verifyAccessToken,
-  authorizeRoles("employee", "admin", "superAdmin", "customer"),
+  authorizeRoles("employee", "admin", "superAdmin", "customer", "supervisor"),
+  validateRequest(supervisorJobParamsSchema, "params"),
   getJobPhotos,
 );
 

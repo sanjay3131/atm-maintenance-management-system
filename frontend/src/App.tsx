@@ -3,10 +3,17 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import LoginPage from "@/pages/auth/LoginPage";
 import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
 import SupervisorDashboardPage from "@/pages/supervisor/SupervisorDashboardPage";
+import SupervisorEmployeesPage from "@/pages/supervisor/SupervisorEmployeesPage";
+import SupervisorEmployeeDetailsPage from "@/pages/supervisor/SupervisorEmployeeDetailsPage";
+import SupervisorJobsPage from "@/pages/supervisor/SupervisorJobsPage";
+import SupervisorJobDetailsPage from "@/pages/supervisor/SupervisorJobDetailsPage";
+import SupervisorAMCsPage from "@/pages/supervisor/SupervisorAMCsPage";
+import SupervisorAMCDetailsPage from "@/pages/supervisor/SupervisorAMCDetailsPage";
 import EmployeeDashboardPage from "@/pages/employee/EmployeeDashboardPage";
 import ProtectedRoute from "@/routes/ProtectedRoute";
 import AdminLayout from "@/layouts/AdminLayout";
 import EmployeeLayout from "@/layouts/EmployeeLayout";
+import SupervisorLayout from "@/layouts/SupervisorLayout";
 import EmployeesPage from "@/pages/admin/EmployeesPage";
 import EmployeeDetailsPage from "@/pages/admin/EmployeeDetailsPage";
 import AtmsPage from "@/pages/admin/AtmsPage";
@@ -98,7 +105,27 @@ export default function App() {
         </Route>
 
         <Route element={<ProtectedRoute allowedRoles={["supervisor"]} />}>
-          <Route path="/supervisor" element={<SupervisorDashboardPage />} />
+          <Route element={<SupervisorLayout />}>
+            <Route path="/supervisor" element={<SupervisorDashboardPage />} />
+            <Route
+              path="/supervisor/employees"
+              element={<SupervisorEmployeesPage />}
+            />
+            <Route
+              path="/supervisor/employees/:employeeId"
+              element={<SupervisorEmployeeDetailsPage />}
+            />
+            <Route path="/supervisor/jobs" element={<SupervisorJobsPage />} />
+            <Route
+              path="/supervisor/jobs/:jobId"
+              element={<SupervisorJobDetailsPage />}
+            />
+            <Route path="/supervisor/amc" element={<SupervisorAMCsPage />} />
+            <Route
+              path="/supervisor/amc/:amcId"
+              element={<SupervisorAMCDetailsPage />}
+            />
+          </Route>
         </Route>
 
         <Route element={<ProtectedRoute allowedRoles={["employee"]} />}>

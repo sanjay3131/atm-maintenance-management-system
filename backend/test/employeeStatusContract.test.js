@@ -16,6 +16,7 @@ const userId = "64b000000000000000000001";
 const employeeId = "64b000000000000000000002";
 const atmId = "64b000000000000000000003";
 const adminId = "64b000000000000000000004";
+const supervisorId = "64b000000000000000000005";
 
 const makeQuery = (value) => ({
   session() {
@@ -69,6 +70,7 @@ const makeRecords = ({ amcResponsibleEmployeeId = null } = {}) => {
     _id: employeeId,
     userId,
     status: "active",
+    supervisorId,
     assignedAtmIds: [atmId],
     updatedBy: null,
     async save() {
@@ -223,6 +225,7 @@ test("User status changes do not change Employee work status or reciprocal ATM a
     assert.equal(result.status, 200);
     assert.equal(records.user.status, "inactive");
     assert.equal(records.employee.status, "active");
+    assert.equal(records.employee.supervisorId, supervisorId);
     assert.deepEqual(records.employee.assignedAtmIds, [atmId]);
     assert.deepEqual(records.atm.assignedEmployeeId, [employeeId]);
     assert.equal(records.atm.amcResponsibleEmployeeId, null);
@@ -244,6 +247,7 @@ test("Employee work-status changes do not change linked User login status or his
 
     assert.equal(result.status, 200);
     assert.equal(records.employee.status, "on_leave");
+    assert.equal(records.employee.supervisorId, supervisorId);
     assert.equal(records.user.status, "active");
     assert.deepEqual(records.employee.assignedAtmIds, [atmId]);
     assert.deepEqual(records.atm.assignedEmployeeId, [employeeId]);

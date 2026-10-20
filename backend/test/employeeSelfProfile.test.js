@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Employee from "../src/modules/employees/employee.model.js";
+import User from "../src/modules/users/user.model.js";
 import { verifyAccessToken } from "../src/middlewares/auth.middleware.js";
 import employeeRoutes from "../src/modules/employees/employee.routes.js";
 import {
@@ -321,6 +322,10 @@ test("admin employee detail populates readable assignment names and preserves re
       { path: "districtIds", select: "districtName" },
       { path: "regionIds", select: "name" },
       { path: "assignedAtmIds", select: "atmId" },
+      {
+        path: "supervisorId",
+        select: "firstName lastName email userType",
+      },
     ]);
     assert.deepEqual(body.data.districtIds, [
       "64b000000000000000000010",
@@ -341,36 +346,48 @@ test("admin employee detail populates readable assignment names and preserves re
 
 test("supervisor employee list preserves direct-report scope and excludes salary", async () => {
   const capture = {};
+  const linkedUserId = "64b000000000000000000199";
   const report = {
     _id: employeeDocumentId,
-    userId: {
-      firstName: "Asha",
-      lastName: "Patel",
-      email: "asha@example.test",
-      phoneNumber: "5550100",
-      status: "active",
-    },
+    userId: linkedUserId,
     employeeCode: "EMP042",
     salary: 999999,
     assignedAtmIds: [],
     districtIds: [],
   };
   const originalFind = Employee.find;
+  const originalUserFind = User.find;
   Employee.find = (filter) => {
     capture.filter = filter;
     return makeQuery([report], capture);
   };
+  User.find = () =>
+    makeQuery(
+      [
+        {
+          _id: linkedUserId,
+          firstName: "Asha",
+          lastName: "Patel",
+          email: "asha@example.test",
+          phoneNumber: "5550100",
+          status: "active",
+        },
+      ],
+      capture,
+    );
 
   try {
     const { status, body } = await invoke(getSupervisedEmployees, {
       user: { _id: supervisorId, userType: "supervisor" },
+      validatedQuery: { page: 1, limit: 20 },
     });
     assert.equal(status, 200);
     assert.deepEqual(capture.filter, { supervisorId });
-    assert.equal(capture.select, "-salary");
-    assert.equal("salary" in body.data[0], false);
-    assert.equal(body.data[0].employeeCode, "EMP042");
+    assert.equal(capture.select.includes("salary"), false);
+    assert.equal("salary" in body.data.employees[0], false);
+    assert.equal(body.data.employees[0].employeeCode, "EMP042");
   } finally {
     Employee.find = originalFind;
+    User.find = originalUserFind;
   }
 });

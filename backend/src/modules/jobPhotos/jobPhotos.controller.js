@@ -10,6 +10,8 @@ import {
   toCustomerSafeJobPhoto,
 } from "../customers/customerAccess.js";
 import { deleteSinglePhoto } from "../../config/cloudinaryCleanup.js";
+import mongoose from "mongoose";
+import { requireCurrentSupervisedJob } from "../supervisor/supervisor.scope.js";
 
 // ============================================
 // UPLOAD PHOTOS TO CLOUDINARY
@@ -203,6 +205,9 @@ export const uploadPhotos = asyncHandler(async (req, res) => {
 export const getJobPhotos = asyncHandler(async (req, res) => {
   const { jobId } = req.params;
 
+  if (!mongoose.isValidObjectId(jobId)) {
+    throw new ApiError(400, "Invalid job ID");
+  }
   const job = await Job.findById(jobId);
   if (!job || job.isDeleted) {
     throw new ApiError(404, "Job not found");
@@ -210,10 +215,10 @@ export const getJobPhotos = asyncHandler(async (req, res) => {
 
   // Authorization
   const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
+  const isSupervisor = req.user.userType === "supervisor";
   const isAssigned =
     job.assignedEmployeeId?.toString() === req.user._id.toString();
   const isCustomer = req.user.userType === "customer";
-  const isSupervisor = req.user.userType === "supervisor";
 
   if (isCustomer) {
     const customer = await getActiveCustomerForUser(req.user);
@@ -225,16 +230,24 @@ export const getJobPhotos = asyncHandler(async (req, res) => {
     if (!["VERIFIED", "APPROVED", "CLOSED"].includes(job.status)) {
       throw new ApiError(404, "Job not found");
     }
-  } else if (!isAdmin && !isAssigned && !isSupervisor) {
+  } else if (isSupervisor) {
+    await requireCurrentSupervisedJob(job, req.user._id);
+  } else if (!isAdmin && !isAssigned) {
     throw new ApiError(403, "Access denied");
   }
 
-  const photos = await JobPhoto.find({
+  let photoQuery = JobPhoto.find({
     jobId,
     isExpired: false, // Don't show expired photos
-  })
-    .populate("uploadedBy", "firstName lastName")
-    .sort({ uploadedAt: -1 });
+  }).sort({ uploadedAt: -1 });
+  if (isSupervisor) {
+    photoQuery = photoQuery.select(
+      "_id photoType url thumbnailUrl uploadedAt gpsData",
+    );
+  } else {
+    photoQuery = photoQuery.populate("uploadedBy", "firstName lastName");
+  }
+  const photos = await photoQuery;
 
   return res
     .status(200)
@@ -242,7 +255,9 @@ export const getJobPhotos = asyncHandler(async (req, res) => {
       new ApiResponse(
         200,
         {
-          photos: isCustomer ? photos.map(toCustomerSafeJobPhoto) : photos,
+          photos: isCustomer
+            ? photos.map(toCustomerSafeJobPhoto)
+            : photos,
         },
         "Photos fetched successfully",
       ),

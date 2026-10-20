@@ -18,6 +18,7 @@ export interface EmployeeDetailsForm {
   districtIds: string[];
   assignedAtmIds: string[];
   regionIds: string[];
+  supervisorId: string | null;
   salary?: number;
 }
 

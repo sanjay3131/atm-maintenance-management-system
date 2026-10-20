@@ -6,8 +6,8 @@ import AdminSidebar from "./AdminSidebar";
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
-  const [isDesktop, setIsDesktop] = useState(() =>
-    window.matchMedia("(min-width: 768px)").matches,
+  const [isDesktop, setIsDesktop] = useState(
+    () => window.matchMedia("(min-width: 768px)").matches,
   );
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -39,7 +39,10 @@ export default function AdminLayout() {
 
   useEffect(() => {
     if (previousMobileSidebarOpen.current !== mobileSidebarOpen) {
-      (mobileSidebarOpen ? closeButtonRef : mobileMenuButtonRef).current?.focus();
+      (mobileSidebarOpen
+        ? closeButtonRef
+        : mobileMenuButtonRef
+      ).current?.focus();
       previousMobileSidebarOpen.current = mobileSidebarOpen;
     }
   }, [mobileSidebarOpen]);
@@ -57,7 +60,7 @@ export default function AdminLayout() {
       if (event.key !== "Tab") return;
       const focusableElements = Array.from(
         document.querySelectorAll<HTMLElement>(
-          '[data-mobile-sidebar] a[href], [data-mobile-sidebar] button:not([disabled])',
+          "[data-mobile-sidebar] a[href], [data-mobile-sidebar] button:not([disabled])",
         ),
       );
       if (focusableElements.length === 0) {
@@ -115,7 +118,7 @@ export default function AdminLayout() {
       >
         <div className="flex shrink-0 items-start justify-between border-b p-5">
           <div>
-            <h1 className="text-lg font-bold">ATM Maintenance</h1>
+            <h1 className="text-lg font-bold">Sendhur Engineering</h1>
             <p className="text-sm text-gray-500">Admin Panel</p>
           </div>
           <button

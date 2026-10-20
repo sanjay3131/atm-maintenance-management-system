@@ -2,6 +2,7 @@ import express from "express";
 
 import {
   getAllUsers,
+  getSupervisors,
   getUserById,
   updateUserById,
   //   deleteUserById,
@@ -28,6 +29,12 @@ import {
 
 const router = express.Router();
 // get all users
+router.get(
+  "/supervisors",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  getSupervisors,
+);
 router.get(
   "/",
   verifyAccessToken,

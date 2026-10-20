@@ -2,6 +2,8 @@ import { Router } from "express";
 import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
 import { authorizeRoles } from "../../middlewares/role.middleware.js";
 import { upload } from "../../config/multer.js";
+import { validateRequest } from "../../middlewares/validate.middleware.js";
+import { supervisorAmcParamsSchema } from "../supervisor/supervisor.validation.js";
 import {
   uploadAMCPhotos,
   getAMCPhotos,
@@ -22,6 +24,7 @@ router.get(
   "/:amcId",
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin", "supervisor", "employee", "customer"),
+  validateRequest(supervisorAmcParamsSchema, "params"),
   getAMCPhotos,
 );
 

@@ -13,6 +13,7 @@ import {
   type UpdateEmployeePayload,
 } from "@/services/employee.service";
 import { useUpdateEmployee } from "../hooks/useUpdateEmployee";
+import SupervisorSelect from "./SupervisorSelect";
 
 type EmployeeStatus = "active" | "inactive" | "on_leave" | "resigned";
 type EmploymentType = NonNullable<UpdateEmployeePayload["employmentType"]>;
@@ -26,6 +27,7 @@ interface EmployeeEditValues {
   districtIds: string[];
   regionIds: string[];
   salary: string;
+  supervisorId: string;
 }
 
 interface ApiValidationIssue {
@@ -89,6 +91,7 @@ export default function EmployeeEditForm({
     districtIds: [...(employee.districtIds ?? [])],
     regionIds: [...(employee.regionIds ?? [])],
     salary: employee.salary === undefined ? "" : String(employee.salary),
+    supervisorId: employee.supervisorId ?? "",
   }));
   const [serverError, setServerError] = useState<{
     message: string;
@@ -152,6 +155,16 @@ export default function EmployeeEditForm({
     event.preventDefault();
     setServerError(null);
 
+    const currentSupervisorId = employee.supervisorId ?? "";
+    if (values.supervisorId !== currentSupervisorId) {
+      const confirmation = values.supervisorId
+        ? currentSupervisorId
+          ? "Reassign this employee to the selected supervisor?"
+          : "Assign this employee to the selected supervisor?"
+        : "Unassign this employee from their current supervisor?";
+      if (!window.confirm(confirmation)) return;
+    }
+
     const payload: UpdateEmployeePayload = {
       designation: values.designation.trim(),
       department: values.department.trim(),
@@ -160,6 +173,7 @@ export default function EmployeeEditForm({
       status: values.status,
       districtIds: values.districtIds,
       regionIds: values.regionIds,
+      supervisorId: values.supervisorId || null,
     };
     if (values.salary.trim() !== "") {
       payload.salary = Number(values.salary);
@@ -206,6 +220,13 @@ export default function EmployeeEditForm({
               className="h-10 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             />
           </div>
+          <SupervisorSelect
+            id="employee-supervisor"
+            value={values.supervisorId}
+            onChange={(supervisorId) =>
+              updateValue("supervisorId", supervisorId)
+            }
+          />
           <div>
             <label
               htmlFor="employee-department"

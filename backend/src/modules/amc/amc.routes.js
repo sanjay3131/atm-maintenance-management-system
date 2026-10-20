@@ -2,6 +2,7 @@ import { Router } from "express";
 import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
 import { authorizeRoles } from "../../middlewares/role.middleware.js";
 import { validateRequest } from "../../middlewares/validate.middleware.js";
+import { amcIdParamsSchema } from "../supervisor/supervisor.validation.js";
 import { completeAMCSchema } from "./amc.validation.js";
 import {
   generateAMC,
@@ -62,6 +63,7 @@ router.get(
   "/:id",
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin", "supervisor", "employee", "customer"),
+  validateRequest(amcIdParamsSchema, "params"),
   getAMCById,
 );
 
@@ -90,6 +92,7 @@ router.get(
   "/:id/report",
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin", "supervisor", "employee", "customer"),
+  validateRequest(amcIdParamsSchema, "params"),
   downloadAMCReport,
 );
 
