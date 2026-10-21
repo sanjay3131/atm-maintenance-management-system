@@ -166,6 +166,55 @@ const toSupervisorAMCResponse = (amc, detailed = false) => {
   return response;
 };
 
+const toAdminAMCResponse = (amc) => {
+  const record = typeof amc.toObject === "function" ? amc.toObject() : amc;
+  const populated = (value, fields) => {
+    if (!value || typeof value !== "object") return value;
+    const selectedFields = fields.filter((field) => value[field] !== undefined);
+    if (selectedFields.length === 0) {
+      return typeof value.toHexString === "function" ? value.toString() : value;
+    }
+    return Object.fromEntries(
+      selectedFields.map((field) => [field, value[field]]),
+    );
+  };
+
+  return {
+    _id: record._id,
+    amcId: record.amcId,
+    atmId: populated(record.atmId, [
+      "_id",
+      "atmId",
+      "locationName",
+      "address",
+    ]),
+    bankId: populated(record.bankId, ["_id", "bankName"]),
+    customerId: populated(record.customerId, ["_id", "customerName"]),
+    districtId: populated(record.districtId, ["_id", "districtName"]),
+    employeeId: populated(record.employeeId, [
+      "_id",
+      "firstName",
+      "lastName",
+      "email",
+      "phoneNumber",
+    ]),
+    month: record.month,
+    year: record.year,
+    status: record.status,
+    deadlineDate: record.deadlineDate,
+    visitDate: record.visitDate,
+    completedAt: record.completedAt,
+    generatedAt: record.generatedAt,
+    createdAt: record.createdAt,
+    checklist: record.checklist,
+    checklistCompleted: record.checklistCompleted,
+    employeeRemarks: record.employeeRemarks,
+    photoCount: record.photoCount,
+    gpsValidated: record.gpsValidated,
+    gpsDistance: record.gpsDistance,
+  };
+};
+
 export const getAMCById = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!mongoose.isValidObjectId(id)) {
@@ -248,7 +297,11 @@ export const getAMCById = asyncHandler(async (req, res) => {
   return res.status(200).json(
     new ApiResponse(
       200,
-      isSupervisor ? toSupervisorAMCResponse(amc, true) : amc,
+      isSupervisor
+        ? toSupervisorAMCResponse(amc, true)
+        : isAdmin
+          ? toAdminAMCResponse(amc)
+          : amc,
       "AMC fetched",
     ),
   );
@@ -454,6 +507,7 @@ export const getAllAMC = asyncHandler(async (req, res) => {
           .populate("atmId", "atmId locationName bankId address")
           .populate("employeeId", "firstName lastName email phoneNumber")
           .populate("bankId", "bankName")
+          .populate("customerId", "customerName")
           .populate("districtId", "districtName"))
       .sort({ year: -1, month: -1, createdAt: -1 })
       .skip(skip)
@@ -663,6 +717,7 @@ export const downloadAMCReport = asyncHandler(async (req, res) => {
   const { buffer, filename } = await generateAMCPDF(id, {
     customerSafe: isCustomer,
     supervisorSafe: isSupervisor,
+    embedPhotos: isAdmin,
   });
 
   res.setHeader("Content-Type", "application/pdf");

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   BriefcaseBusiness,
+  ClipboardCheck,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -24,6 +25,7 @@ const employeeNavigation: Array<{
 }> = [
   { to: "/employee", label: "Dashboard navigation", icon: LayoutDashboard, end: true },
   { to: "/employee/jobs", label: "My Jobs navigation", icon: BriefcaseBusiness },
+  { to: "/employee/amcs", label: "My AMC visits navigation", icon: ClipboardCheck },
   { to: "/employee/attendance", label: "Attendance navigation", icon: Activity },
 ];
 
@@ -34,6 +36,8 @@ const pageTitles: Array<{
   { matches: (path: string) => path === "/employee", label: "Employee Dashboard" },
   { matches: (path: string) => path === "/employee/jobs", label: "My Jobs" },
   { matches: (path: string) => path.startsWith("/employee/jobs/"), label: "Job Details" },
+  { matches: (path: string) => path === "/employee/amcs", label: "My AMC Visits" },
+  { matches: (path: string) => path.startsWith("/employee/amcs/"), label: "AMC Visit Details" },
   { matches: (path: string) => path.startsWith("/employee/attendance"), label: "Attendance" },
 ];
 

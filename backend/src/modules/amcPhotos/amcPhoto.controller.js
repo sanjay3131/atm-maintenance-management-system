@@ -202,7 +202,10 @@ export const deleteAMCPhoto = asyncHandler(async (req, res) => {
   // Delete from Cloudinary
   const { deleteSinglePhoto } =
     await import("../../config/cloudinaryCleanup.js");
-  await deleteSinglePhoto(photo.publicId);
+  const deleted = await deleteSinglePhoto(photo.publicId);
+  if (!deleted) {
+    throw new ApiError(502, "Photo could not be deleted. Please try again.");
+  }
 
   // Remove from AMC
   amc.photos = (amc.photos || []).filter(

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import PDFDocument from "pdfkit";
 import ATM from "../src/modules/atms/atm.model.js";
 import AMC from "../src/modules/amc/amc.model.js";
 import AMCPhoto from "../src/modules/amcPhotos/amcPhoto.model.js";
@@ -855,9 +856,7 @@ test("AMC photos require completed historical ownership and omit private photo m
     assert.equal(owner.status, 200);
     assert.deepEqual(Object.keys(owner.body.data.photos[0]).sort(), [
       "_id",
-      "thumbnailUrl",
       "uploadedAt",
-      "url",
     ]);
 
     await assert.rejects(
@@ -1017,6 +1016,8 @@ test("former owner may download its completed AMC PDF without employee contact d
   const originalPhotoFind = AMCPhoto.find;
   const record = amcRecord(amcAId, customerAId);
   const populatedPaths = [];
+  const renderedText = [];
+  const originalText = PDFDocument.prototype.text;
   Customer.findOne = customerProfileLookup();
   AMC.findById = () => {
     const result = query(record);
@@ -1027,9 +1028,17 @@ test("former owner may download its completed AMC PDF without employee contact d
     };
     return result;
   };
-  AMCPhoto.find = () => ({
-    sort: async () => [],
-  });
+  PDFDocument.prototype.text = function (...args) {
+    renderedText.push(String(args[0]));
+    return originalText.apply(this, args);
+  };
+  AMCPhoto.find = () =>
+    query([
+      {
+        originalName: "maintenance.jpg",
+        url: "https://res.cloudinary.com/example/image/upload/private-photo.jpg",
+      },
+    ]);
 
   try {
     const pdf = await invoke(downloadAMCReport, {
@@ -1040,8 +1049,27 @@ test("former owner may download its completed AMC PDF without employee contact d
     assert.equal(pdf.headers["Content-Type"], "application/pdf");
     assert.ok(Buffer.isBuffer(pdf.body));
     assert.ok(!populatedPaths.includes("employeeId"));
-    assert.equal(pdf.body.includes(Buffer.from("employee@example.test")), false);
+    assert.equal(
+      renderedText.some((text) => text.includes("res.cloudinary.com")),
+      false,
+    );
+    assert.equal(
+      renderedText.some((text) => text.includes("private-photo.jpg")),
+      false,
+    );
+    assert.equal(renderedText.includes("Total Photos: 1"), true);
+    assert.equal(
+      renderedText.some((text) => text.includes("employee@example.test")),
+      false,
+    );
+    assert.equal(
+      renderedText.some((text) => text.includes("GPS Distance")),
+      false,
+    );
+    assert.equal(renderedText.includes("Status: COMPLETED"), true);
+    assert.equal(renderedText.includes("✓ door: Good"), true);
   } finally {
+    PDFDocument.prototype.text = originalText;
     Customer.findOne = originalCustomerFindOne;
     AMC.findById = originalAmcFindById;
     AMCPhoto.find = originalPhotoFind;

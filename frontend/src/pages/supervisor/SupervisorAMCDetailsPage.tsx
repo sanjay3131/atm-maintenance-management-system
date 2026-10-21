@@ -7,7 +7,6 @@ import {
   ClipboardCheck,
   Download,
   MapPin,
-  RefreshCw,
   UserRound,
 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
@@ -20,6 +19,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { SkeletonBlock } from "@/features/dashboard/components/DashboardSkeleton";
+import AMCPhotoGallery from "@/features/amc/components/AMCPhotoGallery";
 import {
   useSupervisorAMCDetails,
   useSupervisorAMCPhotos,
@@ -34,7 +34,6 @@ import {
 import { getSupervisorAMCReport } from "@/services/supervisor.service";
 import type {
   SupervisorAMCDetailsResponse,
-  SupervisorAMCPhotosResponse,
 } from "@/services/supervisor.service";
 
 const formatDate = (value?: string | null) => {
@@ -86,41 +85,6 @@ function BackToAMCs() {
   );
 }
 
-function RetryCard({
-  title,
-  error,
-  retry,
-  isFetching,
-}: {
-  title: string;
-  error: unknown;
-  retry: () => void;
-  isFetching: boolean;
-}) {
-  return (
-    <Card className="border-rose-200">
-      <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div role="alert">
-          <p className="font-semibold text-rose-800">{title} unavailable</p>
-          <p className="mt-1 text-sm text-slate-600">
-            {getErrorMessage(error)}
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={retry}
-          disabled={isFetching}
-          className="min-h-11 shrink-0"
-        >
-          <RefreshCw className="size-4" aria-hidden="true" />
-          {isFetching ? "Retrying..." : "Retry"}
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
 function AMCSkeleton() {
   return (
     <div className="space-y-4" role="status" aria-label="Loading AMC details">
@@ -168,96 +132,6 @@ function DetailsError({
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function AMCPhotos({
-  photos,
-  loading,
-  error,
-  retry,
-  isFetching,
-}: {
-  photos?: SupervisorAMCPhotosResponse["photos"];
-  loading: boolean;
-  error: unknown;
-  retry: () => void;
-  isFetching: boolean;
-}) {
-  const [unavailablePhotos, setUnavailablePhotos] = useState<Set<string>>(
-    () => new Set(),
-  );
-
-  if (loading) {
-    return (
-      <div
-        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
-        role="status"
-        aria-label="Loading AMC photos"
-      >
-        {Array.from({ length: 4 }, (_, index) => (
-          <SkeletonBlock key={index} className="aspect-square rounded-xl" />
-        ))}
-      </div>
-    );
-  }
-  if (error) {
-    return (
-      <RetryCard
-        title="AMC photos"
-        error={error}
-        retry={retry}
-        isFetching={isFetching}
-      />
-    );
-  }
-  if (!photos?.length) {
-    return (
-      <p className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
-        No AMC photos are available.
-      </p>
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-      {photos.map((photo, index) => {
-        const src = photo.thumbnailUrl || photo.url;
-        const failed = unavailablePhotos.has(photo._id || String(index));
-        return (
-          <figure
-            key={photo._id || index}
-            className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
-          >
-            {src && !failed ? (
-              <img
-                src={src}
-                alt={`AMC maintenance evidence ${index + 1}`}
-                loading="lazy"
-                referrerPolicy="no-referrer"
-                onError={() =>
-                  setUnavailablePhotos((previous) => {
-                    const next = new Set(previous);
-                    next.add(photo._id || String(index));
-                    return next;
-                  })
-                }
-                className="aspect-square w-full object-cover"
-              />
-            ) : (
-              <div className="grid aspect-square place-items-center px-3 text-center text-sm text-slate-500">
-                Image unavailable
-              </div>
-            )}
-            <figcaption className="p-3 text-xs text-slate-500">
-              {photo.uploadedAt
-                ? formatDateTime(photo.uploadedAt)
-                : "Upload date unavailable"}
-            </figcaption>
-          </figure>
-        );
-      })}
-    </div>
   );
 }
 
@@ -531,7 +405,7 @@ export default function SupervisorAMCDetailsPage() {
           <CardTitle className="text-base">AMC photos</CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-5 sm:px-5">
-          <AMCPhotos
+          <AMCPhotoGallery
             photos={photos}
             loading={
               photosQuery.isLoading ||
@@ -545,6 +419,7 @@ export default function SupervisorAMCDetailsPage() {
             }
             retry={() => void photosQuery.refetch()}
             isFetching={photosQuery.isFetching}
+            emptyMessage="No AMC photos are available."
           />
         </CardContent>
       </Card>

@@ -651,16 +651,26 @@ function EmployeeDashboardPage() {
 
       <section aria-labelledby="amc-progress-heading">
         <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <FileCheck2 className="size-5 text-primary" aria-hidden="true" />
-              <h2 id="amc-progress-heading" className="text-lg font-semibold">
-                {t("AMC Progress")}
-              </h2>
+          <div className="flex min-w-0 items-center gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <FileCheck2 className="size-5 text-primary" aria-hidden="true" />
+                <h2 id="amc-progress-heading" className="text-lg font-semibold">
+                  {t("AMC Progress")}
+                </h2>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t("Monthly AMC records assigned to you.")}
+              </p>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {t("Monthly AMC records assigned to you.")}
-            </p>
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11 w-fit"
+              onClick={() => navigate("/employee/amcs")}
+            >
+              {t("View AMC visits")}
+            </Button>
           </div>
           <div className="grid w-full grid-cols-2 gap-3 sm:w-auto">
             <div>

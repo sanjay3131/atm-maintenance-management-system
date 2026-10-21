@@ -264,6 +264,13 @@ export default function ATMDetailsPage() {
       displayedAMCResponsibleDraft === NOT_ASSIGNED
         ? null
         : displayedAMCResponsibleDraft;
+    const selectedEmployeeName = selectedAMCResponsibleEmployee
+      ? `${selectedAMCResponsibleEmployee.employeeCode} — ${getEmployeeName(selectedAMCResponsibleEmployee)}`
+      : "no employee";
+    const confirmed = window.confirm(
+      `${employeeId ? `Assign ${selectedEmployeeName}` : "Clear AMC responsibility"} for ATM ${atm.atmId}? This affects future generated AMC records; existing AMC assignments will not change.`,
+    );
+    if (!confirmed) return;
     setAMCResponsibleEmployee.mutate(
       { atmId: atm._id, employeeId },
       {
@@ -654,6 +661,10 @@ export default function ATMDetailsPage() {
           <CardTitle>AMC Responsible</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            This responsibility is used when generating future AMC records.
+            Changing it does not reassign existing AMC records.
+          </p>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <Select
               value={displayedAMCResponsibleDraft}

@@ -19,6 +19,7 @@ import EmployeeDetailsPage from "@/pages/admin/EmployeeDetailsPage";
 import AtmsPage from "@/pages/admin/AtmsPage";
 import JobsPage from "@/pages/admin/JobsPage";
 import AmcPage from "@/pages/admin/AmcPage";
+import AdminAMCDetailsPage from "@/pages/admin/AdminAMCDetailsPage";
 import ComplaintsPage from "@/pages/admin/ComplaintsPage";
 import ComplaintDetailsPage from "@/pages/admin/ComplaintDetailsPage";
 import ATMDetailsPage from "@/pages/admin/ATMDetailsPage";
@@ -26,6 +27,8 @@ import EditATMPage from "@/pages/admin/EditATMPage";
 import JobDetailsPage from "@/pages/admin/JobDetailsPage";
 import RecurringMaintenancePage from "@/pages/admin/RecurringMaintenancePage";
 import EmployeeJobsPage from "@/pages/employee/EmployeeJobsPage";
+import EmployeeAMCsPage from "@/pages/employee/EmployeeAMCsPage";
+import EmployeeAMCDetailsPage from "@/pages/employee/EmployeeAMCDetailsPage";
 import EmployeeAttendancePage from "@/pages/employee/EmployeeAttendancePage";
 import EmployeeLanguageProvider from "@/features/employee-portal/EmployeeLanguageProvider";
 import BanksPage from "@/pages/admin/BanksPage";
@@ -96,6 +99,10 @@ export default function App() {
               element={<RecurringMaintenancePage />}
             />
             <Route path="/admin/amc" element={<AmcPage />} />
+            <Route
+              path="/admin/amc/:amcId"
+              element={<AdminAMCDetailsPage />}
+            />
             <Route path="/admin/complaints" element={<ComplaintsPage />} />
             <Route
               path="/admin/complaints/:id"
@@ -142,6 +149,11 @@ export default function App() {
               element={<EmployeeAttendancePage />}
             />
             <Route path="/employee/jobs" element={<EmployeeJobsPage />} />
+            <Route path="/employee/amcs" element={<EmployeeAMCsPage />} />
+            <Route
+              path="/employee/amcs/:amcId"
+              element={<EmployeeAMCDetailsPage />}
+            />
             <Route
               path="/employee/jobs/:jobId"
               element={<JobDetailsPage readOnly backPath="/employee/jobs" />}

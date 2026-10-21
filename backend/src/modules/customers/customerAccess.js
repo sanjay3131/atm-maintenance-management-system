@@ -83,8 +83,6 @@ export const toCustomerSafeAMCPhoto = (photo) => {
   const record = asRecord(photo);
   return {
     _id: record._id,
-    url: record.url,
-    thumbnailUrl: record.thumbnailUrl,
     uploadedAt: record.uploadedAt,
   };
 };
