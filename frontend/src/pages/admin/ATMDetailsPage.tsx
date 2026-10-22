@@ -26,6 +26,10 @@ import { useAssignEmployeeToATM } from "@/features/atms/hooks/useAssignEmployeeT
 import { useUpdateATM } from "@/features/atms/hooks/useUpdateATM";
 import { useSetATMAMCResponsibleEmployee } from "@/features/atms/hooks/useSetATMAMCResponsibleEmployee";
 import { useATM } from "@/features/atms/hooks/useATM";
+import {
+  useATMLocationRequests,
+  useReopenATMLocationRequests,
+} from "@/features/atms/hooks/useATMLocationRequests";
 import type { ATMEmployee, ATMStatus } from "@/features/atms/types/atm.types";
 
 const NOT_AVAILABLE = "Not available";
@@ -111,6 +115,13 @@ export default function ATMDetailsPage() {
   const assignEmployee = useAssignEmployeeToATM();
   const updateATM = useUpdateATM();
   const setAMCResponsibleEmployee = useSetATMAMCResponsibleEmployee();
+  const approvedLocationRequests = useATMLocationRequests(
+    "APPROVED",
+    1,
+    100,
+    id,
+  );
+  const reopenLocationRequests = useReopenATMLocationRequests();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
@@ -163,6 +174,29 @@ export default function ATMDetailsPage() {
   const selectedAMCResponsibleEmployee = eligibleAssignedEmployees.find(
     (employee) => employee._id === displayedAMCResponsibleDraft,
   );
+  const hasApprovedLocationRequest = Boolean(
+    approvedLocationRequests.data?.requests.length,
+  );
+
+  const handleReopenLocationRequests = async () => {
+    if (!atm) return;
+    try {
+      await reopenLocationRequests.mutateAsync({ atmId: atm._id });
+      toast.success("Employee location requests reopened for this ATM.");
+      await Promise.all([
+        refetch(),
+        approvedLocationRequests.refetch(),
+        queryClient.invalidateQueries({
+          queryKey: ["my-atm-location-requests", atm._id],
+        }),
+      ]);
+    } catch (error) {
+      const message = isAxiosError<{ message?: string }>(error)
+        ? error.response?.data?.message
+        : undefined;
+      toast.error(message || "Could not reopen location requests.");
+    }
+  };
 
   const handleDelete = () => {
     if (!atm) return;
@@ -599,6 +633,33 @@ export default function ATMDetailsPage() {
                 value={formatDate(atm.locationCapturedAt)}
               />
             </dl>
+            {atm.locationConfigured &&
+              hasApprovedLocationRequest &&
+              atm.locationRequestWindowOpen !== true && (
+                <div className="mt-4 border-t pt-4">
+                  <p className="mb-3 text-sm text-muted-foreground">
+                    Employee location requests were closed after approval.
+                    Reopen them only when another reviewed location request is needed.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11"
+                    onClick={() => void handleReopenLocationRequests()}
+                    disabled={reopenLocationRequests.isPending}
+                  >
+                    {reopenLocationRequests.isPending
+                      ? "Reopening..."
+                      : "Reopen employee location requests"}
+                  </Button>
+                </div>
+              )}
+            {atm.locationRequestWindowOpen === true && (
+              <p className="mt-4 border-t pt-4 text-sm text-amber-700">
+                Employee location requests are open. Reopened{" "}
+                {formatDate(atm.locationRequestReopenedAt)}.
+              </p>
+            )}
           </CardContent>
         </Card>
 

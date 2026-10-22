@@ -12,6 +12,7 @@ import {
   UserRound,
   Package,
   CalendarCheck2,
+  MapPinCheck,
 } from "lucide-react";
 
 const navItems = [
@@ -39,6 +40,11 @@ const navItems = [
     label: "ATMs",
     path: "/admin/atms",
     icon: Monitor,
+  },
+  {
+    label: "ATM Location Requests",
+    path: "/admin/location-requests",
+    icon: MapPinCheck,
   },
   {
     label: "Banks",

@@ -90,6 +90,35 @@ export const assignATMEmployeeSchema = z.object({
 export const setATMAMCResponsibleEmployeeSchema = z.object({
   employeeId: objectIdSchema.nullable(),
 });
+
+export const submitATMLocationRequestSchema = z.object({
+  atmId: objectIdSchema,
+  latitude: z.number().finite().min(-90).max(90),
+  longitude: z.number().finite().min(-180).max(180),
+  accuracy: z.number().finite().min(0).max(50).optional(),
+  inputSource: z.enum(["GPS", "MANUAL"]),
+  amcId: objectIdSchema.optional(),
+});
+
+export const atmLocationRequestParamsSchema = z.object({
+  requestId: objectIdSchema,
+});
+
+export const atmLocationRequestListQuerySchema = z.object({
+  status: z.enum(["PENDING", "APPROVED", "REJECTED"]).optional(),
+  atmId: objectIdSchema.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export const atmIdParamsSchema = z.object({
+  id: objectIdSchema,
+});
+
+export const rejectATMLocationRequestSchema = z.object({
+  reason: z.string().trim().min(1, "Rejection reason is required").max(1000),
+});
+
 export const validateRequest = (schema) => {
   return asyncHandler(async (req, res, next) => {
     const result = schema.safeParse(req.body);

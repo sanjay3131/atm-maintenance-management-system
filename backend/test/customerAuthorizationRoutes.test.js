@@ -24,6 +24,7 @@ const [
   { default: AMCPhoto },
   { default: Employee },
   { default: ATM },
+  { default: ATMLocationRequest },
 ] = await Promise.all([
   import("../src/modules/auth/auth.routes.js"),
   import("../src/modules/customers/customer.routes.js"),
@@ -41,6 +42,7 @@ const [
   import("../src/modules/amcPhotos/amcPhoto.model.js"),
   import("../src/modules/employees/employee.model.js"),
   import("../src/modules/atms/atm.model.js"),
+  import("../src/modules/atms/atmLocationRequest.model.js"),
 ]);
 
 const ids = {
@@ -373,6 +375,7 @@ test("mounted routes enforce customer scope, status, photo ownership, and operat
   override(AMC, "findById", (id) =>
     query(amcs.find((amc) => String(amc._id) === String(id)) ?? null),
   );
+  override(ATMLocationRequest, "exists", async () => null);
   override(AMC, "find", (filter) =>
     query(
       amcs.filter(

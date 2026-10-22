@@ -3,6 +3,7 @@ import ApiResponse from "../../utils/ApiResponse.js";
 import ApiError from "../../utils/ApiError.js";
 import AMC from "./amc.model.js";
 import ATM from "../atms/atm.model.js";
+import ATMLocationRequest from "../atms/atmLocationRequest.model.js";
 import Employee from "../employees/employee.model.js";
 import {
   generateMonthlyAMC,
@@ -11,7 +12,11 @@ import {
   validateAmcCompletion,
   getAmcDashboardStats,
 } from "./amc.service.js";
-import { AMC_STATUS, AMC_CONFIG } from "./amc.config.js";
+import {
+  AMC_STATUS,
+  AMC_CONFIG,
+  VALID_AMC_TRANSITIONS,
+} from "./amc.config.js";
 import { validateChecklist } from "./amcChecklist.js";
 import Notification from "../notification/notification.model.js";
 import User from "../users/user.model.js";
@@ -235,7 +240,7 @@ export const getAMCById = asyncHandler(async (req, res) => {
     : await amcQuery
         .populate(
           "atmId",
-          "atmId locationName bankId address location locationConfigured locationCapturedBy locationCapturedAt",
+          "atmId locationName bankId address location locationConfigured locationCapturedBy locationCapturedAt locationRequestReopenedAt locationRequestWindowOpen locationRequestApproved",
         )
         .populate("employeeId", "firstName lastName email phoneNumber")
         .populate("supervisorId", "firstName lastName")
@@ -263,6 +268,16 @@ export const getAMCById = asyncHandler(async (req, res) => {
     amc.employeeId?._id?.toString() !== req.user._id.toString()
   ) {
     throw new ApiError(403, "Access denied");
+  }
+
+  if (isEmployee && amc.atmId?._id) {
+    const hasApprovedLocationRequest = await ATMLocationRequest.exists({
+      atmId: amc.atmId._id,
+      status: "APPROVED",
+    });
+    amc.atmId.locationRequestApproved =
+      Boolean(amc.atmId.locationRequestApproved) ||
+      Boolean(hasApprovedLocationRequest);
   }
 
   if (isSupervisor) {
@@ -316,23 +331,45 @@ export const startAMC = asyncHandler(async (req, res) => {
   const amc = await AMC.findById(id);
   if (!amc || amc.isDeleted) throw new ApiError(404, "AMC not found");
 
-  const { atm } = await validateAmcStart(amc, req.user._id);
+  await validateAmcStart(amc, req.user._id);
 
-  if (amc.status !== AMC_STATUS.PENDING) {
-    throw new ApiError(400, `Cannot start AMC with status: ${amc.status}`);
+  const startableStatuses = Object.entries(VALID_AMC_TRANSITIONS)
+    .filter(([, transitions]) =>
+      transitions.includes(AMC_STATUS.IN_PROGRESS),
+    )
+    .map(([status]) => status);
+  const visitDate = new Date();
+  const startedAmc = await AMC.findOneAndUpdate(
+    {
+      _id: amc._id,
+      employeeId: req.user._id,
+      isDeleted: false,
+      status: { $in: startableStatuses },
+      visitDate: null,
+    },
+    {
+      $set: {
+        status: AMC_STATUS.IN_PROGRESS,
+        visitDate,
+        updatedBy: req.user._id,
+      },
+    },
+    { new: true, runValidators: true },
+  );
+
+  if (!startedAmc) {
+    throw new ApiError(
+      409,
+      "AMC visit was already started or is no longer eligible",
+    );
   }
-
-  amc.status = AMC_STATUS.IN_PROGRESS;
-  amc.visitDate = new Date();
-  amc.updatedBy = req.user._id;
-  await amc.save();
 
   return res
     .status(200)
     .json(
       new ApiResponse(
         200,
-        amc,
+        startedAmc,
         "AMC started. Visit the ATM and complete the checklist.",
       ),
     );
@@ -356,6 +393,13 @@ export const saveChecklist = asyncHandler(async (req, res) => {
     throw new ApiError(400, "AMC already completed");
   }
 
+  if (
+    !amc.visitDate ||
+    ![AMC_STATUS.IN_PROGRESS, AMC_STATUS.OVERDUE].includes(amc.status)
+  ) {
+    throw new ApiError(400, "AMC visit has not been started");
+  }
+
   const validation = validateChecklist(checklist);
   if (!validation.valid) {
     throw new ApiError(
@@ -364,12 +408,33 @@ export const saveChecklist = asyncHandler(async (req, res) => {
     );
   }
 
-  amc.checklist = checklist;
-  amc.checklistCompleted = true;
-  amc.updatedBy = req.user._id;
-  await amc.save();
+  const updatedAMC = await AMC.findOneAndUpdate(
+    {
+      _id: amc._id,
+      employeeId: req.user._id,
+      isDeleted: false,
+      status: amc.status,
+      visitDate: amc.visitDate,
+    },
+    {
+      $set: {
+        checklist,
+        checklistCompleted: true,
+        updatedBy: req.user._id,
+      },
+    },
+    { new: true, runValidators: true },
+  );
+  if (!updatedAMC) {
+    throw new ApiError(
+      409,
+      "AMC status changed before the checklist could be saved",
+    );
+  }
 
-  return res.status(200).json(new ApiResponse(200, amc, "Checklist saved"));
+  return res
+    .status(200)
+    .json(new ApiResponse(200, updatedAMC, "Checklist saved"));
 });
 
 // ============================================
@@ -391,7 +456,17 @@ export const completeAMC = asyncHandler(async (req, res) => {
   }
 
   if (amc.status === AMC_STATUS.COMPLETED) {
-    throw new ApiError(400, "AMC already completed");
+    throw new ApiError(409, "AMC is already completed");
+  }
+
+  if (
+    !VALID_AMC_TRANSITIONS[amc.status]?.includes(AMC_STATUS.COMPLETED)
+  ) {
+    throw new ApiError(400, `Cannot complete AMC with status: ${amc.status}`);
+  }
+
+  if (!amc.visitDate) {
+    throw new ApiError(400, "AMC visit has not been started");
   }
 
   if (!amc.checklistCompleted) {
@@ -404,18 +479,37 @@ export const completeAMC = asyncHandler(async (req, res) => {
     amc.checklist,
   );
 
-  amc.status = AMC_STATUS.COMPLETED;
-  amc.completedAt = new Date();
-  amc.visitGps = {
-    latitude: gps.latitude,
-    longitude: gps.longitude,
-    accuracy: accuracy || gps.accuracy,
-  };
-  amc.gpsDistance = distance;
-  amc.gpsValidated = true;
-  amc.employeeRemarks = remarks || "";
-  amc.updatedBy = req.user._id;
-  await amc.save();
+  const completedAt = new Date();
+  const completedAMC = await AMC.findOneAndUpdate(
+    {
+      _id: amc._id,
+      employeeId: req.user._id,
+      isDeleted: false,
+      status: amc.status,
+      visitDate: amc.visitDate,
+      checklistCompleted: true,
+      photoCount: { $gte: AMC_CONFIG.REQUIRED_PHOTOS },
+    },
+    {
+      $set: {
+        status: AMC_STATUS.COMPLETED,
+        completedAt,
+        visitGps: {
+          latitude: gps.latitude,
+          longitude: gps.longitude,
+          accuracy: accuracy || gps.accuracy,
+        },
+        gpsDistance: distance,
+        gpsValidated: true,
+        employeeRemarks: remarks || "",
+        updatedBy: req.user._id,
+      },
+    },
+    { new: true, runValidators: true },
+  );
+  if (!completedAMC) {
+    throw new ApiError(409, "AMC visit was completed or changed by another request");
+  }
 
   // Notify admin
 
@@ -428,8 +522,8 @@ export const completeAMC = asyncHandler(async (req, res) => {
       userId: admin._id,
       type: "amc_completed",
       title: "AMC Completed",
-      message: `Employee ${req.user.firstName} ${req.user.lastName} completed AMC for ATM ${amc.atmId}.`,
-      data: { amcId: amc._id, atmId: amc.atmId },
+      message: `Employee ${req.user.firstName} ${req.user.lastName} completed AMC for ATM ${completedAMC.atmId}.`,
+      data: { amcId: completedAMC._id, atmId: completedAMC.atmId },
     });
   }
 
@@ -438,7 +532,7 @@ export const completeAMC = asyncHandler(async (req, res) => {
     .json(
       new ApiResponse(
         200,
-        amc,
+        completedAMC,
         `AMC completed. GPS validated: ${distance}m from ATM.`,
       ),
     );

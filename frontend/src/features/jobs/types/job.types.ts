@@ -29,6 +29,8 @@ export interface JobATM {
   districtId?: string;
   regionId?: string;
   locationConfigured?: boolean;
+  locationRequestApproved?: boolean;
+  locationRequestWindowOpen?: boolean;
   location?: {
     type?: "Point";
     coordinates?: [number, number];

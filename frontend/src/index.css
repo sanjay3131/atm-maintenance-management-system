@@ -2,6 +2,52 @@
 @import "tw-animate-css";
 @import "@fontsource-variable/geist";
 
+.amc-confetti-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.amc-confetti-piece {
+  position: absolute;
+  top: -1rem;
+  width: 0.55rem;
+  height: 0.85rem;
+  border-radius: 2px;
+  animation: amc-confetti-fall 1.1s ease-in forwards;
+}
+
+.amc-upload-indeterminate {
+  width: 40%;
+  animation: amc-upload-slide 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes amc-confetti-fall {
+  to {
+    translate: 0 105vh;
+    rotate: 480deg;
+  }
+}
+
+@keyframes amc-upload-slide {
+  from {
+    translate: -10% 0;
+  }
+  to {
+    translate: 160% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .amc-confetti-piece,
+  .amc-upload-indeterminate {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

@@ -1002,7 +1002,7 @@ export const getJobById = asyncHandler(async (req, res) => {
   const job = await jobQuery
     .populate(
       "atmId",
-      "atmId locationName bank address districtId regionId location locationConfigured",
+      "atmId locationName bank address districtId regionId location locationConfigured locationRequestWindowOpen",
     )
     .populate("assignedEmployeeId", "firstName lastName phoneNumber")
     .populate("reassignmentHistory.fromEmployee", "firstName lastName")

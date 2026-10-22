@@ -29,8 +29,8 @@ export const useEmployeeAMC = (amcId: string) =>
     enabled: Boolean(amcId),
   });
 
-const useEmployeeAMCMutation = <TVariables,>(
-  mutationFn: (variables: TVariables) => Promise<unknown>,
+const useEmployeeAMCMutation = <TVariables, TResult>(
+  mutationFn: (variables: TVariables) => Promise<TResult>,
 ) => {
   const queryClient = useQueryClient();
   return useMutation({

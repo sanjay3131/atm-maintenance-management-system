@@ -78,6 +78,34 @@ const atmSchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+    locationRequestReopenedAt: {
+      type: Date,
+      default: null,
+    },
+    locationRequestReopenedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    locationRequestWindowOpen: {
+      type: Boolean,
+      default: false,
+    },
+    locationRequestApproved: {
+      type: Boolean,
+      default: false,
+    },
+    locationRequestReopenHistory: [
+      {
+        _id: false,
+        openedAt: { type: Date, required: true },
+        openedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+      },
+    ],
 
     status: {
       type: String,

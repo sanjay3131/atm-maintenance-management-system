@@ -10,6 +10,9 @@ export interface AMCATMReference {
   address?: string | null;
   locationConfigured?: boolean;
   location?: { coordinates?: number[] };
+  locationRequestReopenedAt?: string | null;
+  locationRequestWindowOpen?: boolean;
+  locationRequestApproved?: boolean;
 }
 
 export interface AMCChecklistItem {

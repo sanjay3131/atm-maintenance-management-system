@@ -5,11 +5,13 @@ import {
   AMC_STATUSES,
   REQUIRED_AMC_PHOTOS,
   canCompleteAMC,
+  canStartAMC,
   createAMCChecklist,
   formatAMCStatus,
   getAMCErrorMessage,
   getAMCPhotoSelectionError,
   getAMCTaskListState,
+  hasStartedAMCVisit,
   isAMCChecklistEqual,
   validateAMCChecklist,
 } from "../src/features/amc/amcExecution.utils.ts";
@@ -91,6 +93,7 @@ test("completion requires an active or overdue visit, saved checklist, and all p
   assert.equal(
     canCompleteAMC({
       status: "IN_PROGRESS",
+      visitDate: "2026-10-21T08:00:00.000Z",
       checklistCompleted: true,
       photoCount: 6,
     }),
@@ -99,6 +102,7 @@ test("completion requires an active or overdue visit, saved checklist, and all p
   assert.equal(
     canCompleteAMC({
       status: "OVERDUE",
+      visitDate: "2026-10-21T08:00:00.000Z",
       checklistCompleted: true,
       photoCount: 6,
     }),
@@ -107,6 +111,7 @@ test("completion requires an active or overdue visit, saved checklist, and all p
   assert.equal(
     canCompleteAMC({
       status: "PENDING",
+      visitDate: "2026-10-21T08:00:00.000Z",
       checklistCompleted: true,
       photoCount: 6,
     }),
@@ -115,6 +120,7 @@ test("completion requires an active or overdue visit, saved checklist, and all p
   assert.equal(
     canCompleteAMC({
       status: "IN_PROGRESS",
+      visitDate: "2026-10-21T08:00:00.000Z",
       checklistCompleted: false,
       photoCount: 6,
     }),
@@ -123,10 +129,77 @@ test("completion requires an active or overdue visit, saved checklist, and all p
   assert.equal(
     canCompleteAMC({
       status: "IN_PROGRESS",
+      visitDate: "2026-10-21T08:00:00.000Z",
       checklistCompleted: true,
       photoCount: 5,
     }),
     false,
+  );
+  assert.equal(
+    canCompleteAMC({
+      status: "IN_PROGRESS",
+      checklistCompleted: true,
+      photoCount: 6,
+    }),
+    false,
+  );
+});
+
+test("starting is available only for unstarted pending or overdue visits", () => {
+  assert.equal(canStartAMC({ status: "PENDING" }), true);
+  assert.equal(canStartAMC({ status: "OVERDUE" }), true);
+  assert.equal(
+    canStartAMC({
+      status: "OVERDUE",
+      visitDate: "2026-10-21T08:00:00.000Z",
+    }),
+    false,
+  );
+  assert.equal(
+    canStartAMC({
+      status: "PENDING",
+      visitDate: "2026-10-21T08:00:00.000Z",
+    }),
+    false,
+  );
+  assert.equal(
+    canStartAMC({
+      status: "IN_PROGRESS",
+      visitDate: "2026-10-21T08:00:00.000Z",
+    }),
+    false,
+  );
+});
+
+test("checklist is ready only after a persisted visit start date and allowed status", () => {
+  assert.equal(
+    hasStartedAMCVisit({ status: "PENDING", visitDate: null }),
+    false,
+  );
+  assert.equal(
+    hasStartedAMCVisit({ status: "OVERDUE", visitDate: null }),
+    false,
+  );
+  assert.equal(
+    hasStartedAMCVisit({
+      status: "IN_PROGRESS",
+      visitDate: "2026-10-21T08:00:00.000Z",
+    }),
+    true,
+  );
+  assert.equal(
+    hasStartedAMCVisit({
+      status: "OVERDUE",
+      visitDate: "2026-10-21T08:00:00.000Z",
+    }),
+    true,
+  );
+  assert.equal(
+    hasStartedAMCVisit({
+      status: "COMPLETED",
+      visitDate: "2026-10-21T08:00:00.000Z",
+    }),
+    true,
   );
 });
 

@@ -101,16 +101,40 @@ export const validateAMCChecklist = (checklist: AMCChecklistItem[]) => {
   });
 };
 
+export const canStartAMC = ({
+  status,
+  visitDate,
+}: {
+  status: AMCStatus;
+  visitDate?: string | null;
+}) =>
+  !visitDate && (status === "PENDING" || status === "OVERDUE");
+
+export const hasStartedAMCVisit = ({
+  status,
+  visitDate,
+}: {
+  status: AMCStatus;
+  visitDate?: string | null;
+}) =>
+  Boolean(visitDate) &&
+  (status === "IN_PROGRESS" ||
+    status === "OVERDUE" ||
+    status === "COMPLETED");
+
 export const canCompleteAMC = ({
   status,
+  visitDate,
   checklistCompleted,
   photoCount,
 }: {
   status: AMCStatus;
+  visitDate?: string | null;
   checklistCompleted: boolean;
   photoCount: number;
 }) =>
   (status === "IN_PROGRESS" || status === "OVERDUE") &&
+  Boolean(visitDate) &&
   checklistCompleted &&
   photoCount >= REQUIRED_AMC_PHOTOS;
 

@@ -22,6 +22,14 @@ import {
   setATMEmployeeAssignment,
 } from "../employees/employeeAssignment.service.js";
 import ATM from "./atm.model.js";
+import {
+  approveATMlocationRequest,
+  getATMlocationRequest,
+  listATMlocationRequests,
+  rejectATMlocationRequest,
+  reopenATMlocationRequests,
+  submitATMlocationRequest,
+} from "./atmLocationRequest.service.js";
 import { generateATMId } from "./atm.utils.js";
 import {
   buildATMGeographicQuery,
@@ -113,6 +121,13 @@ const ensureATMCanMove = async (atmId) => {
 };
 
 export const createATM = asyncHandler(async (req, res) => {
+  if (Object.prototype.hasOwnProperty.call(req.body, "location")) {
+    throw new ApiError(
+      400,
+      "Initial ATM coordinates must be submitted through the location request workflow",
+    );
+  }
+
   const {
     bankId,
     districtId,
@@ -120,7 +135,6 @@ export const createATM = asyncHandler(async (req, res) => {
     locationName,
     address,
     installationType,
-    location,
     customerId,
     status,
     assignedEmployeeId,
@@ -143,7 +157,6 @@ export const createATM = asyncHandler(async (req, res) => {
     locationName,
     address,
     installationType,
-    location,
     status,
     assignedEmployeeId: [],
     createdBy: req.user._id,
@@ -373,6 +386,13 @@ export const getATMById = asyncHandler(async (req, res) => {
 
 // update atm
 export const updateATM = asyncHandler(async (req, res) => {
+  if (Object.prototype.hasOwnProperty.call(req.body, "location")) {
+    throw new ApiError(
+      400,
+      "ATM coordinates must be changed through the location request workflow",
+    );
+  }
+
   const updatePayload = { ...req.body };
   const atm = await ATM.findById(req.params.id);
 
@@ -548,66 +568,12 @@ export const setATMAMCResponsible = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, atm, "AMC responsible employee updated"));
 });
 
-// ============================================
-// SET ATM LOCATION (Employee)
-// ============================================
-export const setATMLocation = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { latitude, longitude, accuracy } = req.body;
-
-  if (req.user.userType !== "employee") {
-    throw new ApiError(403, "Only employees can set ATM location");
-  }
-
-  const atm = await ATM.findById(id);
-  if (!atm || atm.isDeleted) throw new ApiError(404, "ATM not found");
-
-  // Verify employee is assigned to this ATM
-  const employee = await Employee.findOne({ userId: req.user._id });
-  if (!employee) throw new ApiError(404, "Employee not found");
-
-  const atmEmployeeIds = (atm.assignedEmployeeId || []).map((employeeId) =>
-    employeeId.toString(),
+// Kept temporarily for older clients; this endpoint must not write official coordinates.
+export const setATMLocation = asyncHandler(async () => {
+  throw new ApiError(
+    410,
+    "Direct ATM location updates are no longer supported. Submit a location request for Admin or SuperAdmin review.",
   );
-  if (!atmEmployeeIds.includes(employee._id.toString())) {
-    throw new ApiError(403, "You are not assigned to this ATM");
-  }
-
-  // If already configured, block (admin can override via updateATM)
-  if (atm.locationConfigured) {
-    throw new ApiError(
-      400,
-      "ATM location already configured. Contact admin to reset.",
-    );
-  }
-
-  // Validate coordinates
-  if (typeof latitude !== "number" || typeof longitude !== "number") {
-    throw new ApiError(400, "Invalid coordinates");
-  }
-
-  if (accuracy && accuracy > 50) {
-    throw new ApiError(
-      400,
-      "GPS accuracy is too low. Please move to an open area and try again.",
-    );
-  }
-
-  atm.location = {
-    type: "Point",
-    coordinates: [longitude, latitude],
-  };
-  atm.locationConfigured = true;
-  atm.locationCapturedAt = new Date();
-  atm.locationCapturedBy = req.user._id;
-  atm.locationAccuracy = accuracy || null;
-  atm.updatedBy = req.user._id;
-
-  await atm.save();
-
-  return res
-    .status(200)
-    .json(new ApiResponse(200, atm, "ATM location configured successfully"));
 });
 
 // ============================================
@@ -661,4 +627,64 @@ export const getATMLocationStatus = asyncHandler(async (req, res) => {
       "ATM location status fetched",
     ),
   );
+});
+
+export const submitATMLocationRequest = asyncHandler(async (req, res) => {
+  const request = await submitATMlocationRequest({
+    ...req.body,
+    requester: req.user,
+  });
+  return res
+    .status(201)
+    .json(new ApiResponse(201, request, "ATM location request submitted"));
+});
+
+export const listATMLocationRequests = asyncHandler(async (req, res) => {
+  const result = await listATMlocationRequests({
+    ...req.validatedQuery,
+    ...(req.user.userType === "employee"
+      ? { requesterId: req.user._id }
+      : {}),
+  });
+  return res
+    .status(200)
+    .json(new ApiResponse(200, result, "ATM location requests fetched"));
+});
+
+export const getATMLocationRequest = asyncHandler(async (req, res) => {
+  const request = await getATMlocationRequest(req.validatedParams.requestId);
+  return res
+    .status(200)
+    .json(new ApiResponse(200, request, "ATM location request fetched"));
+});
+
+export const approveATMLocationRequest = asyncHandler(async (req, res) => {
+  const request = await approveATMlocationRequest({
+    requestId: req.validatedParams.requestId,
+    reviewerId: req.user._id,
+  });
+  return res
+    .status(200)
+    .json(new ApiResponse(200, request, "ATM location request approved"));
+});
+
+export const rejectATMLocationRequest = asyncHandler(async (req, res) => {
+  const request = await rejectATMlocationRequest({
+    requestId: req.validatedParams.requestId,
+    reviewerId: req.user._id,
+    reason: req.body.reason,
+  });
+  return res
+    .status(200)
+    .json(new ApiResponse(200, request, "ATM location request rejected"));
+});
+
+export const reopenATMLocationRequests = asyncHandler(async (req, res) => {
+  const result = await reopenATMlocationRequests({
+    atmId: req.validatedParams.id,
+    reviewerId: req.user._id,
+  });
+  return res
+    .status(200)
+    .json(new ApiResponse(200, result, "ATM location requests reopened"));
 });

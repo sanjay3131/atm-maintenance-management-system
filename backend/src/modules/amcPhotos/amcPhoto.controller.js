@@ -11,6 +11,47 @@ import {
 } from "../customers/customerAccess.js";
 import { AMC_CONFIG, AMC_STATUS } from "../amc/amc.config.js";
 
+const rollbackUploadedBatch = async ({ publicIds, photoIds, amcId }) => {
+  const cleanupErrors = [];
+  let photoRecordsRemoved = photoIds.length === 0;
+
+  if (photoIds.length > 0) {
+    try {
+      const result = await AMCPhoto.deleteMany({ _id: { $in: photoIds } });
+      photoRecordsRemoved = result.deletedCount === photoIds.length;
+      if (!photoRecordsRemoved) {
+        cleanupErrors.push(
+          `photo records: expected to remove ${photoIds.length}, removed ${result.deletedCount}`,
+        );
+      }
+    } catch (error) {
+      cleanupErrors.push(`photo records: ${error.message}`);
+    }
+  }
+
+  if (photoRecordsRemoved) {
+    for (const publicId of publicIds) {
+      try {
+        const result = await cloudinary.uploader.destroy(publicId, {
+          resource_type: "image",
+        });
+        if (!["ok", "not found"].includes(result?.result)) {
+          cleanupErrors.push(`Cloudinary object ${publicId}: unexpected delete response`);
+        }
+      } catch (error) {
+        cleanupErrors.push(`Cloudinary object ${publicId}: ${error.message}`);
+      }
+    }
+  }
+
+  if (cleanupErrors.length > 0) {
+    console.error(
+      `[AMC photo upload rollback] AMC ${amcId}; cleanup failures: ${cleanupErrors.join("; ")}`,
+    );
+  }
+  return cleanupErrors;
+};
+
 export const uploadAMCPhotos = asyncHandler(async (req, res) => {
   const { amcId } = req.params;
 
@@ -30,6 +71,13 @@ export const uploadAMCPhotos = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Cannot upload photos for completed AMC");
   }
 
+  if (
+    !amc.visitDate ||
+    ![AMC_STATUS.IN_PROGRESS, AMC_STATUS.OVERDUE].includes(amc.status)
+  ) {
+    throw new ApiError(400, "AMC visit has not been started");
+  }
+
   // Check limit
   const remaining = AMC_CONFIG.REQUIRED_PHOTOS - amc.photoCount;
   if (remaining <= 0) {
@@ -46,55 +94,122 @@ export const uploadAMCPhotos = asyncHandler(async (req, res) => {
     );
   }
 
+  const gpsData = req.body.gpsData ? JSON.parse(req.body.gpsData) : undefined;
+  const uploadedAssets = [];
   const savedPhotos = [];
-  const photoIds = [];
+  let attached = false;
+  let persistenceOutcomeUnknown = false;
+  try {
+    for (const file of req.files) {
+      const uploadResult = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          {
+            folder: AMC_CONFIG.CLOUDINARY_FOLDER(amcId),
+            resource_type: "image",
+            transformation: [{ quality: "auto", fetch_format: "auto" }],
+            tags: [`amc_${amcId}`, `atm_${amc.atmId}`],
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          },
+        );
+        stream.end(file.buffer);
+      });
+      if (uploadResult?.public_id) {
+        uploadedAssets.push({ uploadResult, file });
+      }
+      if (!uploadResult?.public_id || !uploadResult.secure_url) {
+        throw new Error("Cloudinary returned an incomplete photo upload result");
+      }
+    }
 
-  for (const file of req.files) {
-    const uploadResult = await new Promise((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream(
+    for (const { uploadResult, file } of uploadedAssets) {
+      const thumbnailUrl = cloudinary.url(uploadResult.public_id, {
+        width: 300,
+        height: 300,
+        crop: "fill",
+        quality: "auto",
+        fetch_format: "auto",
+      });
+      let photo;
+      try {
+        photo = await AMCPhoto.create({
+          amcId,
+          atmId: amc.atmId,
+          uploadedBy: req.user._id,
+          publicId: uploadResult.public_id,
+          url: uploadResult.secure_url,
+          thumbnailUrl,
+          originalName: file.originalname,
+          size: uploadResult.bytes || file.size,
+          mimeType: file.mimetype,
+          gpsData,
+        });
+      } catch (error) {
+        persistenceOutcomeUnknown = true;
+        throw error;
+      }
+      savedPhotos.push(photo);
+    }
+
+    let updatedAMC;
+    try {
+      updatedAMC = await AMC.findOneAndUpdate(
         {
-          folder: AMC_CONFIG.CLOUDINARY_FOLDER(amcId),
-          resource_type: "image",
-          transformation: [{ quality: "auto", fetch_format: "auto" }],
-          tags: [`amc_${amcId}`, `atm_${amc.atmId}`],
+          _id: amc._id,
+          employeeId: req.user._id,
+          isDeleted: false,
+          status: { $ne: AMC_STATUS.COMPLETED },
+          photoCount: {
+            $lte: AMC_CONFIG.REQUIRED_PHOTOS - savedPhotos.length,
+          },
         },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
+        {
+          $push: { photos: { $each: savedPhotos.map((photo) => photo._id) } },
+          $inc: { photoCount: savedPhotos.length },
         },
+        { new: true, runValidators: true },
       );
-      stream.end(file.buffer);
-    });
+    } catch (error) {
+      persistenceOutcomeUnknown = true;
+      throw error;
+    }
+    if (!updatedAMC) {
+      throw new ApiError(
+        409,
+        "The AMC photo limit or visit status changed during upload. No photos were attached.",
+      );
+    }
+    attached = true;
+  } catch (error) {
+    if (!attached) {
+      if (persistenceOutcomeUnknown) {
+        console.error(
+          `[AMC photo upload] AMC ${amcId}; database write outcome is unknown; uploaded assets were retained for reconciliation (${error.name || "Error"})`,
+        );
+        throw new ApiError(
+          503,
+          "Some photo data may have been saved. It was retained to avoid broken references. Refresh the AMC details or contact support before retrying.",
+        );
+      }
 
-    const thumbnailUrl = cloudinary.url(uploadResult.public_id, {
-      width: 300,
-      height: 300,
-      crop: "fill",
-      quality: "auto",
-      fetch_format: "auto",
-    });
-
-    const photo = await AMCPhoto.create({
-      amcId,
-      atmId: amc.atmId,
-      uploadedBy: req.user._id,
-      publicId: uploadResult.public_id,
-      url: uploadResult.secure_url,
-      thumbnailUrl,
-      originalName: file.originalname,
-      size: uploadResult.bytes || file.size,
-      mimeType: file.mimetype,
-      gpsData: req.body.gpsData ? JSON.parse(req.body.gpsData) : undefined,
-    });
-
-    savedPhotos.push(photo);
-    photoIds.push(photo._id);
+      const cleanupErrors = await rollbackUploadedBatch({
+        publicIds: uploadedAssets
+          .map(({ uploadResult }) => uploadResult.public_id)
+          .filter(Boolean),
+        photoIds: savedPhotos.map((photo) => photo._id),
+        amcId,
+      });
+      if (cleanupErrors.length > 0) {
+        throw new ApiError(
+          502,
+          `${error.message}. Some temporary photo data could not be removed; contact support.`,
+        );
+      }
+    }
+    throw error;
   }
-
-  // Update AMC with new photo references
-  amc.photos = [...(amc.photos || []), ...photoIds];
-  amc.photoCount = amc.photos.length;
-  await amc.save();
 
   return res.status(201).json(
     new ApiResponse(
@@ -107,10 +222,11 @@ export const uploadAMCPhotos = asyncHandler(async (req, res) => {
           uploadedAt: p.uploadedAt,
         })),
         uploaded: savedPhotos.length,
-        total: amc.photoCount,
-        remaining: AMC_CONFIG.REQUIRED_PHOTOS - amc.photoCount,
+        total: amc.photoCount + savedPhotos.length,
+        remaining:
+          AMC_CONFIG.REQUIRED_PHOTOS - amc.photoCount - savedPhotos.length,
       },
-      `${savedPhotos.length} photo(s) uploaded. ${AMC_CONFIG.REQUIRED_PHOTOS - amc.photoCount} remaining.`,
+      `${savedPhotos.length} photo(s) uploaded. ${AMC_CONFIG.REQUIRED_PHOTOS - amc.photoCount - savedPhotos.length} remaining.`,
     ),
   );
 });

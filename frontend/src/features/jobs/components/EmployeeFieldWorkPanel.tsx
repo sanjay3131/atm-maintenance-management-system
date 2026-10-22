@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useSetATMLocation } from "@/features/atms/hooks/useSetATMLocation";
+import { useSubmitATMLocationRequest } from "@/features/atms/hooks/useATMLocationRequests";
+import { canSubmitEmployeeATMLocationRequest } from "@/features/atms/atmLocationRequest.utils";
 import JobPhotoGallery from "@/features/jobs/components/JobPhotoGallery";
 import { useCompleteJob, useUploadJobPhoto } from "../hooks/useJobLifecycle";
 import type { Job, JobPhoto } from "../types/job.types";
@@ -247,7 +248,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
   } | null>(null);
   const uploadMutation = useUploadJobPhoto();
   const completeMutation = useCompleteJob();
-  const setATMLocationMutation = useSetATMLocation();
+  const locationRequestMutation = useSubmitATMLocationRequest();
 
   useEffect(
     () => () => {
@@ -492,40 +493,36 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
     );
   };
 
-  const setCurrentLocationAsATMLocation = () => {
+  const submitCurrentLocationForReview = () => {
     if (
       !atm ||
-      atm.locationConfigured ||
+      !canSubmitEmployeeATMLocationRequest(atm) ||
       !gps ||
-      setATMLocationMutation.isPending
+      locationRequestMutation.isPending
     ) {
       return;
     }
 
-    setATMLocationMutation.mutate(
-      {
+    void locationRequestMutation
+      .mutateAsync({
         atmId: atm._id,
-        jobId: job._id,
-        data: {
-          latitude: gps.latitude,
-          longitude: gps.longitude,
-          accuracy: gps.accuracy,
-        },
-      },
-      {
-        onSuccess: () =>
-          toast.success(t("ATM location configured successfully.")),
-        onError: (error) => {
-          if (isAxiosError(error) && error.response?.status === 403) {
-            toast.error(
-              t("You are not assigned to this ATM. Ask an administrator to assign this ATM to you."),
-            );
-            return;
-          }
-          toast.error(getApiErrorMessage(error, t, language));
-        },
-      },
-    );
+        latitude: gps.latitude,
+        longitude: gps.longitude,
+        accuracy: gps.accuracy,
+        inputSource: "GPS",
+      })
+      .then(() =>
+        toast.success(t("ATM location request submitted for review.")),
+      )
+      .catch((error) => {
+        if (isAxiosError(error) && error.response?.status === 403) {
+          toast.error(
+            t("You are not assigned to this ATM. Ask an administrator to assign this ATM to you."),
+          );
+          return;
+        }
+        toast.error(getApiErrorMessage(error, t, language));
+      });
   };
 
   const refreshPersistedEvidence = async () => {
@@ -780,7 +777,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
             variant="outline"
             className="min-h-11 w-full sm:w-auto"
             onClick={acquireLocation}
-            disabled={isLocating || setATMLocationMutation.isPending}
+            disabled={isLocating || locationRequestMutation.isPending}
           >
             {isLocating ? (
               <LoaderCircle className="animate-spin" />
@@ -800,7 +797,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
           )}
           {!hasAtmCoordinates && (
             <p role="status" className="break-words text-sm text-destructive">
-              {t("ATM location is not configured. Acquire your current location and set it as the ATM location before completing this job.")}
+              {t("ATM location is not configured. Acquire your current location and submit it for Admin or SuperAdmin approval before completing this job.")}
             </p>
           )}
           {gps && (
@@ -828,21 +825,23 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
               )}
             </div>
           )}
-          {atm && !atm.locationConfigured && gps && (
+          {atm &&
+            canSubmitEmployeeATMLocationRequest(atm) &&
+            gps && (
             <Button
               type="button"
               className="min-h-11 w-full sm:w-auto"
-              onClick={setCurrentLocationAsATMLocation}
-              disabled={setATMLocationMutation.isPending}
+              onClick={submitCurrentLocationForReview}
+              disabled={locationRequestMutation.isPending}
             >
-              {setATMLocationMutation.isPending ? (
+              {locationRequestMutation.isPending ? (
                 <LoaderCircle className="animate-spin" />
               ) : (
                 <MapPin />
               )}
-              {setATMLocationMutation.isPending
-                ? t("Setting ATM location...")
-                : t("Set Current Location as ATM Location")}
+              {locationRequestMutation.isPending
+                ? t("Submitting location request...")
+                : t("Submit Current Location for ATM Review")}
             </Button>
           )}
         </section>

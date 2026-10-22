@@ -72,6 +72,9 @@ export interface ATM {
   locationConfigured?: boolean;
   locationCapturedAt?: string | null;
   locationAccuracy?: number | null;
+  locationRequestReopenedAt?: string | null;
+  locationRequestReopenedBy?: string | null;
+  locationRequestWindowOpen?: boolean;
 }
 
 export interface ScopedATMsResponse {

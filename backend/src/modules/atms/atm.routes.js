@@ -9,16 +9,28 @@ import {
   setATMLocation,
   getATMLocationStatus,
   setATMAMCResponsible,
+  submitATMLocationRequest,
+  listATMLocationRequests,
+  getATMLocationRequest,
+  approveATMLocationRequest,
+  rejectATMLocationRequest,
+  reopenATMLocationRequests,
 } from "./atm.controller.js";
 import {
   createAtmSchema,
   updateAtmSchema,
   assignATMEmployeeSchema,
   setATMAMCResponsibleEmployeeSchema,
+  submitATMLocationRequestSchema,
+  atmLocationRequestParamsSchema,
+  atmLocationRequestListQuerySchema,
+  atmIdParamsSchema,
+  rejectATMLocationRequestSchema,
   validateRequest,
 } from "./atm.validation.js";
 import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
 import { authorizeRoles } from "../../middlewares/role.middleware.js";
+import { validateRequest as validateRouteRequest } from "../../middlewares/validate.middleware.js";
 
 const router = express.Router();
 
@@ -79,6 +91,56 @@ router.patch(
   validateRequest(setATMAMCResponsibleEmployeeSchema),
   setATMAMCResponsible,
 );
+
+router.post(
+  "/location-requests",
+  verifyAccessToken,
+  authorizeRoles("employee", "admin", "superAdmin"),
+  validateRequest(submitATMLocationRequestSchema),
+  submitATMLocationRequest,
+);
+
+router.get(
+  "/location-requests",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin", "employee"),
+  validateRouteRequest(atmLocationRequestListQuerySchema, "query"),
+  listATMLocationRequests,
+);
+
+router.get(
+  "/location-requests/:requestId",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRouteRequest(atmLocationRequestParamsSchema, "params"),
+  getATMLocationRequest,
+);
+
+router.post(
+  "/:id/location-requests/reopen",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRouteRequest(atmIdParamsSchema, "params"),
+  reopenATMLocationRequests,
+);
+
+router.post(
+  "/location-requests/:requestId/approve",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRouteRequest(atmLocationRequestParamsSchema, "params"),
+  approveATMLocationRequest,
+);
+
+router.post(
+  "/location-requests/:requestId/reject",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRouteRequest(atmLocationRequestParamsSchema, "params"),
+  validateRequest(rejectATMLocationRequestSchema),
+  rejectATMLocationRequest,
+);
+
 // Employee sets ATM location
 router.post(
   "/:id/set-location",

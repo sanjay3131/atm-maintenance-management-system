@@ -1,13 +1,15 @@
-import { useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import {
   ArrowLeft,
   Camera,
   CheckCircle2,
   ClipboardCheck,
   MapPin,
+  Trash2,
   Upload,
 } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,14 +23,17 @@ import {
 import {
   AMC_CHECKLIST_ITEMS,
   canCompleteAMC,
+  canStartAMC,
   createAMCChecklist,
   getAMCErrorMessage,
   formatAMCStatus,
   getAMCPhotoSelectionError,
   isAMCChecklistEqual,
+  hasStartedAMCVisit,
   validateAMCChecklist,
 } from "@/features/amc/amcExecution.utils";
 import type { AMCChecklistItem, EmployeeAMCRecord } from "@/services/amc.service";
+import EmployeeATMLocationRequest from "@/features/atms/components/EmployeeATMLocationRequest";
 
 function displayDate(value?: string | null) {
   if (!value) return "Not available";
@@ -52,8 +57,17 @@ function isValidAMCId(value: string) {
   return /^[a-f\d]{24}$/i.test(value);
 }
 
+const CONFETTI_COLORS = [
+  "#0d9488",
+  "#2563eb",
+  "#f59e0b",
+  "#e11d48",
+  "#7c3aed",
+];
+
 export default function EmployeeAMCDetailsPage() {
   const { amcId = "" } = useParams();
+  const navigate = useNavigate();
   const validId = isValidAMCId(amcId);
   const amcQuery = useEmployeeAMC(validId ? amcId : "");
   const startMutation = useStartEmployeeAMC();
@@ -65,6 +79,9 @@ export default function EmployeeAMCDetailsPage() {
     items: AMCChecklistItem[];
   } | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [photoPreviews, setPhotoPreviews] = useState<
+    Array<{ file: File; url: string }>
+  >([]);
   const [remarksDraft, setRemarksDraft] = useState<{
     amcId: string;
     value: string;
@@ -74,11 +91,17 @@ export default function EmployeeAMCDetailsPage() {
   const [photoError, setPhotoError] = useState("");
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isLocating, setIsLocating] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const redirectTimer = useRef<number | null>(null);
+  const previewUrls = useRef(new Set<string>());
   const amc = amcQuery.data;
   const atm = amc ? getATM(amc) : null;
   const photoCount = amc?.photoCount ?? 0;
   const terminal = amc?.status === "COMPLETED";
   const editable = amc?.status === "IN_PROGRESS" || amc?.status === "OVERDUE";
+  const visitStarted =
+    amc !== undefined &&
+    hasStartedAMCVisit({ status: amc.status, visitDate: amc.visitDate });
   const checklist =
     amc && checklistDraft && checklistDraft.amcId === amc._id
       ? checklistDraft.items
@@ -97,8 +120,10 @@ export default function EmployeeAMCDetailsPage() {
     completeMutation.isPending;
   const completionReady =
     amc !== undefined &&
+    visitStarted &&
     canCompleteAMC({
       status: amc.status,
+      visitDate: amc.visitDate,
       checklistCompleted: Boolean(
         amc.checklistCompleted && checklistValid && !checklistDirty,
       ),
@@ -123,10 +148,44 @@ export default function EmployeeAMCDetailsPage() {
   const handleFileSelection = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
-    const selectionError = getAMCPhotoSelectionError(files, photoCount);
+    if (files.length === 0) return;
+    const selectionError = getAMCPhotoSelectionError(
+      files,
+      photoCount + selectedFiles.length,
+    );
     setPhotoError(selectionError);
-    setSelectedFiles(selectionError ? [] : files);
+    if (!selectionError) {
+      const previews = files.map((file) => {
+        const url = URL.createObjectURL(file);
+        previewUrls.current.add(url);
+        return { file, url };
+      });
+      setPhotoPreviews((current) => [...current, ...previews]);
+      setSelectedFiles((current) => [...current, ...files]);
+    }
   };
+
+  const clearSelectedPhotos = () => {
+    for (const url of previewUrls.current) {
+      URL.revokeObjectURL(url);
+    }
+    previewUrls.current.clear();
+    setPhotoPreviews([]);
+    setSelectedFiles([]);
+  };
+
+  useEffect(
+    () => () => {
+      if (redirectTimer.current !== null) {
+        window.clearTimeout(redirectTimer.current);
+      }
+      for (const url of previewUrls.current) {
+        URL.revokeObjectURL(url);
+      }
+      previewUrls.current.clear();
+    },
+    [],
+  );
 
   const startVisit = async () => {
     setError("");
@@ -157,21 +216,38 @@ export default function EmployeeAMCDetailsPage() {
   };
 
   const uploadPhotos = async () => {
-    if (!selectedFiles.length || photoError) return;
+    if (
+      !selectedFiles.length ||
+      photoError ||
+      uploadMutation.isPending ||
+      photoCount + selectedFiles.length > 6
+    ) return;
     setError("");
     setNotice("");
-    setUploadProgress(0);
+    setUploadProgress(null);
     try {
-      await uploadMutation.mutateAsync({
+      const result = await uploadMutation.mutateAsync({
         amcId,
         files: selectedFiles,
         onProgress: setUploadProgress,
       });
-      setSelectedFiles([]);
-      setPhotoError("");
-      setNotice("Photo evidence uploaded.");
+      if (result.uploaded !== selectedFiles.length) {
+        clearSelectedPhotos();
+        setPhotoError("");
+        setNotice(
+          `Photo upload partially succeeded: ${result.uploaded} of ${selectedFiles.length} selected photos were saved. Refresh the visit and check the remaining photo count before selecting more.`,
+        );
+      } else {
+        clearSelectedPhotos();
+        setPhotoError("");
+        setNotice(`${result.uploaded} photo(s) uploaded successfully.`);
+      }
     } catch (requestError) {
-      setError(getAMCErrorMessage(requestError));
+      clearSelectedPhotos();
+      setPhotoError("");
+      setError(
+        `${getAMCErrorMessage(requestError)} Selected files were cleared to avoid duplicate uploads; refresh the visit and verify the saved photo count before trying again.`,
+      );
     } finally {
       setUploadProgress(null);
     }
@@ -189,8 +265,9 @@ export default function EmployeeAMCDetailsPage() {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setIsLocating(false);
-        completeMutation.mutate(
-          {
+        void (async () => {
+          try {
+            await completeMutation.mutateAsync({
             amcId,
             data: {
               gps: {
@@ -200,15 +277,19 @@ export default function EmployeeAMCDetailsPage() {
               },
               remarks,
             },
-          },
-          {
-            onSuccess: () => {
-              setRemarksDraft(null);
-              setNotice("AMC visit completed.");
-            },
-            onError: (requestError) => setError(getAMCErrorMessage(requestError)),
-          },
-        );
+            });
+            setRemarksDraft(null);
+            setNotice("AMC visit completed.");
+            toast.success("AMC visit completed successfully.");
+            setShowConfetti(true);
+            redirectTimer.current = window.setTimeout(() => {
+              setShowConfetti(false);
+              navigate("/employee/amcs");
+            }, 1100);
+          } catch (requestError) {
+            setError(getAMCErrorMessage(requestError));
+          }
+        })();
       },
       (locationError) => {
         setIsLocating(false);
@@ -305,16 +386,45 @@ export default function EmployeeAMCDetailsPage() {
         </CardContent>
       </Card>
 
+      {["PENDING", "IN_PROGRESS", "OVERDUE"].includes(amc.status) && atm?._id && (
+        <EmployeeATMLocationRequest
+          atmId={atm._id}
+          atmCode={atm.atmId || "ATM"}
+          amcId={amc._id}
+          locationConfigured={atm.locationConfigured}
+          officialCoordinates={atm.location?.coordinates}
+          hasApprovedLocationRequest={atm.locationRequestApproved}
+          locationRequestWindowOpen={atm.locationRequestWindowOpen}
+        />
+      )}
+
       {amc.status === "OVERDUE" && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm">
-          This visit is overdue. The existing service allows the assigned employee to save evidence and complete it, but does not allow the overdue state to be started again.
+          This visit is overdue. If it has not been started, you can start it now. An already-started visit can still be completed.
         </div>
       )}
 
       {error && <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive" role="alert">{error}</div>}
       {notice && <div className="rounded-lg border border-emerald-600/20 bg-emerald-600/5 p-4 text-sm text-emerald-800" role="status">{notice}</div>}
 
-      {amc.status === "PENDING" && (
+      {showConfetti && (
+        <div className="amc-confetti-overlay" aria-hidden="true">
+          {Array.from({ length: 28 }, (_, index) => (
+            <span
+              key={index}
+              className="amc-confetti-piece"
+              style={{
+                left: `${(index * 37) % 100}%`,
+                backgroundColor: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
+                animationDelay: `${(index % 7) * 45}ms`,
+                transform: `rotate(${index * 29}deg)`,
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      {canStartAMC({ status: amc.status, visitDate: amc.visitDate }) && (
         <Card>
           <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -328,6 +438,15 @@ export default function EmployeeAMCDetailsPage() {
         </Card>
       )}
 
+      {!visitStarted && !terminal && (
+        <Card>
+          <CardContent className="p-5 text-sm text-muted-foreground">
+            Start the visit first. The checklist and photo upload will become available after the backend confirms the visit start.
+          </CardContent>
+        </Card>
+      )}
+
+      {visitStarted && (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -342,16 +461,32 @@ export default function EmployeeAMCDetailsPage() {
               <div key={item.id} className="grid gap-2 border-b pb-4 last:border-0 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] sm:items-center">
                 <label htmlFor={`amc-check-${item.id}`} className="text-sm font-medium">{item.label}</label>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <select
-                    id={`amc-check-${item.id}`}
-                    value={value?.response ?? ""}
-                    onChange={(event) => handleChecklistChange(item.id, "response", event.target.value)}
-                    disabled={!editable || terminal || busy}
-                    className="h-11 w-full rounded-lg border border-input bg-background px-3"
+                  <fieldset
+                    aria-label={`${item.label} response`}
+                    className="grid gap-2 sm:grid-cols-2"
                   >
-                    <option value="">Choose response</option>
-                    {item.options.map((option) => <option key={option} value={option}>{option}</option>)}
-                  </select>
+                    {item.options.map((option) => (
+                      <label
+                        key={option}
+                        className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm transition ${
+                          value?.response === option
+                            ? "border-primary bg-primary/5 font-semibold text-primary"
+                            : "border-input hover:bg-muted"
+                        } ${!editable || terminal || busy ? "cursor-not-allowed opacity-70" : ""}`}
+                      >
+                        <input
+                          type="radio"
+                          name={`amc-check-${item.id}`}
+                          value={option}
+                          checked={value?.response === option}
+                          onChange={() => handleChecklistChange(item.id, "response", option)}
+                          disabled={!editable || terminal || busy}
+                          className="size-4 accent-primary"
+                        />
+                        <span>{option}</span>
+                      </label>
+                    ))}
+                  </fieldset>
                   <input
                     type="text"
                     value={value?.remarks ?? ""}
@@ -381,7 +516,9 @@ export default function EmployeeAMCDetailsPage() {
           )}
         </CardContent>
       </Card>
+      )}
 
+      {visitStarted && (
       <Card>
         <CardHeader><CardTitle className="text-base">Photo evidence</CardTitle></CardHeader>
         <CardContent className="space-y-4">
@@ -390,18 +527,94 @@ export default function EmployeeAMCDetailsPage() {
           </p>
           {!terminal && editable && photoCount < 6 && (
             <>
-              <label htmlFor="amc-photo-files" className="block text-sm font-medium">Select photos</label>
+              <label htmlFor="amc-photo-files" className="block text-sm font-medium">
+                Choose photos ({photoCount + selectedFiles.length}/6 selected or uploaded)
+              </label>
               <input
                 id="amc-photo-files"
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 multiple
                 onChange={handleFileSelection}
-                disabled={busy}
+                disabled={busy || photoCount + selectedFiles.length >= 6}
                 className="block min-h-11 w-full text-sm file:mr-3 file:min-h-11 file:rounded-md file:border-0 file:bg-primary file:px-4 file:text-primary-foreground"
               />
-              {selectedFiles.length > 0 && <p className="text-sm">{selectedFiles.length} photo(s) selected.</p>}
+              {selectedFiles.length > 0 && (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {photoPreviews.map(({ file, url }, index) => (
+                    <figure key={`${file.name}-${file.lastModified}-${index}`} className="overflow-hidden rounded-lg border">
+                      <img
+                        src={url}
+                        alt={`Selected photo ${index + 1}: ${file.name}`}
+                        className="h-40 w-full object-cover"
+                      />
+                      <figcaption className="flex items-center justify-between gap-2 p-2">
+                        <span className="min-w-0 truncate text-xs">{file.name}</span>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          aria-label={`Remove ${file.name}`}
+                          onClick={() => {
+                            const preview = photoPreviews[index];
+                            if (preview) {
+                              URL.revokeObjectURL(preview.url);
+                              previewUrls.current.delete(preview.url);
+                            }
+                            setPhotoPreviews((current) =>
+                              current.filter((_preview, previewIndex) => previewIndex !== index),
+                            );
+                            setSelectedFiles((current) =>
+                              current.filter((_selected, selectedIndex) => selectedIndex !== index),
+                            );
+                            setPhotoError("");
+                          }}
+                          disabled={busy}
+                        >
+                          <Trash2 aria-hidden="true" />
+                          Remove
+                        </Button>
+                      </figcaption>
+                    </figure>
+                  ))}
+                </div>
+              )}
               {photoError && <p className="text-sm text-destructive" role="alert">{photoError}</p>}
+              {selectedFiles.length >= 6 - photoCount && (
+                <p className="text-sm text-muted-foreground">
+                  Maximum of six photos reached. Remove a selected photo to choose another.
+                </p>
+              )}
+              {uploadMutation.isPending && (
+                <div className="space-y-2" role="status" aria-live="polite">
+                  <p className="text-sm">
+                    {uploadProgress === null
+                      ? "Uploading photos..."
+                      : `Uploading photos: ${uploadProgress}%`}
+                  </p>
+                  <div
+                    role="progressbar"
+                    aria-label="Photo upload progress"
+                    aria-valuemin={uploadProgress === null ? undefined : 0}
+                    aria-valuemax={uploadProgress === null ? undefined : 100}
+                    aria-valuenow={uploadProgress ?? undefined}
+                    className="h-2 overflow-hidden rounded-full bg-muted"
+                  >
+                    <div
+                      className={`h-full rounded-full bg-primary ${
+                        uploadProgress === null
+                          ? "amc-upload-indeterminate"
+                          : "transition-[width]"
+                      }`}
+                      style={
+                        uploadProgress === null
+                          ? undefined
+                          : { width: `${uploadProgress}%` }
+                      }
+                    />
+                  </div>
+                </div>
+              )}
               <Button
                 type="button"
                 variant="outline"
@@ -424,6 +637,7 @@ export default function EmployeeAMCDetailsPage() {
           {terminal && <p className="text-sm text-muted-foreground">This completed AMC is read-only.</p>}
         </CardContent>
       </Card>
+      )}
 
       <Card>
         <CardHeader><CardTitle className="text-base">Complete visit</CardTitle></CardHeader>
@@ -458,7 +672,9 @@ export default function EmployeeAMCDetailsPage() {
           </Button>
           {!terminal && !completionReady && (
             <p className="text-sm text-muted-foreground">
-              Save a valid checklist and upload all six required photos before completing.
+              {!visitStarted
+                ? "Start the visit before completing it."
+                : "Save a valid checklist and upload all six required photos before completing."}
             </p>
           )}
         </CardContent>

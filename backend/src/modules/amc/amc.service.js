@@ -1,7 +1,11 @@
 import AMC from "./amc.model.js";
 import ATM from "../atms/atm.model.js";
 import User from "../users/user.model.js";
-import { AMC_CONFIG, AMC_STATUS } from "./amc.config.js";
+import {
+  AMC_CONFIG,
+  AMC_STATUS,
+  VALID_AMC_TRANSITIONS,
+} from "./amc.config.js";
 import { validateChecklist } from "./amcChecklist.js";
 import { validateGpsProximity } from "../../utils/haversine.js";
 import ApiError from "../../utils/ApiError.js";
@@ -185,22 +189,38 @@ export const markOverdueAMCs = async () => {
   const results = { marked: 0, notified: 0 };
 
   for (const amc of overdueAmcs) {
-    amc.status = AMC_STATUS.OVERDUE;
-    await amc.save();
+    const updatedAMC = await AMC.findOneAndUpdate(
+      {
+        _id: amc._id,
+        status: { $in: [AMC_STATUS.PENDING, AMC_STATUS.IN_PROGRESS] },
+        deadlineDate: { $lt: now },
+        isDeleted: false,
+      },
+      { $set: { status: AMC_STATUS.OVERDUE } },
+      { new: true, runValidators: true },
+    )
+      .populate("employeeId", "firstName lastName")
+      .populate("atmId", "atmId locationName");
+    if (!updatedAMC) continue;
+
     results.marked++;
 
     const existingNotification = await Notification.findOne({
-      "data.amcId": amc._id,
+      "data.amcId": updatedAMC._id,
       type: "amc_overdue",
     });
 
     if (!existingNotification) {
       await Notification.create({
-        userId: amc.employeeId._id,
+        userId: updatedAMC.employeeId._id,
         type: "amc_overdue",
         title: "AMC Overdue",
-        message: `AMC for ${amc.atmId.locationName} (${amc.atmId.atmId}) is overdue. Deadline was ${amc.deadlineDate.toDateString()}.`,
-        data: { amcId: amc._id, month: amc.month, year: amc.year },
+        message: `AMC for ${updatedAMC.atmId.locationName} (${updatedAMC.atmId.atmId}) is overdue. Deadline was ${updatedAMC.deadlineDate.toDateString()}.`,
+        data: {
+          amcId: updatedAMC._id,
+          month: updatedAMC.month,
+          year: updatedAMC.year,
+        },
       });
 
       for (const admin of admins) {
@@ -208,12 +228,12 @@ export const markOverdueAMCs = async () => {
           userId: admin._id,
           type: "amc_overdue",
           title: "AMC Overdue Alert",
-          message: `Employee ${amc.employeeId.firstName} ${amc.employeeId.lastName} has overdue AMC for ${amc.atmId.atmId}.`,
+          message: `Employee ${updatedAMC.employeeId.firstName} ${updatedAMC.employeeId.lastName} has overdue AMC for ${updatedAMC.atmId.atmId}.`,
           data: {
-            amcId: amc._id,
-            employeeId: amc.employeeId._id,
-            month: amc.month,
-            year: amc.year,
+            amcId: updatedAMC._id,
+            employeeId: updatedAMC.employeeId._id,
+            month: updatedAMC.month,
+            year: updatedAMC.year,
           },
         });
       }
@@ -235,6 +255,16 @@ export const validateAmcStart = async (amc, userId) => {
 
   if (amc.status === AMC_STATUS.COMPLETED) {
     throw new ApiError(400, "AMC already completed");
+  }
+
+  if (amc.visitDate) {
+    throw new ApiError(400, "AMC visit has already been started");
+  }
+
+  if (
+    !VALID_AMC_TRANSITIONS[amc.status]?.includes(AMC_STATUS.IN_PROGRESS)
+  ) {
+    throw new ApiError(400, `Cannot start AMC with status: ${amc.status}`);
   }
 
   const atm = await ATM.findById(amc.atmId);

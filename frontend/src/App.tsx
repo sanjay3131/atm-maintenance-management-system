@@ -40,6 +40,8 @@ import CustomersPage from "@/pages/admin/CustomersPage";
 import CustomerDetailsPage from "@/pages/admin/CustomerDetailsPage";
 import ItemsPage from "@/pages/admin/ItemsPage";
 import AdminAttendancePage from "@/pages/admin/AdminAttendancePage";
+import ATMLocationRequestsPage from "@/pages/admin/ATMLocationRequestsPage";
+import ATMLocationRequestDetailsPage from "@/pages/admin/ATMLocationRequestDetailsPage";
 import CustomerPortalLayout from "@/layouts/CustomerPortalLayout";
 import {
   CustomerAMCDetailsPage,
@@ -92,6 +94,14 @@ export default function App() {
             <Route path="/admin/atms" element={<AtmsPage />} />
             <Route path="/admin/atms/:id" element={<ATMDetailsPage />} />
             <Route path="/admin/atms/:id/edit" element={<EditATMPage />} />
+            <Route
+              path="/admin/location-requests"
+              element={<ATMLocationRequestsPage />}
+            />
+            <Route
+              path="/admin/location-requests/:requestId"
+              element={<ATMLocationRequestDetailsPage />}
+            />
             <Route path="/admin/jobs" element={<JobsPage />} />
             <Route path="/admin/jobs/:jobId" element={<JobDetailsPage />} />
             <Route
