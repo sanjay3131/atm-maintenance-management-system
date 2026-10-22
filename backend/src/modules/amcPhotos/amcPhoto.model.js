@@ -1,5 +1,19 @@
 import mongoose from "mongoose";
 
+const isExpiredPhoto = function () {
+  if (this instanceof mongoose.Query) {
+    const update = this.getUpdate() ?? {};
+    const updatedFields = {
+      ...update,
+      ...(update.$setOnInsert ?? {}),
+      ...(update.$set ?? {}),
+    };
+    return updatedFields.isExpired === true;
+  }
+
+  return this.isExpired === true;
+};
+
 const amcPhotoSchema = new mongoose.Schema(
   {
     amcId: {
@@ -21,11 +35,15 @@ const amcPhotoSchema = new mongoose.Schema(
 
     url: {
       type: String,
-      required: true,
+      required: function () {
+        return !isExpiredPhoto.call(this);
+      },
     },
     thumbnailUrl: {
       type: String,
-      required: true,
+      required: function () {
+        return !isExpiredPhoto.call(this);
+      },
     },
     publicId: {
       type: String,

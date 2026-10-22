@@ -1,6 +1,7 @@
 import asyncHandler from "../../utils/asyncHandler.js";
 import ApiResponse from "../../utils/ApiResponse.js";
 import ApiError from "../../utils/ApiError.js";
+import mongoose from "mongoose";
 import cloudinary from "../../config/cloudinary.js";
 import AMCPhoto from "./amcPhoto.model.js";
 import AMC from "../amc/amc.model.js";
@@ -302,7 +303,7 @@ export const deleteAMCPhoto = asyncHandler(async (req, res) => {
   if (!photo || photo.isExpired) throw new ApiError(404, "Photo not found");
 
   const amc = await AMC.findById(photo.amcId);
-  if (!amc) throw new ApiError(404, "AMC not found");
+  if (!amc || amc.isDeleted) throw new ApiError(404, "AMC not found");
 
   const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
   const isUploader = photo.uploadedBy.toString() === req.user._id.toString();
@@ -315,27 +316,67 @@ export const deleteAMCPhoto = asyncHandler(async (req, res) => {
     throw new ApiError(400, "AMC is completed. Photos cannot be deleted.");
   }
 
-  // Delete from Cloudinary
-  const { deleteSinglePhoto } =
-    await import("../../config/cloudinaryCleanup.js");
-  const deleted = await deleteSinglePhoto(photo.publicId);
-  if (!deleted) {
-    throw new ApiError(502, "Photo could not be deleted. Please try again.");
+  const publicId = photo.publicId;
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const amcFilter = {
+        _id: amc._id,
+        isDeleted: false,
+        photos: photo._id,
+        photoCount: { $gt: 0 },
+      };
+      if (!isAdmin) {
+        amcFilter.status = { $ne: AMC_STATUS.COMPLETED };
+      }
+
+      const updatedAMC = await AMC.findOneAndUpdate(
+        amcFilter,
+        {
+          $pull: { photos: photo._id },
+          $inc: { photoCount: -1 },
+        },
+        { new: true, runValidators: true, session },
+      );
+      if (!updatedAMC) {
+        throw new ApiError(
+          409,
+          "AMC or photo changed before the photo could be deleted",
+        );
+      }
+
+      const expiredPhoto = await AMCPhoto.findOneAndUpdate(
+        { _id: photo._id, amcId: amc._id, isExpired: false },
+        {
+          $set: {
+            isExpired: true,
+            expiredAt: new Date(),
+            url: null,
+            thumbnailUrl: null,
+          },
+        },
+        { new: true, runValidators: true, session },
+      );
+      if (!expiredPhoto) {
+        throw new ApiError(
+          409,
+          "AMC photo changed before the photo could be deleted",
+        );
+      }
+    });
+  } finally {
+    await session.endSession();
   }
 
-  // Remove from AMC
-  amc.photos = (amc.photos || []).filter(
-    (id) => id.toString() !== photo._id.toString(),
-  );
-  amc.photoCount = amc.photos.length;
-  await amc.save();
-
-  // Soft delete
-  photo.isExpired = true;
-  photo.expiredAt = new Date();
-  photo.url = null;
-  photo.thumbnailUrl = null;
-  await photo.save();
+  const { deleteSinglePhoto } =
+    await import("../../config/cloudinaryCleanup.js");
+  const deleted = await deleteSinglePhoto(publicId);
+  if (!deleted) {
+    throw new ApiError(
+      502,
+      "Photo was removed from the AMC, but storage cleanup failed. Contact support.",
+    );
+  }
 
   return res.status(200).json(new ApiResponse(200, null, "Photo deleted"));
 });
