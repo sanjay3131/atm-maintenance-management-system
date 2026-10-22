@@ -61,9 +61,8 @@ app.use(
 
 // 2. CORS — Restricted to known origins (FIXED from origin: true)
 const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:3000",
-  "https://yourdomain.com",
+  process.env.FRONTEND_LOCAL_URL,
+  process.env.FRONTEND_API_URL,
 ];
 
 app.use(
