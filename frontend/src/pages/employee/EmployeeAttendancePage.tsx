@@ -327,10 +327,10 @@ export default function EmployeeAttendancePage() {
                 </p>
               )}
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
               <Button
                 type="button"
-                className="min-h-12"
+                className="min-h-12 w-full min-w-0 whitespace-normal text-center leading-snug sm:w-auto sm:whitespace-nowrap"
                 onClick={() => void checkIn()}
                 disabled={checkingIn || checkingOut || cannotCheckIn}
                 aria-label={t("Check In")}
@@ -341,7 +341,7 @@ export default function EmployeeAttendancePage() {
               <Button
                 type="button"
                 variant="outline"
-                className="min-h-12"
+                className="min-h-12 w-full min-w-0 whitespace-normal text-center leading-snug sm:w-auto sm:whitespace-nowrap"
                 onClick={() => void checkOut()}
                 disabled={checkingIn || checkingOut || openRecords.length > 1}
                 aria-label={t("Check Out")}

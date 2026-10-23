@@ -20,7 +20,10 @@ import {
 } from "../hooks/useJobMaterialUsage";
 import type { Job } from "../types/job.types";
 import { getEmployeeMaterialUsageVisibility } from "../utils/employeeJobDetails.utils";
-import { useEmployeeLanguage } from "@/features/employee-portal/i18n";
+import {
+  employeeLanguageClasses,
+  useEmployeeLanguage,
+} from "@/features/employee-portal/i18n";
 
 function formatRecordedAt(value: string | undefined, language: "ta" | "en") {
   if (!value) return null;
@@ -157,17 +160,17 @@ export default function EmployeeMaterialUsageSection({
     <>
       {canRecord && (
         <Card className="min-w-0 overflow-hidden">
-          <CardHeader className="p-4 sm:p-6">
+          <CardHeader className={employeeLanguageClasses(language, "p-4 sm:p-6", "p-3 sm:p-4")}>
             <CardTitle>{t("Record materials used")}</CardTitle>
           </CardHeader>
-          <CardContent className="min-w-0 space-y-5 p-4 pt-0 sm:p-6 sm:pt-0">
+          <CardContent className={employeeLanguageClasses(language, "min-w-0 space-y-5 p-4 pt-0 sm:p-6 sm:pt-0", "min-w-0 space-y-4 p-3 pt-0 sm:p-4 sm:pt-0")}>
             <form
-              className="grid min-w-0 gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(8rem,0.4fr)_auto] sm:items-end sm:p-4"
+              className={`grid min-w-0 gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(8rem,0.4fr)_auto] sm:items-end sm:p-4 ${employeeLanguageClasses(language, "", "sm:grid-cols-1")}`}
               onSubmit={recordMaterial}
             >
               <div className="min-w-0 space-y-2">
                 <label
-                  className="text-sm font-medium"
+                  className="break-words text-sm font-medium leading-5"
                   htmlFor={`material-item-${job._id}`}
                 >
                   {t("Active Item")}
@@ -266,7 +269,7 @@ export default function EmployeeMaterialUsageSection({
 
               <Button
                 type="submit"
-                className="min-h-11 w-full sm:w-auto"
+                className={employeeLanguageClasses(language, "min-h-11 w-full sm:w-auto", "min-h-11 h-auto w-full whitespace-normal py-3 leading-5 sm:w-auto")}
                 disabled={
                   createMutation.isPending ||
                   itemsQuery.isLoading ||
@@ -321,10 +324,10 @@ export default function EmployeeMaterialUsageSection({
       )}
       {showUsage && (
         <Card className="min-w-0 overflow-hidden">
-          <CardHeader className="p-4 sm:p-6">
+          <CardHeader className={employeeLanguageClasses(language, "p-4 sm:p-6", "p-3 sm:p-4")}>
             <CardTitle>{t("Materials Used")}</CardTitle>
           </CardHeader>
-          <CardContent className="min-w-0 p-4 pt-0 sm:p-6 sm:pt-0">
+          <CardContent className={employeeLanguageClasses(language, "min-w-0 p-4 pt-0 sm:p-6 sm:pt-0", "min-w-0 p-3 pt-0 sm:p-4 sm:pt-0")}>
             <section aria-label={t("Recorded materials")} aria-live="polite">
               <ul className="divide-y rounded-md border">
                 {usageEntries.map((entry) => {
@@ -332,7 +335,7 @@ export default function EmployeeMaterialUsageSection({
                   return (
                     <li
                       key={entry._id}
-                      className="flex min-w-0 flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between"
+                      className={`flex min-w-0 flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between ${employeeLanguageClasses(language, "", "sm:items-start")}`}
                     >
                       <p className="min-w-0 break-words text-sm font-medium">
                         {entry.itemNameSnapshot}

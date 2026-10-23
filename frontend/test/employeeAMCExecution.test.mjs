@@ -15,6 +15,10 @@ import {
   isAMCChecklistEqual,
   validateAMCChecklist,
 } from "../src/features/amc/amcExecution.utils.ts";
+import {
+  getEmployeeAMCStatusLabelKey,
+  getEmployeeAMCValueLabelKey,
+} from "../src/features/employee-portal/employeeLanguage.utils.ts";
 
 const completeChecklist = () =>
   AMC_CHECKLIST_ITEMS.map(({ id, options }) => ({
@@ -54,6 +58,16 @@ test("AMC statuses use backend values and readable labels", () => {
     "OVERDUE",
   ]);
   assert.equal(formatAMCStatus("IN_PROGRESS"), "In Progress");
+  assert.equal(getEmployeeAMCStatusLabelKey("PENDING"), "Pending");
+  assert.equal(getEmployeeAMCStatusLabelKey("IN_PROGRESS"), "In progress");
+  assert.equal(getEmployeeAMCStatusLabelKey("COMPLETED"), "Completed");
+  assert.equal(getEmployeeAMCStatusLabelKey("OVERDUE"), "Overdue");
+});
+
+test("AMC checklist labels map known values and preserve unknown values for fallback", () => {
+  assert.equal(getEmployeeAMCValueLabelKey("Night Light Working"), "Night Light Working");
+  assert.equal(getEmployeeAMCValueLabelKey("Not Working"), "Not Working");
+  assert.equal(getEmployeeAMCValueLabelKey("unrecognized"), undefined);
 });
 
 test("checklist creation follows backend IDs and validates exact allowed responses", () => {
@@ -222,6 +236,41 @@ test("photo selection follows backend file types, count, and size limits", () =>
     ),
     /5 MB or smaller/,
   );
+});
+
+test("photo selection errors use the provided employee-language translator", () => {
+  const translated = [];
+  const t = (key, values) => {
+    translated.push({ key, values });
+    return key === "You can upload {count} more photo(s)."
+      ? `Tamil message: ${values.count}`
+      : `Tamil message: ${key}`;
+  };
+
+  assert.equal(getAMCPhotoSelectionError([], 0, t), "Tamil message: Choose at least one photo.");
+  assert.equal(
+    getAMCPhotoSelectionError(
+      [
+        { type: "image/jpeg", size: 1024 },
+        { type: "image/jpeg", size: 1024 },
+      ],
+      5,
+      t,
+    ),
+    "Tamil message: 1",
+  );
+  assert.equal(
+    getAMCPhotoSelectionError([{ type: "image/gif", size: 1024 }], 0, t),
+    "Tamil message: Only JPEG, PNG, and WebP images are allowed.",
+  );
+  assert.equal(
+    getAMCPhotoSelectionError([{ type: "image/png", size: 5 * 1024 * 1024 + 1 }], 0, t),
+    "Tamil message: Each photo must be 5 MB or smaller.",
+  );
+  assert.deepEqual(translated[1], {
+    key: "You can upload {count} more photo(s).",
+    values: { count: 1 },
+  });
 });
 
 test("mutation errors prefer safe API messages and fall back clearly", () => {

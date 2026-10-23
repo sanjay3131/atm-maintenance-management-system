@@ -23,23 +23,24 @@ import { Bar } from "react-chartjs-2";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SkeletonBlock } from "@/features/dashboard/components/DashboardSkeleton";
 import { useMyAMC } from "@/features/amc/hooks/useMyAMC";
 import { useMyEmployeeProfile } from "@/features/employees/hooks/useMyEmployeeProfile";
 import { useMyJobPerformance } from "@/features/jobs/hooks/useMyJobPerformance";
 import type { AMCStatus } from "@/services/amc.service";
-import type { JobPerformancePeriod } from "@/features/jobs/types/job.types";
+import type {
+  JobPerformancePeriod,
+  JobStatus,
+} from "@/features/jobs/types/job.types";
 import {
   employeeErrorMessage,
+  employeeJobStatusLabel,
+  employeeLanguageClasses,
   useEmployeeLanguage,
   type EmployeeTranslationKey,
 } from "@/features/employee-portal/i18n";
+import { getEmployeeJobsStatusHref } from "@/features/jobs/utils/employeeJobs.utils";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
@@ -143,8 +144,7 @@ function EmployeeDashboardPage() {
     (statusCounts?.CLOSED ?? 0);
   const eligibleAssignedCount =
     performanceQuery.data?.eligibleAssignedJobCount ?? 0;
-  const completedEligibleCount =
-    performanceQuery.data?.completedJobCount ?? 0;
+  const completedEligibleCount = performanceQuery.data?.completedJobCount ?? 0;
   const completionPercent =
     eligibleAssignedCount > 0
       ? (completedEligibleCount / eligibleAssignedCount) * 100
@@ -166,9 +166,7 @@ function EmployeeDashboardPage() {
   const chartData = useMemo(
     () => ({
       labels: (activityDays ?? []).map((day) =>
-        chartDateFormatter.format(
-          new Date(`${day.date}T12:00:00+05:30`),
-        ),
+        chartDateFormatter.format(new Date(`${day.date}T12:00:00+05:30`)),
       ),
       datasets: [
         {
@@ -200,6 +198,7 @@ function EmployeeDashboardPage() {
   const summaryCards: Array<{
     label: EmployeeTranslationKey;
     count: number;
+    status?: JobStatus;
     Icon: LucideIcon;
     tone: string;
     iconTone: string;
@@ -217,6 +216,7 @@ function EmployeeDashboardPage() {
     },
     {
       label: "Pending jobs",
+      status: "PENDING",
       count: statusCounts?.PENDING ?? 0,
       Icon: Clock3,
       tone: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300",
@@ -224,6 +224,7 @@ function EmployeeDashboardPage() {
     },
     {
       label: "In-progress jobs",
+      status: "IN_PROGRESS",
       count: statusCounts?.IN_PROGRESS ?? 0,
       Icon: Activity,
       tone: "border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-300",
@@ -231,6 +232,7 @@ function EmployeeDashboardPage() {
     },
     {
       label: "Completed jobs",
+      status: "COMPLETED",
       count: completedAssignedCount,
       Icon: CheckCircle2,
       tone: "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300",
@@ -239,13 +241,21 @@ function EmployeeDashboardPage() {
   ];
 
   return (
-    <main className="space-y-6">
+    <main
+      className={`min-w-0 ${employeeLanguageClasses(
+        language,
+        "space-y-6",
+        "space-y-5",
+      )}`}
+    >
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-3">
             <UserRound className="size-6 text-primary" aria-hidden="true" />
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-                {t("Employee Dashboard")}
+            <h1
+              className={`min-w-0 break-words text-2xl font-bold tracking-tight sm:text-3xl ${employeeLanguageClasses(language, "", "leading-9")}`}
+            >
+              {t("Employee Dashboard")}
             </h1>
           </div>
           {profileQuery.isLoading ? (
@@ -282,38 +292,46 @@ function EmployeeDashboardPage() {
             </div>
           ) : null}
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="min-h-12 w-full sm:w-auto"
-          onClick={() => navigate("/employee/attendance")}
-        >
-          <CalendarClock aria-hidden="true" />
-          {t("My Attendance")}
-        </Button>
-        <Button
-          type="button"
-          className="min-h-12 w-full sm:w-auto"
-          onClick={() => navigate("/employee/jobs")}
-        >
-          <ClipboardList aria-hidden="true" />
-          {t("My Jobs")}
-        </Button>
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
+          <Button
+            type="button"
+            variant="outline"
+            className={`min-h-12 w-full whitespace-normal leading-5 sm:w-auto ${employeeLanguageClasses(language, "", "h-auto py-3")}`}
+            onClick={() => navigate("/employee/attendance")}
+          >
+            <CalendarClock aria-hidden="true" />
+            {t("My Attendance")}
+          </Button>
+          <Button
+            type="button"
+            className={`min-h-12 w-full whitespace-normal leading-5 sm:w-auto ${employeeLanguageClasses(language, "", "h-auto py-3")}`}
+            onClick={() => navigate("/employee/jobs")}
+          >
+            <ClipboardList aria-hidden="true" />
+            {t("My Jobs")}
+          </Button>
+        </div>
       </header>
 
       <section aria-labelledby="assigned-jobs-heading">
-        <div className="mb-3 flex items-center gap-2">
+        <div className="mb-3 flex min-w-0 items-start gap-2">
           <BriefcaseBusiness
             className="size-5 text-primary"
             aria-hidden="true"
           />
-          <h2 id="assigned-jobs-heading" className="text-lg font-semibold">
+          <h2
+            id="assigned-jobs-heading"
+            className="min-w-0 warp-break text-lg font-semibold leading-6"
+          >
             {t("Currently Assigned Jobs")}
           </h2>
         </div>
 
         {performanceQuery.isLoading ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" role="status">
+          <div
+            className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4"
+            role="status"
+          >
             {Array.from({ length: 4 }, (_, index) => (
               <SkeletonBlock key={index} className="h-28 rounded-xl" />
             ))}
@@ -334,31 +352,48 @@ function EmployeeDashboardPage() {
           />
         ) : performanceQuery.data ? (
           <div
-            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+            className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4"
             aria-label={t("Currently assigned jobs by status")}
           >
-            {summaryCards.map(({ label, count, Icon, tone, iconTone }) => (
-              <Card
-                key={label}
-                className={`min-w-0 border shadow-sm ${tone}`}
-              >
-                <CardContent className="flex items-center justify-between gap-3 p-4 sm:p-5">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">
-                      {t(label)}
-                    </p>
-                    <p className="mt-2 text-3xl font-bold tabular-nums">
-                      {count.toLocaleString(numberLocale)}
-                    </p>
-                  </div>
-                  <span
-                    className={`grid size-11 shrink-0 place-items-center rounded-xl ${iconTone}`}
+            {summaryCards.map(
+              ({ label, count, status, Icon, tone, iconTone }) => (
+                <button
+                  key={label}
+                  type="button"
+                  aria-label={
+                    status
+                      ? t("View jobs with status: {status}", {
+                          status: employeeJobStatusLabel(status, t),
+                        })
+                      : t("View all assigned jobs")
+                  }
+                  onClick={() => navigate(getEmployeeJobsStatusHref(status))}
+                  className="group min-w-0 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                >
+                  <Card
+                    className={`h-full min-h-28 min-w-0 border shadow-sm transition-shadow group-hover:shadow-md ${tone}`}
                   >
-                    <Icon className="size-5" aria-hidden="true" />
-                  </span>
-                </CardContent>
-              </Card>
-            ))}
+                    <CardContent
+                      className={`flex h-full items-start justify-between gap-2 p-3 sm:items-center sm:gap-3 sm:p-5 ${employeeLanguageClasses(language, "", "sm:p-4")}`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="break-words text-sm font-medium leading-5 text-slate-600 dark:text-slate-300 [overflow-wrap:anywhere]">
+                          {t(label)}
+                        </p>
+                        <p className="mt-2 text-3xl font-bold tabular-nums">
+                          {count.toLocaleString(numberLocale)}
+                        </p>
+                      </div>
+                      <span
+                        className={`grid size-9 shrink-0 place-items-center rounded-xl sm:size-11 ${iconTone}`}
+                      >
+                        <Icon className="size-5" aria-hidden="true" />
+                      </span>
+                    </CardContent>
+                  </Card>
+                </button>
+              ),
+            )}
           </div>
         ) : (
           <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
@@ -389,7 +424,9 @@ function EmployeeDashboardPage() {
                 <SkeletonBlock className="h-8 w-24" />
                 <SkeletonBlock className="h-3 w-full rounded-full" />
                 <SkeletonBlock className="h-4 w-3/4" />
-                <span className="sr-only">{t("Loading job performance...")}</span>
+                <span className="sr-only">
+                  {t("Loading job performance...")}
+                </span>
               </div>
             ) : performanceQuery.isError ? (
               <p className="text-sm text-muted-foreground" role="alert">
@@ -400,19 +437,16 @@ function EmployeeDashboardPage() {
                 <div className="flex flex-wrap items-end justify-between gap-2">
                   <p className="text-4xl font-bold tabular-nums text-blue-700 dark:text-blue-300">
                     {t("{percent}% completed", {
-                      percent: displayedCompletionPercent.toLocaleString(
-                        numberLocale,
-                      ),
+                      percent:
+                        displayedCompletionPercent.toLocaleString(numberLocale),
                     })}
                   </p>
                   <p className="text-sm font-medium text-muted-foreground">
                     {t("{completed} of {eligible} eligible jobs completed", {
-                      completed: completedEligibleCount.toLocaleString(
-                        numberLocale,
-                      ),
-                      eligible: eligibleAssignedCount.toLocaleString(
-                        numberLocale,
-                      ),
+                      completed:
+                        completedEligibleCount.toLocaleString(numberLocale),
+                      eligible:
+                        eligibleAssignedCount.toLocaleString(numberLocale),
                     })}
                   </p>
                 </div>
@@ -552,7 +586,9 @@ function EmployeeDashboardPage() {
               </h2>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              {t("Completion submissions are events; rework may count more than once.")}
+              {t(
+                "Completion submissions are events; rework may count more than once.",
+              )}
             </p>
           </div>
           <div className="w-full sm:w-48">
@@ -634,10 +670,13 @@ function EmployeeDashboardPage() {
                   )}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {t("Based on {count} currently assigned completed job(s) with valid timestamps.", {
-                    count:
-                      performanceQuery.data.averageCurrentAttemptJobCount,
-                  })}
+                  {t(
+                    "Based on {count} currently assigned completed job(s) with valid timestamps.",
+                    {
+                      count:
+                        performanceQuery.data.averageCurrentAttemptJobCount,
+                    },
+                  )}
                 </p>
               </CardContent>
             </Card>
@@ -651,10 +690,13 @@ function EmployeeDashboardPage() {
 
       <section aria-labelledby="amc-progress-heading">
         <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex min-w-0 items-center gap-4">
-            <div>
+          <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-center">
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <FileCheck2 className="size-5 text-primary" aria-hidden="true" />
+                <FileCheck2
+                  className="size-5 text-primary"
+                  aria-hidden="true"
+                />
                 <h2 id="amc-progress-heading" className="text-lg font-semibold">
                   {t("AMC Progress")}
                 </h2>
@@ -666,7 +708,7 @@ function EmployeeDashboardPage() {
             <Button
               type="button"
               variant="outline"
-              className="min-h-11 w-fit"
+              className="h-auto min-h-11 w-fit max-w-full whitespace-normal text-left leading-5"
               onClick={() => navigate("/employee/amcs")}
             >
               {t("View AMC visits")}
@@ -693,8 +735,9 @@ function EmployeeDashboardPage() {
                       {new Date(2000, index, 1).toLocaleString(
                         language === "ta" ? "ta-IN" : "en-IN",
                         {
-                        month: "long",
-                      })}
+                          month: "long",
+                        },
+                      )}
                     </option>
                   );
                 })}
@@ -727,13 +770,21 @@ function EmployeeDashboardPage() {
         </div>
 
         {amcQuery.isLoading ? (
-          <div className="rounded-lg border p-5 text-sm text-muted-foreground" role="status">
+          <div
+            className="rounded-lg border p-5 text-sm text-muted-foreground"
+            role="status"
+          >
             {t("Loading AMC progress...")}
           </div>
         ) : amcQuery.isError ? (
           <QueryError
             title={t("Could not load your AMC progress.")}
-            message={getErrorMessage(amcQuery.error, t("Please try again."), t, language)}
+            message={getErrorMessage(
+              amcQuery.error,
+              t("Please try again."),
+              t,
+              language,
+            )}
             retry={() => void amcQuery.refetch()}
             isFetching={amcQuery.isFetching}
             t={t}
@@ -741,17 +792,22 @@ function EmployeeDashboardPage() {
         ) : amcQuery.data ? (
           amcQuery.data.pagination.total === 0 ? (
             <div className="rounded-lg border border-dashed p-6 text-center">
-              <p className="font-medium">{t("No AMC records for this period.")}</p>
+              <p className="font-medium">
+                {t("No AMC records for this period.")}
+              </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                {t("There are no monthly AMC visits assigned to you for {period}.", {
-                  period: new Date(amcYear, amcMonth - 1, 1).toLocaleString(
-                    language === "ta" ? "ta-IN" : "en-IN",
-                    {
-                  month: "long",
-                  year: "numeric",
-                    },
-                  ),
-                })}
+                {t(
+                  "There are no monthly AMC visits assigned to you for {period}.",
+                  {
+                    period: new Date(amcYear, amcMonth - 1, 1).toLocaleString(
+                      language === "ta" ? "ta-IN" : "en-IN",
+                      {
+                        month: "long",
+                        year: "numeric",
+                      },
+                    ),
+                  },
+                )}
               </p>
             </div>
           ) : (
@@ -790,10 +846,13 @@ function EmployeeDashboardPage() {
                     %
                   </p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {t("{completed} completed of {total} assigned AMC record(s)", {
-                      completed: amcQuery.data.statusCounts.COMPLETED ?? 0,
-                      total: amcQuery.data.pagination.total,
-                    })}
+                    {t(
+                      "{completed} completed of {total} assigned AMC record(s)",
+                      {
+                        completed: amcQuery.data.statusCounts.COMPLETED ?? 0,
+                        total: amcQuery.data.pagination.total,
+                      },
+                    )}
                   </p>
                 </CardContent>
               </Card>

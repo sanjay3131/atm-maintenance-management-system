@@ -4,12 +4,7 @@ import { CalendarDays, Pencil, Search, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -87,7 +82,9 @@ function getStatusVariant(
   return "outline";
 }
 
-function getOriginLabel(origin: AdminAttendanceDashboardRecord["attendance"]["statusOrigin"]) {
+function getOriginLabel(
+  origin: AdminAttendanceDashboardRecord["attendance"]["statusOrigin"],
+) {
   if (origin === "admin_override") return "Admin override";
   if (origin === "no_record") return "No attendance record";
   return "Recorded";
@@ -162,7 +159,7 @@ function AttendanceStatusDialog({
   const [auditPage, setAuditPage] = useState(1);
   const overrideMutation = useSetAttendanceStatusOverride();
   const auditQuery = useAttendanceStatusOverrideAudit(
-    open ? record?.employee.id ?? null : null,
+    open ? (record?.employee.id ?? null) : null,
     selectedDate,
     auditPage,
     AUDIT_PAGE_SIZE,
@@ -214,7 +211,9 @@ function AttendanceStatusDialog({
           <>
             <DialogTitle>Edit Attendance Status</DialogTitle>
             <DialogDescription>
-              {record.employee.name} · {record.employee.employeeCode ?? "Employee code unavailable"} · {selectedDate}
+              {record.employee.name} ·{" "}
+              {record.employee.employeeCode ?? "Employee code unavailable"} ·{" "}
+              {selectedDate}
             </DialogDescription>
 
             <div className="rounded-lg border bg-muted/30 p-3 text-sm">
@@ -312,12 +311,12 @@ function AttendanceStatusDialog({
               </div>
             </form>
 
-            <section aria-labelledby="attendance-audit-heading" className="space-y-3 border-t pt-4">
+            <section
+              aria-labelledby="attendance-audit-heading"
+              className="space-y-3 border-t pt-4"
+            >
               <div>
-                <h3
-                  id="attendance-audit-heading"
-                  className="font-semibold"
-                >
+                <h3 id="attendance-audit-heading" className="font-semibold">
                   Admin status history
                 </h3>
                 <p className="text-xs text-muted-foreground">
@@ -361,7 +360,10 @@ function AttendanceStatusDialog({
                   aria-label="Admin status history pagination"
                   className="flex items-center justify-between gap-2"
                 >
-                  <p className="text-xs text-muted-foreground" aria-live="polite">
+                  <p
+                    className="text-xs text-muted-foreground"
+                    aria-live="polite"
+                  >
                     Page {auditPage} of {auditTotalPages} ·{" "}
                     {auditPagination.total} changes
                   </p>
@@ -497,7 +499,10 @@ export default function AdminAttendancePage() {
 
       <section aria-label="Employee attendance summary">
         {dashboardQuery.isLoading && !summary ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" role="status">
+          <div
+            className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"
+            role="status"
+          >
             {Array.from({ length: 5 }, (_, index) => (
               <div
                 key={index}
@@ -601,7 +606,10 @@ export default function AdminAttendancePage() {
             </select>
           </div>
           <div className="space-y-2">
-            <label htmlFor="attendance-page-size" className="text-sm font-medium">
+            <label
+              htmlFor="attendance-page-size"
+              className="text-sm font-medium"
+            >
               Rows per page
             </label>
             <select
@@ -742,7 +750,10 @@ export default function AdminAttendancePage() {
                                 (record.employee.userStatus &&
                                   record.employee.userStatus !== "active")) && (
                                 <p className="text-xs text-amber-700">
-                                  Profile: {record.employee.employeeStatus ?? "unknown"} · User: {record.employee.userStatus ?? "unavailable"}
+                                  Profile:{" "}
+                                  {record.employee.employeeStatus ?? "unknown"}{" "}
+                                  · User:{" "}
+                                  {record.employee.userStatus ?? "unavailable"}
                                 </p>
                               )}
                             </div>
@@ -768,9 +779,7 @@ export default function AdminAttendancePage() {
                               record.attendance.effectiveStatus,
                             )}
                           >
-                            {getStatusLabel(
-                              record.attendance.effectiveStatus,
-                            )}
+                            {getStatusLabel(record.attendance.effectiveStatus)}
                           </Badge>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">

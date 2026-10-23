@@ -26,7 +26,6 @@ import {
   canStartAMC,
   createAMCChecklist,
   getAMCErrorMessage,
-  formatAMCStatus,
   getAMCPhotoSelectionError,
   isAMCChecklistEqual,
   hasStartedAMCVisit,
@@ -34,13 +33,26 @@ import {
 } from "@/features/amc/amcExecution.utils";
 import type { AMCChecklistItem, EmployeeAMCRecord } from "@/services/amc.service";
 import EmployeeATMLocationRequest from "@/features/atms/components/EmployeeATMLocationRequest";
+import {
+  employeeErrorMessage,
+  employeeLanguageClasses,
+  useEmployeeLanguage,
+} from "@/features/employee-portal/i18n";
+import {
+  getEmployeeAMCStatusLabelKey,
+  getEmployeeAMCValueLabelKey,
+} from "@/features/employee-portal/employeeLanguage.utils";
 
-function displayDate(value?: string | null) {
-  if (!value) return "Not available";
+function displayDate(
+  value: string | null | undefined,
+  language: "ta" | "en",
+  t: ReturnType<typeof useEmployeeLanguage>["t"],
+) {
+  if (!value) return t("Not available");
   const date = new Date(value);
   return Number.isNaN(date.getTime())
-    ? "Not available"
-    : date.toLocaleString("en-IN", {
+    ? t("Not available")
+    : date.toLocaleString(language === "ta" ? "ta-IN" : "en-IN", {
         year: "numeric",
         month: "short",
         day: "numeric",
@@ -66,6 +78,7 @@ const CONFETTI_COLORS = [
 ];
 
 export default function EmployeeAMCDetailsPage() {
+  const { t, language } = useEmployeeLanguage();
   const { amcId = "" } = useParams();
   const navigate = useNavigate();
   const validId = isValidAMCId(amcId);
@@ -96,6 +109,10 @@ export default function EmployeeAMCDetailsPage() {
   const previewUrls = useRef(new Set<string>());
   const amc = amcQuery.data;
   const atm = amc ? getATM(amc) : null;
+  const translateAMCValue = (value: string) => {
+    const key = getEmployeeAMCValueLabelKey(value);
+    return key ? t(key) : value;
+  };
   const photoCount = amc?.photoCount ?? 0;
   const terminal = amc?.status === "COMPLETED";
   const editable = amc?.status === "IN_PROGRESS" || amc?.status === "OVERDUE";
@@ -152,6 +169,7 @@ export default function EmployeeAMCDetailsPage() {
     const selectionError = getAMCPhotoSelectionError(
       files,
       photoCount + selectedFiles.length,
+      t,
     );
     setPhotoError(selectionError);
     if (!selectionError) {
@@ -192,16 +210,23 @@ export default function EmployeeAMCDetailsPage() {
     setNotice("");
     try {
       await startMutation.mutateAsync({ amcId });
-      setNotice("Visit started. Complete the checklist and upload six photos.");
+      setNotice(t("Visit started. Complete the checklist and upload six photos."));
     } catch (requestError) {
-      setError(getAMCErrorMessage(requestError));
+      setError(
+        employeeErrorMessage(
+          getAMCErrorMessage(requestError),
+          "The AMC request could not be completed. Please try again.",
+          language,
+          t,
+        ),
+      );
     }
   };
 
   const saveChecklist = async () => {
     if (!amc) return;
     if (!validateAMCChecklist(checklist)) {
-      setError("Complete all 11 checklist responses using the allowed options.");
+      setError(t("Complete all 11 checklist responses using the allowed options."));
       return;
     }
     setError("");
@@ -209,9 +234,16 @@ export default function EmployeeAMCDetailsPage() {
     try {
       await checklistMutation.mutateAsync({ amcId, checklist });
       setChecklistDraft(null);
-      setNotice("Checklist saved.");
+      setNotice(t("Checklist saved."));
     } catch (requestError) {
-      setError(getAMCErrorMessage(requestError));
+      setError(
+        employeeErrorMessage(
+          getAMCErrorMessage(requestError),
+          "The AMC request could not be completed. Please try again.",
+          language,
+          t,
+        ),
+      );
     }
   };
 
@@ -235,18 +267,26 @@ export default function EmployeeAMCDetailsPage() {
         clearSelectedPhotos();
         setPhotoError("");
         setNotice(
-          `Photo upload partially succeeded: ${result.uploaded} of ${selectedFiles.length} selected photos were saved. Refresh the visit and check the remaining photo count before selecting more.`,
+          t(
+            "Photo upload partially succeeded: {uploaded} of {selected} selected photos were saved. Refresh the visit and check the remaining photo count before selecting more.",
+            { uploaded: result.uploaded, selected: selectedFiles.length },
+          ),
         );
       } else {
         clearSelectedPhotos();
         setPhotoError("");
-        setNotice(`${result.uploaded} photo(s) uploaded successfully.`);
+        setNotice(t("{count} photo(s) uploaded successfully.", { count: result.uploaded }));
       }
     } catch (requestError) {
       clearSelectedPhotos();
       setPhotoError("");
       setError(
-        `${getAMCErrorMessage(requestError)} Selected files were cleared to avoid duplicate uploads; refresh the visit and verify the saved photo count before trying again.`,
+        `${employeeErrorMessage(
+          getAMCErrorMessage(requestError),
+          "The AMC request could not be completed. Please try again.",
+          language,
+          t,
+        )} ${t("Selected files were cleared to avoid duplicate uploads; refresh the visit and verify the saved photo count before trying again.")}`,
       );
     } finally {
       setUploadProgress(null);
@@ -256,7 +296,7 @@ export default function EmployeeAMCDetailsPage() {
   const completeVisit = async () => {
     if (!amc || !completionReady || busy) return;
     if (!navigator.geolocation) {
-      setError("This browser does not support location services.");
+      setError(t("This browser does not support location services."));
       return;
     }
     setError("");
@@ -279,15 +319,22 @@ export default function EmployeeAMCDetailsPage() {
             },
             });
             setRemarksDraft(null);
-            setNotice("AMC visit completed.");
-            toast.success("AMC visit completed successfully.");
+            setNotice(t("AMC visit completed."));
+            toast.success(t("AMC visit completed successfully."));
             setShowConfetti(true);
             redirectTimer.current = window.setTimeout(() => {
               setShowConfetti(false);
               navigate("/employee/amcs");
             }, 1100);
           } catch (requestError) {
-            setError(getAMCErrorMessage(requestError));
+            setError(
+              employeeErrorMessage(
+                getAMCErrorMessage(requestError),
+                "The AMC request could not be completed. Please try again.",
+                language,
+                t,
+              ),
+            );
           }
         })();
       },
@@ -295,8 +342,8 @@ export default function EmployeeAMCDetailsPage() {
         setIsLocating(false);
         setError(
           locationError.code === locationError.PERMISSION_DENIED
-            ? "Location permission is required to complete this visit."
-            : "Could not get your location. Check location services and try again.",
+            ? t("Location permission is required to complete this visit.")
+              : t("Could not get your location. Check location services and try again."),
         );
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
@@ -305,12 +352,12 @@ export default function EmployeeAMCDetailsPage() {
 
   if (!validId) {
     return (
-      <main className="space-y-5 p-4 sm:p-6">
+      <main className={`min-w-0 ${employeeLanguageClasses(language, "space-y-5 p-4 sm:p-6", "space-y-4 p-3 sm:p-5")}`}>
         <Link to="/employee/amcs" className="inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-medium hover:bg-muted">
-          <ArrowLeft aria-hidden="true" /> My AMC Visits
+          <ArrowLeft aria-hidden="true" /> {t("My AMC Visits")}
         </Link>
         <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-5 text-destructive" role="alert">
-          This AMC reference is invalid.
+          {t("AMC visit reference is invalid.")}
         </p>
       </main>
     );
@@ -318,25 +365,32 @@ export default function EmployeeAMCDetailsPage() {
 
   if (amcQuery.isLoading) {
     return (
-      <main className="space-y-4 p-4 sm:p-6" role="status">
+      <main className={`min-w-0 ${employeeLanguageClasses(language, "space-y-4 p-4 sm:p-6", "space-y-3 p-3 sm:p-5")}`} role="status">
         <div className="h-8 w-48 animate-pulse rounded bg-muted" />
         <div className="h-56 animate-pulse rounded-lg border bg-muted/40" />
         <div className="h-64 animate-pulse rounded-lg border bg-muted/40" />
-        <span className="sr-only">Loading AMC visit...</span>
+        <span className="sr-only">{t("Loading AMC visit...")}</span>
       </main>
     );
   }
 
   if (amcQuery.isError || !amc) {
     return (
-      <main className="space-y-5 p-4 sm:p-6">
+      <main className={`min-w-0 ${employeeLanguageClasses(language, "space-y-5 p-4 sm:p-6", "space-y-4 p-3 sm:p-5")}`}>
         <Link to="/employee/amcs" className="inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-medium hover:bg-muted">
-          <ArrowLeft aria-hidden="true" /> My AMC Visits
+          <ArrowLeft aria-hidden="true" /> {t("My AMC Visits")}
         </Link>
         <Card className="border-destructive/30">
           <CardContent className="p-5" role="alert">
-            <p className="font-medium text-destructive">AMC visit unavailable.</p>
-            <p className="mt-1 text-sm text-muted-foreground">{getAMCErrorMessage(amcQuery.error)}</p>
+            <p className="font-medium text-destructive">{t("AMC visit unavailable.")}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {employeeErrorMessage(
+                getAMCErrorMessage(amcQuery.error),
+                "The AMC request could not be completed. Please try again.",
+                language,
+                t,
+              )}
+            </p>
             <Button
               type="button"
               variant="outline"
@@ -344,7 +398,7 @@ export default function EmployeeAMCDetailsPage() {
               onClick={() => void amcQuery.refetch()}
               disabled={amcQuery.isFetching}
             >
-              {amcQuery.isFetching ? "Retrying..." : "Retry"}
+              {amcQuery.isFetching ? t("Retrying...") : t("Retry")}
             </Button>
           </CardContent>
         </Card>
@@ -353,9 +407,9 @@ export default function EmployeeAMCDetailsPage() {
   }
 
   return (
-    <main className="space-y-5 p-4 sm:space-y-6 sm:p-6">
+    <main className={`min-w-0 ${employeeLanguageClasses(language, "space-y-5 p-4 sm:space-y-6 sm:p-6", "space-y-4 p-3 sm:p-5")}`}>
       <Link to="/employee/amcs" className="inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-medium hover:bg-muted">
-        <ArrowLeft aria-hidden="true" /> My AMC Visits
+        <ArrowLeft aria-hidden="true" /> {t("My AMC Visits")}
       </Link>
 
       <Card className="overflow-hidden">
@@ -363,7 +417,7 @@ export default function EmployeeAMCDetailsPage() {
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">{amc.amcId}</p>
-            <CardTitle className="mt-1 text-2xl">{atm?.atmId || "ATM unavailable"}</CardTitle>
+            <CardTitle className="mt-1 break-words text-2xl [overflow-wrap:anywhere]">{atm?.atmId || t("ATM unavailable")}</CardTitle>
             {(atm?.locationName || atm?.address) && (
               <p className="mt-1 text-sm text-muted-foreground">
                 {atm.locationName || atm.address}
@@ -371,17 +425,17 @@ export default function EmployeeAMCDetailsPage() {
             )}
           </div>
           <Badge variant={amc.status === "OVERDUE" ? "destructive" : amc.status === "PENDING" ? "secondary" : "outline"}>
-            {formatAMCStatus(amc.status)}
+            {t(getEmployeeAMCStatusLabelKey(amc.status))}
           </Badge>
         </CardHeader>
         <CardContent className="grid gap-4 border-t pt-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <div><p className="text-xs text-muted-foreground">Period</p><p className="font-medium">{amc.month}/{amc.year}</p></div>
-          <div><p className="text-xs text-muted-foreground">Deadline</p><p className="font-medium">{displayDate(amc.deadlineDate)}</p></div>
-          <div><p className="text-xs text-muted-foreground">Visit started</p><p className="font-medium">{displayDate(amc.visitDate)}</p></div>
-          <div><p className="text-xs text-muted-foreground">Completed</p><p className="font-medium">{displayDate(amc.completedAt)}</p></div>
+          <div><p className="text-xs text-muted-foreground">{t("Period")}</p><p className="font-medium">{amc.month}/{amc.year}</p></div>
+          <div><p className="text-xs text-muted-foreground">{t("Deadline")}</p><p className="font-medium">{displayDate(amc.deadlineDate, language, t)}</p></div>
+          <div><p className="text-xs text-muted-foreground">{t("Visit started")}</p><p className="font-medium">{displayDate(amc.visitDate, language, t)}</p></div>
+          <div><p className="text-xs text-muted-foreground">{t("Completed")}</p><p className="font-medium">{displayDate(amc.completedAt, language, t)}</p></div>
           <div className="flex items-center gap-2 sm:col-span-2">
             <Camera className="size-4 text-primary" aria-hidden="true" />
-            <span>Photo evidence: {photoCount}/{6} uploaded</span>
+            <span>{t("Photo evidence: {count}/{required} uploaded", { count: photoCount, required: 6 })}</span>
           </div>
         </CardContent>
       </Card>
@@ -400,7 +454,7 @@ export default function EmployeeAMCDetailsPage() {
 
       {amc.status === "OVERDUE" && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm">
-          This visit is overdue. If it has not been started, you can start it now. An already-started visit can still be completed.
+          {t("This visit is overdue. If it has not been started, you can start it now. An already-started visit can still be completed.")}
         </div>
       )}
 
@@ -428,11 +482,11 @@ export default function EmployeeAMCDetailsPage() {
         <Card>
           <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="font-semibold">Ready to begin the ATM visit?</p>
-              <p className="mt-1 text-sm text-muted-foreground">Starting requires the ATM location to be configured.</p>
+              <p className="font-semibold">{t("Ready to begin the ATM visit?")}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{t("Starting requires the ATM location to be configured.")}</p>
             </div>
             <Button type="button" className="min-h-11" onClick={() => void startVisit()} disabled={busy}>
-              {startMutation.isPending ? "Starting..." : "Start visit"}
+              {startMutation.isPending ? t("Starting...") : t("Start visit")}
             </Button>
           </CardContent>
         </Card>
@@ -441,7 +495,7 @@ export default function EmployeeAMCDetailsPage() {
       {!visitStarted && !terminal && (
         <Card>
           <CardContent className="p-5 text-sm text-muted-foreground">
-            Start the visit first. The checklist and photo upload will become available after the backend confirms the visit start.
+            {t("Start the visit first. The checklist and photo upload will become available after the backend confirms the visit start.")}
           </CardContent>
         </Card>
       )}
@@ -451,7 +505,7 @@ export default function EmployeeAMCDetailsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <ClipboardCheck className="size-5 text-primary" aria-hidden="true" />
-            Maintenance checklist {amc.checklistCompleted && <Badge variant="secondary">Saved</Badge>}
+            {t("Maintenance checklist")} {amc.checklistCompleted && <Badge variant="secondary">{t("Saved")}</Badge>}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -459,10 +513,14 @@ export default function EmployeeAMCDetailsPage() {
             const value = checklist.find((entry) => entry.item === item.id);
             return (
               <div key={item.id} className="grid gap-2 border-b pb-4 last:border-0 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] sm:items-center">
-                <label htmlFor={`amc-check-${item.id}`} className="text-sm font-medium">{item.label}</label>
+                <label htmlFor={`amc-check-${item.id}`} className="text-sm font-medium">
+                  {translateAMCValue(item.label)}
+                </label>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <fieldset
-                    aria-label={`${item.label} response`}
+                    aria-label={t("{item} response", {
+                      item: translateAMCValue(item.label),
+                    })}
                     className="grid gap-2 sm:grid-cols-2"
                   >
                     {item.options.map((option) => (
@@ -483,7 +541,9 @@ export default function EmployeeAMCDetailsPage() {
                           disabled={!editable || terminal || busy}
                           className="size-4 accent-primary"
                         />
-                        <span>{option}</span>
+                        <span>
+                          {translateAMCValue(option)}
+                        </span>
                       </label>
                     ))}
                   </fieldset>
@@ -492,8 +552,10 @@ export default function EmployeeAMCDetailsPage() {
                     value={value?.remarks ?? ""}
                     onChange={(event) => handleChecklistChange(item.id, "remarks", event.target.value)}
                     disabled={!editable || terminal || busy}
-                    aria-label={`${item.label} remarks`}
-                    placeholder="Remarks (optional)"
+                    aria-label={t("{item} remarks", {
+                      item: translateAMCValue(item.label),
+                    })}
+                    placeholder={t("Remarks (optional)")}
                     className="h-11 w-full rounded-lg border border-input bg-background px-3"
                   />
                 </div>
@@ -508,11 +570,11 @@ export default function EmployeeAMCDetailsPage() {
               onClick={() => void saveChecklist()}
               disabled={busy || !checklistValid}
             >
-              {checklistMutation.isPending ? "Saving checklist..." : "Save checklist"}
+              {checklistMutation.isPending ? t("Saving checklist...") : t("Save checklist")}
             </Button>
           )}
           {!checklistValid && editable && (
-            <p className="text-sm text-muted-foreground">Select an allowed response for all 11 items before saving.</p>
+            <p className="text-sm text-muted-foreground">{t("Select an allowed response for all 11 items before saving.")}</p>
           )}
         </CardContent>
       </Card>
@@ -520,15 +582,17 @@ export default function EmployeeAMCDetailsPage() {
 
       {visitStarted && (
       <Card>
-        <CardHeader><CardTitle className="text-base">Photo evidence</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">{t("Photo evidence")}</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Upload six JPEG, PNG, or WebP photos, up to 5 MB each. Existing photo URLs are not rendered in this workflow.
+            {t("Upload six JPEG, PNG, or WebP photos, up to 5 MB each. Existing photo URLs are not rendered in this workflow.")}
           </p>
           {!terminal && editable && photoCount < 6 && (
             <>
               <label htmlFor="amc-photo-files" className="block text-sm font-medium">
-                Choose photos ({photoCount + selectedFiles.length}/6 selected or uploaded)
+                {t("Choose photos ({count}/6 selected or uploaded)", {
+                  count: photoCount + selectedFiles.length,
+                })}
               </label>
               <input
                 id="amc-photo-files"
@@ -545,7 +609,10 @@ export default function EmployeeAMCDetailsPage() {
                     <figure key={`${file.name}-${file.lastModified}-${index}`} className="overflow-hidden rounded-lg border">
                       <img
                         src={url}
-                        alt={`Selected photo ${index + 1}: ${file.name}`}
+                        alt={t("Selected photo {number}: {filename}", {
+                          number: index + 1,
+                          filename: file.name,
+                        })}
                         className="h-40 w-full object-cover"
                       />
                       <figcaption className="flex items-center justify-between gap-2 p-2">
@@ -554,7 +621,7 @@ export default function EmployeeAMCDetailsPage() {
                           type="button"
                           variant="destructive"
                           size="sm"
-                          aria-label={`Remove ${file.name}`}
+                          aria-label={t("Remove {filename}", { filename: file.name })}
                           onClick={() => {
                             const preview = photoPreviews[index];
                             if (preview) {
@@ -572,7 +639,7 @@ export default function EmployeeAMCDetailsPage() {
                           disabled={busy}
                         >
                           <Trash2 aria-hidden="true" />
-                          Remove
+                          {t("Remove")}
                         </Button>
                       </figcaption>
                     </figure>
@@ -582,19 +649,19 @@ export default function EmployeeAMCDetailsPage() {
               {photoError && <p className="text-sm text-destructive" role="alert">{photoError}</p>}
               {selectedFiles.length >= 6 - photoCount && (
                 <p className="text-sm text-muted-foreground">
-                  Maximum of six photos reached. Remove a selected photo to choose another.
+                  {t("Maximum of six photos reached. Remove a selected photo to choose another.")}
                 </p>
               )}
               {uploadMutation.isPending && (
                 <div className="space-y-2" role="status" aria-live="polite">
                   <p className="text-sm">
                     {uploadProgress === null
-                      ? "Uploading photos..."
-                      : `Uploading photos: ${uploadProgress}%`}
+                      ? t("Uploading photos...")
+                      : t("Uploading photos: {progress}%", { progress: uploadProgress })}
                   </p>
                   <div
                     role="progressbar"
-                    aria-label="Photo upload progress"
+                    aria-label={t("Photo upload progress")}
                     aria-valuemin={uploadProgress === null ? undefined : 0}
                     aria-valuemax={uploadProgress === null ? undefined : 100}
                     aria-valuenow={uploadProgress ?? undefined}
@@ -624,25 +691,27 @@ export default function EmployeeAMCDetailsPage() {
               >
                 <Upload aria-hidden="true" />
                 {uploadMutation.isPending
-                  ? `Uploading${uploadProgress === null ? "..." : ` ${uploadProgress}%`}`
-                  : "Upload selected photos"}
+                  ? uploadProgress === null
+                    ? t("Uploading...")
+                    : t("Uploading {progress}%", { progress: uploadProgress })
+                  : t("Upload selected photos")}
               </Button>
             </>
           )}
           {photoCount >= 6 && (
             <p className="flex items-center gap-2 text-sm text-emerald-700">
-              <CheckCircle2 className="size-4" aria-hidden="true" /> Required photo evidence is uploaded.
+              <CheckCircle2 className="size-4" aria-hidden="true" /> {t("Required photo evidence is uploaded.")}
             </p>
           )}
-          {terminal && <p className="text-sm text-muted-foreground">This completed AMC is read-only.</p>}
+          {terminal && <p className="text-sm text-muted-foreground">{t("This completed AMC is read-only.")}</p>}
         </CardContent>
       </Card>
       )}
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Complete visit</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">{t("Complete visit")}</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          <label htmlFor="amc-employee-remarks" className="block text-sm font-medium">Visit remarks (optional)</label>
+          <label htmlFor="amc-employee-remarks" className="block text-sm font-medium">{t("Visit remarks (optional)")}</label>
           <textarea
             id="amc-employee-remarks"
             value={remarks}
@@ -656,7 +725,7 @@ export default function EmployeeAMCDetailsPage() {
           />
           <p className="flex items-start gap-2 text-sm text-muted-foreground">
             <MapPin className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            Completion requires browser location permission and the server validates proximity to the configured ATM location.
+            {t("Completion requires browser location permission and the server validates proximity to the configured ATM location.")}
           </p>
           <Button
             type="button"
@@ -665,16 +734,16 @@ export default function EmployeeAMCDetailsPage() {
             disabled={terminal || !completionReady || busy}
           >
             {isLocating
-              ? "Getting location..."
+              ? t("Getting location...")
               : completeMutation.isPending
-                ? "Completing visit..."
-                : "Complete AMC visit"}
+                ? t("Completing visit...")
+                : t("Complete AMC visit")}
           </Button>
           {!terminal && !completionReady && (
             <p className="text-sm text-muted-foreground">
               {!visitStarted
-                ? "Start the visit before completing it."
-                : "Save a valid checklist and upload all six required photos before completing."}
+                ? t("Start the visit before completing it.")
+                : t("Save a valid checklist and upload all six required photos before completing.")}
             </p>
           )}
         </CardContent>

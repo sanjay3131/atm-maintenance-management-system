@@ -151,13 +151,35 @@ export const isAMCChecklistEqual = (
     );
   });
 
+type AMCPhotoSelectionErrorKey =
+  | "Choose at least one photo."
+  | "You can upload {count} more photo(s)."
+  | "Only JPEG, PNG, and WebP images are allowed."
+  | "Each photo must be 5 MB or smaller.";
+
+type AMCPhotoSelectionTranslator = (
+  key: AMCPhotoSelectionErrorKey,
+  values?: Record<string, string | number>,
+) => string;
+
+const defaultPhotoSelectionTranslator: AMCPhotoSelectionTranslator = (
+  key,
+  values,
+) =>
+  key.replace(/\{(\w+)\}/g, (match, name: string) =>
+    values?.[name] === undefined ? match : String(values[name]),
+  );
+
 export const getAMCPhotoSelectionError = (
   files: File[],
   existingCount: number,
+  t: AMCPhotoSelectionTranslator = defaultPhotoSelectionTranslator,
 ) => {
-  if (files.length === 0) return "Choose at least one photo.";
+  if (files.length === 0) return t("Choose at least one photo.");
   if (existingCount + files.length > REQUIRED_AMC_PHOTOS) {
-    return `You can upload ${REQUIRED_AMC_PHOTOS - existingCount} more photo(s).`;
+    return t("You can upload {count} more photo(s).", {
+      count: REQUIRED_AMC_PHOTOS - existingCount,
+    });
   }
   const allowedTypes = [
     "image/jpeg",
@@ -166,10 +188,10 @@ export const getAMCPhotoSelectionError = (
     "image/webp",
   ];
   if (files.some((file) => !allowedTypes.includes(file.type))) {
-    return "Only JPEG, PNG, and WebP images are allowed.";
+    return t("Only JPEG, PNG, and WebP images are allowed.");
   }
   if (files.some((file) => file.size > 5 * 1024 * 1024)) {
-    return "Each photo must be 5 MB or smaller.";
+    return t("Each photo must be 5 MB or smaller.");
   }
   return "";
 };

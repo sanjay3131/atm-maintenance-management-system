@@ -12,6 +12,7 @@ import {
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/features/auth/auth-context";
 import {
+  employeeLanguageClasses,
   useEmployeeLanguage,
   type EmployeeLanguage,
   type EmployeeTranslationKey,
@@ -133,7 +134,10 @@ export default function EmployeeLayout() {
   };
 
   return (
-    <div className="employee-portal-shell min-h-screen bg-background text-foreground">
+    <div
+      lang={language}
+      className="employee-portal-shell min-h-screen min-w-0 bg-background text-foreground"
+    >
       <button
         type="button"
         aria-label={t("Close navigation drawer")}
@@ -230,7 +234,9 @@ export default function EmployeeLayout() {
                       >
                         <Icon className="size-4.5" aria-hidden="true" />
                       </span>
-                      <span>{t(label)}</span>
+                      <span className="min-w-0 break-words leading-5 [overflow-wrap:anywhere]">
+                        {t(label)}
+                      </span>
                     </>
                   )}
                 </NavLink>
@@ -309,7 +315,7 @@ export default function EmployeeLayout() {
                 <PanelLeftOpen aria-hidden="true" className="size-5" />
               </button>
             )}
-            <h2 className="truncate text-base font-semibold sm:text-lg">
+            <h2 className={`min-w-0 text-base font-semibold sm:text-lg ${employeeLanguageClasses(language, "truncate", "break-words leading-5")}`}>
               {t(pageTitle)}
             </h2>
           </div>
@@ -318,7 +324,7 @@ export default function EmployeeLayout() {
           </span>
         </header>
 
-        <div className="min-w-0 flex-1 bg-slate-50 p-4 dark:bg-slate-900 sm:p-6 lg:p-8">
+        <div className={`min-w-0 flex-1 bg-slate-50 dark:bg-slate-900 ${employeeLanguageClasses(language, "p-4 sm:p-6 lg:p-8", "p-3 sm:p-5 lg:p-6")}`}>
           <div className="mx-auto w-full max-w-7xl min-w-0">
             <Outlet />
           </div>

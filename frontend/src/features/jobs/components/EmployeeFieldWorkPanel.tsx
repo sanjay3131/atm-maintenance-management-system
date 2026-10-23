@@ -31,6 +31,7 @@ import type { JobPhotoType } from "../services/jobs.service";
 import { EMPLOYEE_REQUIRED_PHOTOS_PER_TYPE } from "../utils/employeeJobDetails.utils";
 import {
   employeeErrorMessage,
+  employeeLanguageClasses,
   useEmployeeLanguage,
   type EmployeeTranslationKey,
 } from "@/features/employee-portal/i18n";
@@ -756,10 +757,10 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
 
   return (
     <Card className="min-w-0 overflow-hidden rounded-xl border-blue-100 shadow-sm dark:border-blue-950">
-      <CardHeader className="p-4 pb-3 sm:p-5">
+      <CardHeader className={`min-w-0 ${employeeLanguageClasses(language, "p-4 pb-3 sm:p-5", "p-3 pb-2 sm:p-4")}`}>
         <CardTitle>{t("Field Work")}</CardTitle>
       </CardHeader>
-      <CardContent className="min-w-0 space-y-4 p-4 pt-0 sm:p-5 sm:pt-0">
+      <CardContent className={`min-w-0 ${employeeLanguageClasses(language, "space-y-4 p-4 pt-0 sm:p-5 sm:pt-0", "space-y-3 p-3 pt-0 sm:p-4 sm:pt-0")}`}>
         <section
           className="min-w-0 space-y-3 rounded-lg bg-teal-50/60 p-3 dark:bg-teal-950/20"
           aria-labelledby="job-gps-heading"
@@ -772,14 +773,18 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
               <MapPin className="size-4 shrink-0" aria-hidden="true" />
               {t("GPS location")}
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 break-words text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
               {t("The server checks your submitted location against the ATM before completing the job.")}
             </p>
           </div>
           <Button
             type="button"
             variant="outline"
-            className="min-h-11 w-full sm:w-auto"
+            className={employeeLanguageClasses(
+              language,
+              "min-h-11 w-full sm:w-auto",
+              "min-h-11 h-auto w-full whitespace-normal py-3 leading-5 sm:w-auto",
+            )}
             onClick={acquireLocation}
             disabled={isLocating || locationRequestMutation.isPending}
           >
@@ -795,12 +800,12 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                 : t("Get current location")}
           </Button>
           {gpsError && (
-            <p role="alert" className="break-words text-sm text-destructive">
+            <p role="alert" className="break-words text-sm leading-6 text-destructive [overflow-wrap:anywhere]">
               {gpsError}
             </p>
           )}
           {!hasAtmCoordinates && (
-            <p role="status" className="break-words text-sm text-destructive">
+            <p role="status" className="break-words text-sm leading-6 text-destructive [overflow-wrap:anywhere]">
               {t("ATM location is not configured. Acquire your current location and submit it for Admin or SuperAdmin approval before completing this job.")}
             </p>
           )}
@@ -809,7 +814,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
               className="min-w-0 break-words rounded-md border bg-muted/30 p-3 text-sm"
               role="status"
             >
-              <p>{t("Location acquired · accuracy ±{accuracy} m", { accuracy: Math.round(gps.accuracy) })}</p>
+              <p className="break-words leading-6 [overflow-wrap:anywhere]">{t("Location acquired · accuracy ±{accuracy} m", { accuracy: Math.round(gps.accuracy) })}</p>
               {distance !== null && (
                 <p
                   className={

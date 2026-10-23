@@ -17,7 +17,7 @@ const STATUS_LABELS: Record<AttendanceCalendarStatus | "none", string> = {
 };
 
 const STATUS_STYLES: Record<AttendanceCalendarStatus | "none", string> = {
-  present: "bg-emerald-600 text-white hover:bg-emerald-700",
+  present: "bg-emerald-600 text-white hover:bg-emerald-700 ",
   incomplete: "bg-amber-400 text-amber-950 hover:bg-amber-500",
   absent: "bg-rose-600 text-white hover:bg-rose-700",
   none: "bg-muted text-muted-foreground hover:bg-muted/70",
@@ -63,14 +63,17 @@ function getErrorMessage(error: unknown) {
 
 function AttendanceLegend() {
   return (
-    <ul aria-label="Attendance calendar legend" className="flex flex-wrap gap-4">
-      {(Object.keys(STATUS_LABELS) as Array<
-        AttendanceCalendarStatus | "none"
-      >).map((status) => (
+    <ul
+      aria-label="Attendance calendar legend"
+      className="flex flex-wrap gap-4"
+    >
+      {(
+        Object.keys(STATUS_LABELS) as Array<AttendanceCalendarStatus | "none">
+      ).map((status) => (
         <li key={status} className="flex items-center gap-2 text-xs">
           <span
             aria-hidden="true"
-            className={`size-3 rounded-sm ${STATUS_STYLES[status].split(" ")[0]}`}
+            className={`size-3 rounded-sm ${STATUS_STYLES[status].split(" ")[0]} animate-pulse `}
           />
           {STATUS_LABELS[status]}
         </li>
@@ -95,10 +98,7 @@ export default function EmployeeAttendanceCalendar({
     ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
   ];
   const attendanceByDate = new Map(
-    (calendarQuery.data?.days ?? []).map((day) => [
-      day.attendanceDate,
-      day,
-    ]),
+    (calendarQuery.data?.days ?? []).map((day) => [day.attendanceDate, day]),
   );
   const selectedAttendance = attendanceByDate.get(selectedDate);
   const monthLabel = new Intl.DateTimeFormat("en-IN", {
@@ -161,7 +161,8 @@ export default function EmployeeAttendanceCalendar({
             role="alert"
           >
             <p className="text-sm text-destructive">
-              Attendance could not be loaded. {getErrorMessage(calendarQuery.error)}
+              Attendance could not be loaded.{" "}
+              {getErrorMessage(calendarQuery.error)}
             </p>
             <Button
               type="button"
@@ -211,12 +212,10 @@ export default function EmployeeAttendanceCalendar({
                 aria-label={`${date}: ${STATUS_LABELS[status]}`}
                 aria-pressed={selectedDate === date}
                 onClick={() => setSelectedDate(date)}
-                className={`aspect-square w-full rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                className={`text-2xl aspect-square w-full rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   STATUS_STYLES[status]
                 } ${
-                  selectedDate === date
-                    ? "ring-2 ring-ring ring-offset-2"
-                    : ""
+                  selectedDate === date ? "ring-2 ring-ring ring-offset-2" : ""
                 }`}
               >
                 {day}

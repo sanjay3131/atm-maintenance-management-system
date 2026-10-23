@@ -6,6 +6,61 @@ import {
   getEmployeeJobDetailsScreen,
   getEmployeeMaterialUsageVisibility,
 } from "../src/features/jobs/utils/employeeJobDetails.utils.ts";
+import { employeeLanguageClasses } from "../src/features/employee-portal/employeeLanguage.utils.ts";
+import {
+  getEmployeeJobsPage,
+  getEmployeeJobsStatusChange,
+  getEmployeeJobsStatusHref,
+  parseEmployeeJobStatusFilter,
+} from "../src/features/jobs/utils/employeeJobs.utils.ts";
+
+test("employee layout class helper selects Tamil-only layout classes", () => {
+  assert.equal(
+    employeeLanguageClasses("ta", "english-layout", "tamil-layout"),
+    "tamil-layout",
+  );
+  assert.equal(
+    employeeLanguageClasses("en", "english-layout", "tamil-layout"),
+    "english-layout",
+  );
+});
+
+test("employee dashboard status links target supported server-filtered statuses", () => {
+  assert.equal(getEmployeeJobsStatusHref(), "/employee/jobs");
+  assert.equal(getEmployeeJobsStatusHref("ASSIGNED"), "/employee/jobs?status=ASSIGNED");
+  assert.equal(getEmployeeJobsStatusHref("IN_PROGRESS"), "/employee/jobs?status=IN_PROGRESS");
+  assert.equal(getEmployeeJobsStatusHref("COMPLETED"), "/employee/jobs?status=COMPLETED");
+});
+
+test("employee jobs list reads valid status filters from the URL", () => {
+  assert.deepEqual(parseEmployeeJobStatusFilter(null), { kind: "all" });
+  assert.deepEqual(parseEmployeeJobStatusFilter(""), { kind: "all" });
+  assert.deepEqual(parseEmployeeJobStatusFilter("IN_PROGRESS"), {
+    kind: "valid",
+    status: "IN_PROGRESS",
+  });
+  assert.deepEqual(parseEmployeeJobStatusFilter("INVALID"), {
+    kind: "invalid",
+  });
+});
+
+test("changing or clearing the employee job status filter resets pagination", () => {
+  assert.deepEqual(getEmployeeJobsStatusChange("ASSIGNED", 4), {
+    status: "ASSIGNED",
+    page: 1,
+  });
+  assert.deepEqual(getEmployeeJobsStatusChange("ALL", 3), {
+    status: "ALL",
+    page: 1,
+  });
+  assert.deepEqual(getEmployeeJobsStatusChange("COMPLETED", 1), {
+    status: "COMPLETED",
+    page: 1,
+  });
+  assert.equal(getEmployeeJobsPage("ASSIGNED", "IN_PROGRESS", 4), 1);
+  assert.equal(getEmployeeJobsPage("IN_PROGRESS", "IN_PROGRESS", 4), 4);
+  assert.equal(getEmployeeJobsPage("IN_PROGRESS", null, 2), 1);
+});
 
 test("employee job detail screens follow authoritative job status", () => {
   assert.equal(getEmployeeJobDetailsScreen("ASSIGNED"), "assigned");

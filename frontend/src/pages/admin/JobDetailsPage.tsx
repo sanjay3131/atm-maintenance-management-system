@@ -50,6 +50,7 @@ import {
   employeeDisplayLabel,
   employeeErrorMessage,
   employeeJobStatusLabel,
+  employeeLanguageClasses,
   useEmployeeLanguage,
 } from "@/features/employee-portal/i18n";
 import type {
@@ -508,7 +509,7 @@ export default function JobDetailsPage({
     <div
       className={
         readOnly
-          ? "mx-auto max-w-[430px] space-y-3 bg-slate-50 px-3 pb-28 pt-3 dark:bg-background sm:px-4"
+          ? `mx-auto min-w-0 max-w-[430px] pb-28 pt-3 ${employeeLanguageClasses(language, "space-y-4 bg-slate-100 px-3 dark:bg-background sm:px-4", "space-y-3 bg-slate-50 px-2 dark:bg-background sm:px-3")}`
           : "space-y-6 p-6"
       }
     >
@@ -659,13 +660,13 @@ export default function JobDetailsPage({
               </div>
               <Badge
                 variant={getStatusVariant(job.status)}
-                className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                className="max-w-full shrink-0 whitespace-normal rounded-full px-2.5 py-1 text-center text-[11px] font-semibold leading-4 [overflow-wrap:anywhere]"
               >
                 {employeeJobStatusLabel(job.status, t)}
               </Badge>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Badge className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-700">
+              <Badge className="max-w-full whitespace-normal rounded-full bg-slate-100 px-2.5 py-1 text-center text-[11px] leading-4 text-slate-700 [overflow-wrap:anywhere]">
                 {localize(formatLabel(job.workType))}
               </Badge>
               <Badge
@@ -676,7 +677,7 @@ export default function JobDetailsPage({
                       ? "secondary"
                       : "outline"
                 }
-                className="rounded-full px-2.5 py-1 text-[11px]"
+                className="max-w-full whitespace-normal rounded-full px-2.5 py-1 text-center text-[11px] leading-4 [overflow-wrap:anywhere]"
               >
                 {localize(formatLabel(job.priority))}
               </Badge>
@@ -687,12 +688,12 @@ export default function JobDetailsPage({
               <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
                 {t("ATM")}
               </p>
-              <p className="mt-1 break-words text-sm font-semibold text-slate-800">
+              <p className="mt-1 min-w-0 break-words text-sm font-semibold leading-6 text-slate-800 [overflow-wrap:anywhere]">
                 {formatValue(atm?.atmId)}
                 {atm?.locationName && ` · ${atm.locationName}`}
               </p>
               {atm?.address && (
-                <p className="mt-1 break-words text-xs text-slate-600">
+                <p className="mt-1 min-w-0 break-words text-xs leading-5 text-slate-600 [overflow-wrap:anywhere]">
                   {atm.address}
                 </p>
               )}
@@ -702,7 +703,7 @@ export default function JobDetailsPage({
                 <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
                   {t("Description")}
                 </h2>
-                <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
+                <p className="mt-2 min-w-0 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700 [overflow-wrap:anywhere]">
                   {job.description}
                 </p>
               </section>
@@ -832,10 +833,10 @@ export default function JobDetailsPage({
               </Button>
             )}
             {employeeScreen === "in-progress" && (
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+              <div className="grid min-w-0 grid-cols-2 gap-2">
                 <Button
                   type="button"
-                  className="min-h-12 rounded-xl bg-blue-600 text-white hover:bg-blue-700"
+                  className="h-auto min-h-12 w-full min-w-0 whitespace-normal rounded-xl bg-blue-600 px-2 py-2 text-center leading-5 text-white hover:bg-blue-700"
                   onClick={openFieldworkControls}
                 >
                   {t("Continue fieldwork")}
@@ -843,7 +844,7 @@ export default function JobDetailsPage({
                 <Button
                   type="button"
                   variant="outline"
-                  className="min-h-12 rounded-xl border-teal-700 text-teal-800"
+                  className="h-auto min-h-12 w-full min-w-0 whitespace-normal rounded-xl border-teal-700 px-2 py-2 text-center leading-5 text-teal-800"
                   disabled={lifecycleMutationPending}
                   onClick={() =>
                     runLifecycleAction(holdMutation, t("Job put on hold."))

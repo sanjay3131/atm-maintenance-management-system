@@ -2,10 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Eye, Pencil, RefreshCw, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { useEmployees } from "@/features/employees/hooks/useEmployees";
 import CreateUserWizard from "@/features/users/components/CreateUserWizard";
 import type { Employee } from "@/services/employee.service";
@@ -32,7 +29,7 @@ function getEmployeeName(employee: Employee) {
 }
 
 function getStatusClass(status: Employee["status"]) {
-  if (status === "active") return "bg-green-100 text-green-700";
+  if (status === "active") return "bg-green-200 text-green-700 animate-pulse  ";
   if (status === "inactive") return "bg-gray-100 text-gray-700";
   if (status === "on_leave") return "bg-yellow-100 text-yellow-700";
   return "bg-red-100 text-red-700";
@@ -75,8 +72,9 @@ function LoadingState() {
 export default function EmployeesPage() {
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] =
-    useState<Employee["status"] | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<Employee["status"] | "all">(
+    "all",
+  );
   const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
   const [page, setPage] = useState(1);
   const employeesQuery = useEmployees();
@@ -85,16 +83,23 @@ export default function EmployeesPage() {
   const normalizedSearch = search.trim().toLocaleLowerCase();
   const filteredEmployees = employees.filter((employee) => {
     const matchesSearch =
-      normalizedSearch === "" || getSearchText(employee).includes(normalizedSearch);
+      normalizedSearch === "" ||
+      getSearchText(employee).includes(normalizedSearch);
     const matchesStatus =
       statusFilter === "all" || employee.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredEmployees.length / pageSize),
+  );
   const currentPage = Math.min(page, totalPages);
   const pageStart = (currentPage - 1) * pageSize;
-  const visibleEmployees = filteredEmployees.slice(pageStart, pageStart + pageSize);
+  const visibleEmployees = filteredEmployees.slice(
+    pageStart,
+    pageStart + pageSize,
+  );
   const firstVisible = filteredEmployees.length === 0 ? 0 : pageStart + 1;
   const lastVisible = Math.min(pageStart + pageSize, filteredEmployees.length);
 
@@ -248,14 +253,30 @@ export default function EmployeesPage() {
             </caption>
             <thead className="border-b bg-muted/50">
               <tr>
-                <th scope="col" className="px-4 py-3 text-left">Employee</th>
-                <th scope="col" className="px-4 py-3 text-left">Code</th>
-                <th scope="col" className="px-4 py-3 text-left">Designation</th>
-                <th scope="col" className="px-4 py-3 text-left">Department</th>
-                <th scope="col" className="px-4 py-3 text-left">Employment</th>
-                <th scope="col" className="px-4 py-3 text-left">Employee status</th>
-                <th scope="col" className="px-4 py-3 text-left">ATMs</th>
-                <th scope="col" className="px-4 py-3 text-left">Actions</th>
+                <th scope="col" className="px-4 py-3 text-left">
+                  Employee
+                </th>
+                <th scope="col" className="px-4 py-3 text-left">
+                  Code
+                </th>
+                <th scope="col" className="px-4 py-3 text-left">
+                  Designation
+                </th>
+                <th scope="col" className="px-4 py-3 text-left">
+                  Department
+                </th>
+                <th scope="col" className="px-4 py-3 text-left">
+                  Employment
+                </th>
+                <th scope="col" className="px-4 py-3 text-left">
+                  Employee status
+                </th>
+                <th scope="col" className="px-4 py-3 text-left">
+                  ATMs
+                </th>
+                <th scope="col" className="px-4 py-3 text-left">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -278,7 +299,7 @@ export default function EmployeesPage() {
                     <td className="px-4 py-3">{employee.employmentType}</td>
                     <td className="px-4 py-3">
                       <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getStatusClass(employee.status)}`}
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium  ${getStatusClass(employee.status)}`}
                       >
                         {getStatusLabel(employee.status)}
                       </span>

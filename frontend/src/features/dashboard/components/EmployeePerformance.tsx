@@ -387,243 +387,245 @@ export default function EmployeePerformance({
         <CardContent className="space-y-5 p-4 pt-0 sm:p-5 sm:pt-0">
           {!viewedEmployee && (
             <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="sm:col-span-2 lg:col-span-2">
-              <label
-                htmlFor="employee-performance-search"
-                className="mb-1 block text-sm font-medium"
-              >
-                Search employees
-              </label>
-              <input
-                id="employee-performance-search"
-                type="search"
-                value={search}
-                onChange={(event) =>
-                  updateFilters({
-                    search: event.target.value,
-                    districtId: districtFilter,
-                    regionId: regionFilter,
-                  })
-                }
-                placeholder="Name or employee code"
-                className="h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="employee-performance-district"
-                className="mb-1 block text-sm font-medium"
-              >
-                District
-              </label>
-              <select
-                id="employee-performance-district"
-                value={districtFilter}
-                onChange={(event) => {
-                  updateFilters({
-                    search,
-                    districtId: event.target.value,
-                    regionId: "",
-                  });
-                }}
-                disabled={districtsQuery.isLoading || districtsQuery.isError}
-                className="h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <option value="">All districts</option>
-                {districtsQuery.data?.map((district) => (
-                  <option key={district._id} value={district._id}>
-                    {district.districtName}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label
-                htmlFor="employee-performance-region"
-                className="mb-1 block text-sm font-medium"
-              >
-                Region
-              </label>
-              <select
-                id="employee-performance-region"
-                value={regionFilter}
-                onChange={(event) =>
-                  updateFilters({
-                    search,
-                    districtId: districtFilter,
-                    regionId: event.target.value,
-                  })
-                }
-                disabled={!districtFilter || regionsLoading || regionsError}
-                className="h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <option value="">
-                  {!districtFilter
-                    ? "Select district first"
-                    : regionsLoading
-                      ? "Loading regions..."
-                      : "All regions"}
-                </option>
-                {districtRegions.map((region) => (
-                  <option key={region._id} value={region._id}>
-                    {region.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex flex-wrap items-end gap-3 sm:col-span-2 lg:col-span-4">
-              <div className="min-w-0 flex-1 sm:max-w-md">
+              <div className="sm:col-span-2 lg:col-span-2">
                 <label
-                  htmlFor="individual-employee"
+                  htmlFor="employee-performance-search"
                   className="mb-1 block text-sm font-medium"
                 >
-                  Selected employee for individual performance
+                  Search employees
                 </label>
-                <Combobox.Root
-                  items={pickerRows}
-                  value={selectedPickerRow}
-                  onValueChange={(row) => {
-                    if (row) selectEmployee(row.employee);
-                  }}
-                  itemToStringLabel={(row) =>
-                    row ? `${row.name} · ${row.employeeCode}` : ""
+                <input
+                  id="employee-performance-search"
+                  type="search"
+                  value={search}
+                  onChange={(event) =>
+                    updateFilters({
+                      search: event.target.value,
+                      districtId: districtFilter,
+                      regionId: regionFilter,
+                    })
                   }
-                  itemToStringValue={(row) => row?.employee._id ?? ""}
-                  autoHighlight
+                  placeholder="Name or employee code"
+                  className="h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="employee-performance-district"
+                  className="mb-1 block text-sm font-medium"
                 >
-                  <div className="relative">
-                    {selectedPickerRow ? (
-                      <span className="pointer-events-none absolute inset-y-0 left-3 z-10 flex items-center">
+                  District
+                </label>
+                <select
+                  id="employee-performance-district"
+                  value={districtFilter}
+                  onChange={(event) => {
+                    updateFilters({
+                      search,
+                      districtId: event.target.value,
+                      regionId: "",
+                    });
+                  }}
+                  disabled={districtsQuery.isLoading || districtsQuery.isError}
+                  className="h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">All districts</option>
+                  {districtsQuery.data?.map((district) => (
+                    <option key={district._id} value={district._id}>
+                      {district.districtName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label
+                  htmlFor="employee-performance-region"
+                  className="mb-1 block text-sm font-medium"
+                >
+                  Region
+                </label>
+                <select
+                  id="employee-performance-region"
+                  value={regionFilter}
+                  onChange={(event) =>
+                    updateFilters({
+                      search,
+                      districtId: districtFilter,
+                      regionId: event.target.value,
+                    })
+                  }
+                  disabled={!districtFilter || regionsLoading || regionsError}
+                  className="h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">
+                    {!districtFilter
+                      ? "Select district first"
+                      : regionsLoading
+                        ? "Loading regions..."
+                        : "All regions"}
+                  </option>
+                  {districtRegions.map((region) => (
+                    <option key={region._id} value={region._id}>
+                      {region.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-wrap items-end gap-3 sm:col-span-2 lg:col-span-4">
+                <div className="min-w-0 flex-1 sm:max-w-md">
+                  <label
+                    htmlFor="individual-employee"
+                    className="mb-1 block text-sm font-medium"
+                  >
+                    Selected employee for individual performance
+                  </label>
+                  <Combobox.Root
+                    items={pickerRows}
+                    value={selectedPickerRow}
+                    onValueChange={(row) => {
+                      if (row) selectEmployee(row.employee);
+                    }}
+                    itemToStringLabel={(row) =>
+                      row ? `${row.name} · ${row.employeeCode}` : ""
+                    }
+                    itemToStringValue={(row) => row?.employee._id ?? ""}
+                    autoHighlight
+                  >
+                    <div className="relative">
+                      {selectedPickerRow ? (
+                        <span className="pointer-events-none absolute inset-y-0 left-3 z-10 flex items-center">
+                          <EmployeeAvatar
+                            name={selectedPickerRow.name}
+                            className="size-8 text-[0.65rem]"
+                          />
+                        </span>
+                      ) : (
+                        <span className="pointer-events-none absolute inset-y-0 left-3 z-10 flex items-center">
+                          <ChevronsUpDown
+                            aria-hidden="true"
+                            className="size-4 text-muted-foreground"
+                          />
+                        </span>
+                      )}
+                      <Combobox.Input
+                        id="individual-employee"
+                        aria-label="Search and select employee for individual performance"
+                        placeholder={
+                          employeesQuery.isLoading
+                            ? "Loading employees..."
+                            : "Search employees by name or code"
+                        }
+                        disabled={
+                          employeesQuery.isLoading || employeesQuery.isError
+                        }
+                        className="h-12 w-full rounded-lg border border-input bg-background py-2 pl-14 pr-10 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-60"
+                      />
+                      <Combobox.Trigger
+                        aria-label="Show employee options"
+                        className="absolute inset-y-0 right-1 inline-flex w-9 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <ChevronsUpDown aria-hidden="true" className="size-4" />
+                      </Combobox.Trigger>
+                    </div>
+                    <Combobox.Portal>
+                      <Combobox.Positioner sideOffset={4} className="z-50">
+                        <Combobox.Popup className="max-h-80 w-(--anchor-width) min-w-72 overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg">
+                          <Combobox.Empty className="px-3 py-6 text-center text-sm text-muted-foreground">
+                            No employees match your search and filters.
+                          </Combobox.Empty>
+                          <Combobox.List>
+                            {pickerRows.map((row) => (
+                              <Combobox.Item
+                                key={row.employee._id}
+                                value={row}
+                                className="flex cursor-pointer items-center gap-3 rounded-md px-2.5 py-2 outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[selected]:bg-primary/10"
+                              >
+                                <EmployeeAvatar
+                                  name={row.name}
+                                  className="size-9 text-xs"
+                                />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-medium">
+                                    {row.name}
+                                  </span>
+                                  <span className="block truncate text-xs text-muted-foreground">
+                                    {row.employeeCode ||
+                                      "Employee code unavailable"}
+                                  </span>
+                                </span>
+                                <CompletionIndicator
+                                  rate={row.completionRate}
+                                />
+                                {row.employee._id ===
+                                  activeSelectedEmployeeDocumentId && (
+                                  <Check
+                                    aria-hidden="true"
+                                    className="size-4 shrink-0 text-primary"
+                                  />
+                                )}
+                              </Combobox.Item>
+                            ))}
+                          </Combobox.List>
+                        </Combobox.Popup>
+                      </Combobox.Positioner>
+                    </Combobox.Portal>
+                  </Combobox.Root>
+                  {activeSelectedEmployeeDocumentId && selectedPickerRow && (
+                    <div className="mt-2 flex min-w-0 items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+                      <div className="flex min-w-0 items-center gap-2.5">
                         <EmployeeAvatar
                           name={selectedPickerRow.name}
                           className="size-8 text-[0.65rem]"
                         />
-                      </span>
-                    ) : (
-                      <span className="pointer-events-none absolute inset-y-0 left-3 z-10 flex items-center">
-                        <ChevronsUpDown
-                          aria-hidden="true"
-                          className="size-4 text-muted-foreground"
-                        />
-                      </span>
-                    )}
-                    <Combobox.Input
-                      id="individual-employee"
-                      aria-label="Search and select employee for individual performance"
-                      placeholder={
-                        employeesQuery.isLoading
-                          ? "Loading employees..."
-                          : "Search employees by name or code"
-                      }
-                      disabled={
-                        employeesQuery.isLoading || employeesQuery.isError
-                      }
-                      className="h-12 w-full rounded-lg border border-input bg-background py-2 pl-14 pr-10 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-60"
-                    />
-                    <Combobox.Trigger
-                      aria-label="Show employee options"
-                      className="absolute inset-y-0 right-1 inline-flex w-9 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <ChevronsUpDown aria-hidden="true" className="size-4" />
-                    </Combobox.Trigger>
-                  </div>
-                  <Combobox.Portal>
-                    <Combobox.Positioner sideOffset={4} className="z-50">
-                      <Combobox.Popup className="max-h-80 w-(--anchor-width) min-w-72 overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg">
-                        <Combobox.Empty className="px-3 py-6 text-center text-sm text-muted-foreground">
-                          No employees match your search and filters.
-                        </Combobox.Empty>
-                        <Combobox.List>
-                          {pickerRows.map((row) => (
-                            <Combobox.Item
-                              key={row.employee._id}
-                              value={row}
-                              className="flex cursor-pointer items-center gap-3 rounded-md px-2.5 py-2 outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[selected]:bg-primary/10"
-                            >
-                              <EmployeeAvatar
-                                name={row.name}
-                                className="size-9 text-xs"
-                              />
-                              <span className="min-w-0 flex-1">
-                                <span className="block truncate text-sm font-medium">
-                                  {row.name}
-                                </span>
-                                <span className="block truncate text-xs text-muted-foreground">
-                                  {row.employeeCode ||
-                                    "Employee code unavailable"}
-                                </span>
-                              </span>
-                              <CompletionIndicator rate={row.completionRate} />
-                              {row.employee._id ===
-                                activeSelectedEmployeeDocumentId && (
-                                <Check
-                                  aria-hidden="true"
-                                  className="size-4 shrink-0 text-primary"
-                                />
-                              )}
-                            </Combobox.Item>
-                          ))}
-                        </Combobox.List>
-                      </Combobox.Popup>
-                    </Combobox.Positioner>
-                  </Combobox.Portal>
-                </Combobox.Root>
-                {activeSelectedEmployeeDocumentId && selectedPickerRow && (
-                  <div className="mt-2 flex min-w-0 items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <EmployeeAvatar
-                        name={selectedPickerRow.name}
-                        className="size-8 text-[0.65rem]"
-                      />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">
-                          {selectedPickerRow.name}
-                        </p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {selectedPickerRow.employeeCode ||
-                            "Employee code unavailable"}
-                        </p>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">
+                            {selectedPickerRow.name}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {selectedPickerRow.employeeCode ||
+                              "Employee code unavailable"}
+                          </p>
+                        </div>
                       </div>
+                      <CompletionIndicator
+                        rate={selectedPickerRow.completionRate}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Clear selected employee"
+                        title="Clear selected employee"
+                        className="shrink-0"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setSelectedEmployeeDocumentId(null);
+                        }}
+                      >
+                        <X aria-hidden="true" />
+                      </Button>
                     </div>
-                    <CompletionIndicator
-                      rate={selectedPickerRow.completionRate}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Clear selected employee"
-                      title="Clear selected employee"
-                      className="shrink-0"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        setSelectedEmployeeDocumentId(null);
-                      }}
-                    >
-                      <X aria-hidden="true" />
-                    </Button>
-                  </div>
-                )}
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    updateFilters({ search: "", districtId: "", regionId: "" });
+                    setSelectedEmployeeDocumentId(null);
+                  }}
+                  disabled={
+                    !search &&
+                    !districtFilter &&
+                    !regionFilter &&
+                    !selectedEmployeeDocumentId
+                  }
+                >
+                  Clear filters
+                </Button>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  updateFilters({ search: "", districtId: "", regionId: "" });
-                  setSelectedEmployeeDocumentId(null);
-                }}
-                disabled={
-                  !search &&
-                  !districtFilter &&
-                  !regionFilter &&
-                  !selectedEmployeeDocumentId
-                }
-              >
-                Clear filters
-              </Button>
             </div>
-          </div>
           )}
 
           {districtsQuery.isError && (
@@ -679,8 +681,8 @@ export default function EmployeePerformance({
                   {viewedEmployee
                     ? "Job completion performance for the selected employee."
                     : search.trim()
-                    ? "Matching employee job completion performance, sorted by completion rate from highest to lowest."
-                    : "Top five employee job completion rates, sorted from highest to lowest."}
+                      ? "Matching employee job completion performance, sorted by completion rate from highest to lowest."
+                      : "Top five employee job completion rates, sorted from highest to lowest."}
                 </caption>
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
@@ -914,9 +916,12 @@ export default function EmployeePerformance({
                       ) : (
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                           {JOB_STATUSES.map((status) => (
-                            <Card key={status}>
-                              <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium text-muted-foreground">
+                            <Card
+                              className="hover:bg-linear-to-tr from-white to-blue-400 transition-all duration-300 "
+                              key={status}
+                            >
+                              <CardHeader className="pb-2 ">
+                                <CardTitle className="  text-muted-foreground text-md font-semibold ">
                                   {formatStatus(status)}
                                 </CardTitle>
                               </CardHeader>
