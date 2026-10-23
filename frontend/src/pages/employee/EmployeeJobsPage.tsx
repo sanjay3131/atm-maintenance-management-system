@@ -75,47 +75,17 @@ function formatLabel(
   return labels[formatted] ? t(labels[formatted]) : formatted;
 }
 
-function formatDate(
-  value: string | null | undefined,
-  language: "ta" | "en",
-  t: ReturnType<typeof useEmployeeLanguage>["t"],
-) {
-  if (!value) return t("Not available");
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? t("Not available")
-    : date.toLocaleString(language === "ta" ? "ta-IN" : "en-IN");
-}
-
-function formatScheduledDate(
-  value: string,
-  language: "ta" | "en",
-  t: ReturnType<typeof useEmployeeLanguage>["t"],
-) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? t("Not available")
-    : date.toLocaleDateString(language === "ta" ? "ta-IN" : "en-IN", {
-        timeZone: "Asia/Kolkata",
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-}
-
-function getRecurringMaintenanceLabel(
-  maintenanceType: "DAILY_CLEANING" | "WEEKLY_MOPPING",
-  t: ReturnType<typeof useEmployeeLanguage>["t"],
-) {
-  return maintenanceType === "DAILY_CLEANING"
-    ? t("Daily Cleaning")
-    : t("Weekly Mopping");
+function getATM(job: Job) {
+  return typeof job.atmId === "object" && job.atmId !== null ? job.atmId : null;
 }
 
 function getStatusVariant(status: JobStatus) {
-  if (status === "REJECTED") return "destructive" as const;
-  if (status === "CANCELLED") return "destructive" as const;
-  if (status === "PENDING" || status === "ON_HOLD") return "secondary" as const;
+  if (status === "REJECTED" || status === "CANCELLED") {
+    return "destructive" as const;
+  }
+  if (status === "PENDING" || status === "ON_HOLD") {
+    return "secondary" as const;
+  }
   if (status === "CLOSED") return "outline" as const;
   return "default" as const;
 }
@@ -126,10 +96,6 @@ function getPriorityVariant(priority: JobPriority) {
   }
   if (priority === "low") return "secondary" as const;
   return "outline" as const;
-}
-
-function getATM(job: Job) {
-  return typeof job.atmId === "object" && job.atmId !== null ? job.atmId : null;
 }
 
 function getErrorMessage(
@@ -224,70 +190,65 @@ export default function EmployeeJobsPage() {
   }
 
   return (
-    <main className="space-y-5 p-4 sm:space-y-6 sm:p-6">
-      <header>
-        <div className="flex items-center gap-3">
-          <BriefcaseBusiness
-            className="size-6 text-primary"
-            aria-hidden="true"
-          />
-          <h1 className="text-2xl font-bold sm:text-3xl">{t("My Jobs")}</h1>
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t("Assigned jobs: {count}", { count: pagination?.total ?? 0 })}
-        </p>
-      </header>
+    <main className="bg-slate-100 p-3 sm:p-5">
+      <div className="mx-auto max-w-[430px] space-y-4">
+        <header className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="grid size-10 place-items-center rounded-xl bg-blue-600 text-white shadow-sm">
+                <BriefcaseBusiness className="size-5" aria-hidden="true" />
+              </span>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
+                  {t("My Jobs")}
+                </p>
+                <h1 className="text-xl font-bold text-slate-900">
+                  {t("My Jobs")}
+                </h1>
+              </div>
+            </div>
+            <Badge className="rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+              {pagination?.total ?? 0}
+            </Badge>
+          </div>
+        </header>
 
-      <section className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label
-            htmlFor="my-jobs-search"
-            className="mb-2 block text-sm font-medium"
-          >
-            {t("Search this page")}
-          </label>
+        <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <input
               id="my-jobs-search"
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder={t("Job ID, title, or ATM")}
-              className="h-12 w-full rounded-lg border border-input bg-transparent pl-9 pr-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-700 outline-none ring-0 placeholder:text-slate-400 focus:border-blue-500"
             />
           </div>
-        </div>
-        <div>
-          <label
-            htmlFor="my-jobs-status"
-            className="mb-2 block text-sm font-medium"
-          >
-            {t("Status")}
-          </label>
-          <Select
-            value={status}
-            onValueChange={(value) => {
-              setStatus((value as JobStatus | null) ?? ALL_STATUSES);
-              setPage(1);
-            }}
-          >
-            <SelectTrigger id="my-jobs-status" className="min-h-12 w-full text-base">
-              <SelectValue placeholder={t("All statuses")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_STATUSES}>{t("All statuses")}</SelectItem>
-              {jobStatuses.map((jobStatus) => (
-                <SelectItem key={jobStatus} value={jobStatus}>
-                  {formatLabel(jobStatus, t)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </section>
+          <div>
+            <Select
+              value={status}
+              onValueChange={(value) => {
+                setStatus((value as JobStatus | null) ?? ALL_STATUSES);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger id="my-jobs-status" className="h-11 w-full rounded-xl border-slate-200 bg-slate-50 text-sm text-slate-700">
+                <SelectValue placeholder={t("All statuses")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_STATUSES}>{t("All statuses")}</SelectItem>
+                {jobStatuses.map((jobStatus) => (
+                  <SelectItem key={jobStatus} value={jobStatus}>
+                    {formatLabel(jobStatus, t)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </section>
 
-      {jobs.length === 0 ? (
+        {jobs.length === 0 ? (
         <div className="rounded-lg border border-dashed p-8 text-center">
           <p className="font-medium">
             {status === ALL_STATUSES
@@ -311,110 +272,88 @@ export default function EmployeeJobsPage() {
           </Button>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-4">
           {visibleJobs.map((job) => {
             const atm = getATM(job);
             return (
-              <Card key={job._id}>
-                <CardHeader className="space-y-3 pb-3">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
+              <Card key={job._id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <CardHeader className="space-y-3 p-4 pb-3">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-xs font-medium text-muted-foreground">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">
                         {job.jobNumber || job.jobId}
                       </p>
-                      <CardTitle className="mt-1 break-words text-base">
+                      <CardTitle className="mt-1 break-words text-base font-semibold text-slate-900">
                         {job.title}
                       </CardTitle>
                     </div>
-                    <Badge variant={getStatusVariant(job.status)}>
+                    <Badge
+                      variant={getStatusVariant(job.status)}
+                      className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                    >
                       {formatLabel(job.status, t)}
                     </Badge>
                   </div>
-                  {job.description && (
-                    <p className="line-clamp-3 text-sm text-muted-foreground">
-                      {job.description}
-                    </p>
-                  )}
-                  {job.rejectionReason && (
-                    <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
-                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
-                        {t("Returned for rework")}
-                      </p>
-                      <p className="mt-1 break-words text-sm text-muted-foreground">
-                        {job.rejectionReason}
-                      </p>
-                    </div>
-                  )}
-                  {job.recurringMaintenance?.source === "RECURRING" && (
-                    <div className="space-y-1.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary">{t("Recurring")}</Badge>
-                        <span className="text-sm font-medium">
-                          {getRecurringMaintenanceLabel(
-                            job.recurringMaintenance.maintenanceType,
-                            t,
-                          )}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {t("Scheduled")}:{" "}
-                        {formatScheduledDate(
-                          job.recurringMaintenance.scheduledDate,
-                          language,
-                          t,
-                        )}
-                      </p>
-                    </div>
-                  )}
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                    <div className="min-w-0">
-                      <p className="text-xs text-muted-foreground">{t("ATM")}</p>
-                      <p className="break-words font-medium">
-                        {atm?.atmId || t("Not available")}
-                      </p>
-                      {atm?.locationName && (
-                        <p className="break-words text-xs text-muted-foreground">
-                          {atm.locationName}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">{t("Work type")}</p>
-                      <p className="font-medium">{formatLabel(job.workType, t)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">{t("Priority")}</p>
-                      <Badge variant={getPriorityVariant(job.priority)}>
-                        {formatLabel(job.priority, t)}
-                      </Badge>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">{t("Created")}</p>
-                      <p className="font-medium">
-                        {formatDate(job.createdAt, language, t)}
-                      </p>
-                    </div>
-                    {job.assignedAt && (
-                      <div className="col-span-2">
-                        <p className="text-xs text-muted-foreground">
-                          {t("Assigned")}
-                        </p>
-                        <p className="font-medium">
-                          {formatDate(job.assignedAt, language, t)}
-                        </p>
-                      </div>
-                    )}
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <span className="rounded-full bg-slate-100 px-2 py-1 font-medium text-slate-700">
+                      {formatLabel(job.workType, t)}
+                    </span>
+                    <Badge
+                      variant={getPriorityVariant(job.priority)}
+                      className="rounded-full px-2 py-1 text-xs font-medium"
+                    >
+                      {formatLabel(job.priority, t)}
+                    </Badge>
                   </div>
-                  {job.isReassigned && (
-                    <Badge variant="outline">{t("Reassigned")}</Badge>
+                </CardHeader>
+                <CardContent className="space-y-4 p-4 pt-0">
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                      <span className="inline-flex size-6 items-center justify-center rounded-md bg-blue-100 text-blue-700">
+                        {atm?.atmId ? "ATM" : "•"}
+                      </span>
+                      {atm?.atmId || t("Not available")}
+                    </div>
+                    <p className="mt-2 text-sm text-slate-600">
+                      {atm?.locationName || `${t("Location")}: ${t("Not available")}`}
+                    </p>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
+                      <div className="rounded-lg bg-white px-2 py-2">
+                        <p className="font-medium text-slate-500">{t("District")}</p>
+                        <p className="mt-1 text-slate-700">
+                          {atm?.districtId || t("Not available")}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-white px-2 py-2">
+                        <p className="font-medium text-slate-500">{t("Region")}</p>
+                        <p className="mt-1 text-slate-700">
+                          {atm?.regionId || t("Not available")}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {job.description && (
+                    <div className="rounded-xl border border-slate-200 bg-white p-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                        {t("Description")}
+                      </p>
+                      <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-700">
+                        {job.description}
+                      </p>
+                    </div>
                   )}
-                  <div className="border-t pt-3">
+
+                  {job.rejectionReason && (
+                    <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-800">
+                      {job.rejectionReason}
+                    </div>
+                  )}
+
+                  <div className="border-t border-slate-200 pt-3">
                     <Button
                       type="button"
-                      variant="outline"
-                      className="min-h-11 w-full sm:w-auto"
+                      className="min-h-11 w-full rounded-xl bg-blue-600 text-white hover:bg-blue-700"
                       onClick={() => navigate(`/employee/jobs/${job._id}`)}
                     >
                       {t("View details")}
@@ -461,6 +400,7 @@ export default function EmployeeJobsPage() {
           </div>
         </div>
       )}
+      </div>
     </main>
   );
 }

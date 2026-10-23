@@ -28,13 +28,14 @@ import JobPhotoGallery from "@/features/jobs/components/JobPhotoGallery";
 import { useCompleteJob, useUploadJobPhoto } from "../hooks/useJobLifecycle";
 import type { Job, JobPhoto } from "../types/job.types";
 import type { JobPhotoType } from "../services/jobs.service";
+import { EMPLOYEE_REQUIRED_PHOTOS_PER_TYPE } from "../utils/employeeJobDetails.utils";
 import {
   employeeErrorMessage,
   useEmployeeLanguage,
   type EmployeeTranslationKey,
 } from "@/features/employee-portal/i18n";
 
-const REQUIRED_PHOTOS_PER_TYPE = 3;
+const REQUIRED_PHOTOS_PER_TYPE = EMPLOYEE_REQUIRED_PHOTOS_PER_TYPE;
 const MAX_PHOTOS_PER_TYPE = 3;
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_FILE_TYPES = new Set([
@@ -754,12 +755,15 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
   };
 
   return (
-    <Card className="min-w-0 overflow-hidden">
-      <CardHeader className="p-4 sm:p-6">
+    <Card className="min-w-0 overflow-hidden rounded-xl border-blue-100 shadow-sm dark:border-blue-950">
+      <CardHeader className="p-4 pb-3 sm:p-5">
         <CardTitle>{t("Field Work")}</CardTitle>
       </CardHeader>
-      <CardContent className="min-w-0 space-y-6 p-4 pt-0 sm:p-6 sm:pt-0">
-        <section className="min-w-0 space-y-3" aria-labelledby="job-gps-heading">
+      <CardContent className="min-w-0 space-y-4 p-4 pt-0 sm:p-5 sm:pt-0">
+        <section
+          className="min-w-0 space-y-3 rounded-lg bg-teal-50/60 p-3 dark:bg-teal-950/20"
+          aria-labelledby="job-gps-heading"
+        >
           <div>
             <h2
               id="job-gps-heading"
@@ -846,7 +850,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
           )}
         </section>
 
-        <section className="min-w-0 space-y-4 border-t pt-5">
+        <section className="min-w-0 space-y-4 border-t border-slate-200 pt-4 dark:border-slate-800">
           <div>
             <h2 className="text-sm font-semibold">{t("Cleaning photos")}</h2>
             <p className="mt-1 text-sm text-muted-foreground">

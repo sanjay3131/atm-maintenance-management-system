@@ -19,6 +19,7 @@ import {
   useJobMaterialUsage,
 } from "../hooks/useJobMaterialUsage";
 import type { Job } from "../types/job.types";
+import { getEmployeeMaterialUsageVisibility } from "../utils/employeeJobDetails.utils";
 import { useEmployeeLanguage } from "@/features/employee-portal/i18n";
 
 function formatRecordedAt(value: string | undefined, language: "ta" | "en") {
@@ -89,6 +90,10 @@ export default function EmployeeMaterialUsageSection({
   const deleteMutation = useDeleteJobMaterialUsage();
   const usageEntries = usageQuery.data ?? [];
   const selectedItem = itemsQuery.data?.find((item) => item._id === itemId);
+  const { showUsage } = getEmployeeMaterialUsageVisibility(
+    job.status,
+    usageEntries.length,
+  );
 
   const confirmRemove = () => {
     if (!usageToRemove || deleteMutation.isPending) return;
@@ -149,225 +154,231 @@ export default function EmployeeMaterialUsageSection({
   };
 
   return (
-    <Card className="min-w-0 overflow-hidden">
-      <CardHeader className="p-4 sm:p-6">
-        <CardTitle>{t("Materials Used")}</CardTitle>
-      </CardHeader>
-      <CardContent className="min-w-0 space-y-5 p-4 pt-0 sm:p-6 sm:pt-0">
-        {canRecord ? (
-          <form
-            className="grid min-w-0 gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(8rem,0.4fr)_auto] sm:items-end sm:p-4"
-            onSubmit={recordMaterial}
-          >
-            <div className="min-w-0 space-y-2">
-              <label
-                className="text-sm font-medium"
-                htmlFor={`material-item-${job._id}`}
-              >
-                {t("Active Item")}
-              </label>
-              {itemsQuery.isLoading ? (
-                <div
-                  className="flex h-9 items-center gap-2 rounded-lg border px-3 text-sm text-muted-foreground"
-                  role="status"
+    <>
+      {canRecord && (
+        <Card className="min-w-0 overflow-hidden">
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle>{t("Record materials used")}</CardTitle>
+          </CardHeader>
+          <CardContent className="min-w-0 space-y-5 p-4 pt-0 sm:p-6 sm:pt-0">
+            <form
+              className="grid min-w-0 gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(8rem,0.4fr)_auto] sm:items-end sm:p-4"
+              onSubmit={recordMaterial}
+            >
+              <div className="min-w-0 space-y-2">
+                <label
+                  className="text-sm font-medium"
+                  htmlFor={`material-item-${job._id}`}
                 >
-                  <LoaderCircle className="size-4 animate-spin" />
-                  {t("Loading Items...")}
-                </div>
-              ) : itemsQuery.isError ? (
-                <div className="space-y-2">
-                  <p role="alert" className="text-sm text-destructive">
-                    {t("Could not load active Items.")}
-                  </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void itemsQuery.refetch()}
-                    disabled={itemsQuery.isFetching}
+                  {t("Active Item")}
+                </label>
+                {itemsQuery.isLoading ? (
+                  <div
+                    className="flex h-9 items-center gap-2 rounded-lg border px-3 text-sm text-muted-foreground"
+                    role="status"
                   >
-                    {itemsQuery.isFetching ? t("Retrying...") : t("Retry")}
-                  </Button>
-                </div>
-              ) : (
-                <Select
-                  value={itemId}
-                  onValueChange={(value) => {
-                    setItemId(value ?? "");
+                    <LoaderCircle className="size-4 animate-spin" />
+                    {t("Loading Items...")}
+                  </div>
+                ) : itemsQuery.isError ? (
+                  <div className="space-y-2">
+                    <p role="alert" className="text-sm text-destructive">
+                      {t("Could not load active Items.")}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void itemsQuery.refetch()}
+                      disabled={itemsQuery.isFetching}
+                    >
+                      {itemsQuery.isFetching ? t("Retrying...") : t("Retry")}
+                    </Button>
+                  </div>
+                ) : (
+                  <Select
+                    value={itemId}
+                    onValueChange={(value) => {
+                      setItemId(value ?? "");
+                      setValidationError("");
+                    }}
+                    disabled={
+                      createMutation.isPending ||
+                      (itemsQuery.data?.length ?? 0) === 0
+                    }
+                  >
+                    <SelectTrigger
+                      id={`material-item-${job._id}`}
+                      className="min-h-11 w-full"
+                      aria-label={t("Active Item")}
+                    >
+                      <SelectValue
+                        placeholder={
+                          (itemsQuery.data?.length ?? 0) > 0
+                            ? t("Select an Item")
+                            : t("No active Items available")
+                        }
+                      >
+                        {selectedItem
+                          ? `${selectedItem.itemName} (${selectedItem.unit})`
+                          : undefined}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(itemsQuery.data ?? []).map((item) => (
+                        <SelectItem key={item._id} value={item._id}>
+                          {item.itemName} ({item.unit})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {itemsQuery.isSuccess && itemsQuery.data.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    {t("No active Items are available.")}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <label
+                  className="text-sm font-medium"
+                  htmlFor={`material-quantity-${job._id}`}
+                >
+                  {t("Quantity")}
+                </label>
+                <input
+                  id={`material-quantity-${job._id}`}
+                  type="number"
+                  min="0"
+                  step="any"
+                  inputMode="decimal"
+                  value={quantity}
+                  onChange={(event) => {
+                    setQuantity(event.target.value);
                     setValidationError("");
                   }}
-                  disabled={
-                    createMutation.isPending ||
-                    (itemsQuery.data?.length ?? 0) === 0
-                  }
+                  disabled={createMutation.isPending}
+                  aria-invalid={Boolean(validationError)}
+                  className="h-11 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+                />
+              </div>
+
+              <Button
+                type="submit"
+                className="min-h-11 w-full sm:w-auto"
+                disabled={
+                  createMutation.isPending ||
+                  itemsQuery.isLoading ||
+                  itemsQuery.isError ||
+                  (itemsQuery.data?.length ?? 0) === 0
+                }
+              >
+                {createMutation.isPending ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <PackagePlus />
+                )}
+                {createMutation.isPending ? t("Recording...") : t("Add Material")}
+              </Button>
+              {validationError && (
+                <p
+                  className="text-sm text-destructive sm:col-span-3"
+                  role="alert"
                 >
-                  <SelectTrigger
-                    id={`material-item-${job._id}`}
-                    className="min-h-11 w-full"
-                    aria-label={t("Active Item")}
-                  >
-                    <SelectValue
-                      placeholder={
-                        (itemsQuery.data?.length ?? 0) > 0
-                          ? t("Select an Item")
-                          : t("No active Items available")
-                      }
-                    >
-                      {selectedItem
-                        ? `${selectedItem.itemName} (${selectedItem.unit})`
-                        : undefined}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(itemsQuery.data ?? []).map((item) => (
-                      <SelectItem key={item._id} value={item._id}>
-                        {item.itemName} ({item.unit})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              {itemsQuery.isSuccess && itemsQuery.data.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  {t("No active Items are available.")}
+                  {validationError}
                 </p>
               )}
-            </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
-            <div className="space-y-2">
-              <label
-                className="text-sm font-medium"
-                htmlFor={`material-quantity-${job._id}`}
-              >
-                {t("Quantity")}
-              </label>
-              <input
-                id={`material-quantity-${job._id}`}
-                type="number"
-                min="0"
-                step="any"
-                inputMode="decimal"
-                value={quantity}
-                onChange={(event) => {
-                  setQuantity(event.target.value);
-                  setValidationError("");
-                }}
-                disabled={createMutation.isPending}
-                aria-invalid={Boolean(validationError)}
-                className="h-11 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
-              />
-            </div>
-
-            <Button
-              type="submit"
-              className="min-h-11 w-full sm:w-auto"
-              disabled={
-                createMutation.isPending ||
-                itemsQuery.isLoading ||
-                itemsQuery.isError ||
-                (itemsQuery.data?.length ?? 0) === 0
-              }
-            >
-              {createMutation.isPending ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <PackagePlus />
-              )}
-              {createMutation.isPending ? t("Recording...") : t("Add Material")}
-            </Button>
-            {validationError && (
-              <p
-                className="text-sm text-destructive sm:col-span-3"
-                role="alert"
-              >
-                {validationError}
-              </p>
-            )}
-          </form>
-        ) : (
-          <p className="rounded-md bg-muted/40 p-3 text-sm text-muted-foreground">
-            {t("New material usage can only be recorded while the Job is in progress.")}
+      {usageQuery.isLoading && !canRecord && (
+        <div
+          className="flex items-center gap-2 py-3 text-sm text-muted-foreground"
+          role="status"
+        >
+          <LoaderCircle className="size-4 animate-spin" />
+          {t("Loading material history...")}
+        </div>
+      )}
+      {usageQuery.isError && (
+        <div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+          <p role="alert" className="text-sm text-destructive">
+            {getUsageReadError(usageQuery.error, t)}
           </p>
-        )}
-
-        <section aria-label={t("Recorded materials")} aria-live="polite">
-          {usageQuery.isLoading ? (
-            <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground" role="status">
-              <LoaderCircle className="size-4 animate-spin" />
-              {t("Loading material history...")}
-            </div>
-          ) : usageQuery.isError ? (
-            <div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
-              <p role="alert" className="text-sm text-destructive">
-                {getUsageReadError(usageQuery.error, t)}
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void usageQuery.refetch()}
-                disabled={usageQuery.isFetching}
-              >
-                {usageQuery.isFetching ? t("Retrying...") : t("Retry")}
-              </Button>
-            </div>
-          ) : usageEntries.length === 0 ? (
-            <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-              {t("No materials have been recorded for this Job.")}
-            </p>
-          ) : (
-            <ul className="divide-y rounded-md border">
-              {usageEntries.map((entry) => {
-                const recordedAt = formatRecordedAt(entry.createdAt, language);
-                return (
-                  <li
-                    key={entry._id}
-                    className="flex min-w-0 flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <p className="min-w-0 break-words text-sm font-medium">
-                      {entry.itemNameSnapshot}
-                    </p>
-                    <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-                      <span>
-                        {entry.quantity} {entry.unitSnapshot}
-                      </span>
-                      {recordedAt && (
-                        <time dateTime={entry.createdAt}>{recordedAt}</time>
-                      )}
-                      {canRecord && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          aria-label={t("Remove {item} usage", { item: entry.itemNameSnapshot })}
-                          onClick={() =>
-                            setUsageToRemove({
-                              _id: entry._id,
-                              itemNameSnapshot: entry.itemNameSnapshot,
-                            })
-                          }
-                          disabled={deleteMutation.isPending}
-                        >
-                          <Trash2 />
-                        </Button>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-      </CardContent>
-      <ConfirmMaterialUsageRemovalDialog
-        open={Boolean(usageToRemove)}
-        itemName={usageToRemove?.itemNameSnapshot ?? t("material")}
-        isPending={deleteMutation.isPending}
-        onOpenChange={(open) => {
-          if (!open) setUsageToRemove(null);
-        }}
-        onConfirm={confirmRemove}
-      />
-    </Card>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void usageQuery.refetch()}
+            disabled={usageQuery.isFetching}
+          >
+            {usageQuery.isFetching ? t("Retrying...") : t("Retry")}
+          </Button>
+        </div>
+      )}
+      {showUsage && (
+        <Card className="min-w-0 overflow-hidden">
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle>{t("Materials Used")}</CardTitle>
+          </CardHeader>
+          <CardContent className="min-w-0 p-4 pt-0 sm:p-6 sm:pt-0">
+            <section aria-label={t("Recorded materials")} aria-live="polite">
+              <ul className="divide-y rounded-md border">
+                {usageEntries.map((entry) => {
+                  const recordedAt = formatRecordedAt(entry.createdAt, language);
+                  return (
+                    <li
+                      key={entry._id}
+                      className="flex min-w-0 flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <p className="min-w-0 break-words text-sm font-medium">
+                        {entry.itemNameSnapshot}
+                      </p>
+                      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                        <span>
+                          {entry.quantity} {entry.unitSnapshot}
+                        </span>
+                        {recordedAt && (
+                          <time dateTime={entry.createdAt}>{recordedAt}</time>
+                        )}
+                        {canRecord && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label={t("Remove {item} usage", { item: entry.itemNameSnapshot })}
+                            onClick={() =>
+                              setUsageToRemove({
+                                _id: entry._id,
+                                itemNameSnapshot: entry.itemNameSnapshot,
+                              })
+                            }
+                            disabled={deleteMutation.isPending}
+                          >
+                            <Trash2 />
+                          </Button>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          </CardContent>
+          <ConfirmMaterialUsageRemovalDialog
+            open={Boolean(usageToRemove)}
+            itemName={usageToRemove?.itemNameSnapshot ?? t("material")}
+            isPending={deleteMutation.isPending}
+            onOpenChange={(open) => {
+              if (!open) setUsageToRemove(null);
+            }}
+            onConfirm={confirmRemove}
+          />
+        </Card>
+      )}
+    </>
   );
 }
