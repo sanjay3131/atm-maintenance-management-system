@@ -7,6 +7,16 @@ export type CoordinateValidation =
   | { valid: true; latitude: number; longitude: number }
   | { valid: false; error: string };
 
+export const MAX_ATM_LOCATION_REQUEST_ACCURACY_METERS = 50;
+
+export const isAcceptableATMLocationRequestAccuracy = (
+  accuracy: number | null | undefined,
+): accuracy is number =>
+  typeof accuracy === "number" &&
+  Number.isFinite(accuracy) &&
+  accuracy >= 0 &&
+  accuracy <= MAX_ATM_LOCATION_REQUEST_ACCURACY_METERS;
+
 export const parseLocationCoordinates = (
   latitudeInput: string,
   longitudeInput: string,

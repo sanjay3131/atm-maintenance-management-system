@@ -16,6 +16,7 @@ import {
   rejectATMLocationRequestSchema,
   submitATMLocationRequestSchema,
 } from "../src/modules/atms/atm.validation.js";
+import { completeJobSchema } from "../src/modules/jobs/jobs.validation.js";
 import atmRouter from "../src/modules/atms/atm.routes.js";
 
 const atmId = "64b000000000000000000101";
@@ -333,6 +334,13 @@ const runMiddleware = (middleware, userType) =>
 test("request schema rejects invalid coordinates and accuracy", () => {
   const valid = proposal();
   assert.equal(submitATMLocationRequestSchema.safeParse(valid).success, true);
+  assert.equal(
+    submitATMLocationRequestSchema.safeParse({
+      ...valid,
+      accuracy: 50,
+    }).success,
+    true,
+  );
   for (const invalid of [
     { ...valid, latitude: -90.01 },
     { ...valid, latitude: Number.NaN },
@@ -341,10 +349,17 @@ test("request schema rejects invalid coordinates and accuracy", () => {
     { ...valid, longitude: Number.NEGATIVE_INFINITY },
     { ...valid, accuracy: -0.1 },
     { ...valid, accuracy: 50.1 },
+    { ...valid, accuracy: 381 },
     { ...valid, accuracy: Number.POSITIVE_INFINITY },
   ]) {
     assert.equal(submitATMLocationRequestSchema.safeParse(invalid).success, false);
   }
+  assert.equal(
+    completeJobSchema.safeParse({
+      gps: { latitude: 12.5, longitude: 77.6, accuracy: 381 },
+    }).success,
+    true,
+  );
   assert.equal(
     rejectATMLocationRequestSchema.safeParse({ reason: "   " }).success,
     false,

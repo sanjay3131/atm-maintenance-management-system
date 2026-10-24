@@ -36,7 +36,13 @@ const makeQuery = (job) => ({
 });
 
 async function withJobMocks(
-  { beforeCount, afterCount, status = "IN_PROGRESS" },
+  {
+    beforeCount,
+    afterCount,
+    status = "IN_PROGRESS",
+    locationConfigured = true,
+    coordinates = [0, 0],
+  },
   callback,
 ) {
   const job = {
@@ -59,8 +65,8 @@ async function withJobMocks(
     },
   };
   const atm = {
-    locationConfigured: true,
-    location: { coordinates: [0, 0] },
+    locationConfigured,
+    location: { coordinates },
   };
   const historyEntries = [];
   const countQueries = [];
@@ -197,6 +203,47 @@ test("completes a Job when it has at least three valid photos of each type", asy
       assert.equal(historyEntries.length, 1);
     },
   );
+});
+
+test("failed ATM location validation never marks a Job complete", async (t) => {
+  const cases = [
+    {
+      name: "ATM location is not configured",
+      locationConfigured: false,
+      coordinates: [0, 0],
+      expectedStatus: 400,
+    },
+    {
+      name: "employee is outside the 20 m completion radius",
+      locationConfigured: true,
+      coordinates: [1, 1],
+      expectedStatus: 403,
+    },
+  ];
+
+  for (const testCase of cases) {
+    await t.test(testCase.name, async () => {
+      await withJobMocks(
+        {
+          beforeCount: 3,
+          afterCount: 3,
+          locationConfigured: testCase.locationConfigured,
+          coordinates: testCase.coordinates,
+        },
+        async ({ job, historyEntries }) => {
+          const result = await invoke(completeJob, completionRequest());
+
+          assert.equal(result.error?.statusCode, testCase.expectedStatus);
+          assert.equal(job.status, "IN_PROGRESS");
+          assert.equal(job.completedAt, undefined);
+          assert.equal(job.employeeGpsAtCompletion, undefined);
+          assert.equal(job.gpsValidated, undefined);
+          assert.equal(job.saveCalls, 0);
+          assert.equal(historyEntries.length, 0);
+        },
+      );
+    });
+  }
 });
 
 test("rejection returns eligible work for rework without checking old evidence", async () => {

@@ -10,6 +10,7 @@ import {
   createATMLocationRequestPayload,
   getGeolocationErrorMessage,
   getATMLocationRequestErrorMessage,
+  isAcceptableATMLocationRequestAccuracy,
   isEmployeeLocationRequestClosed,
   parseLocationCoordinates,
 } from "@/features/atms/atmLocationRequest.utils";
@@ -109,8 +110,7 @@ export default function EmployeeATMLocationRequest({
     }
     if (
       inputSource === "GPS" &&
-      accuracy !== null &&
-      (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 50)
+      !isAcceptableATMLocationRequestAccuracy(accuracy)
     ) {
       setError("GPS accuracy must be 50 meters or better. Capture GPS again or enter coordinates manually.");
       return;

@@ -9,6 +9,7 @@ import {
   getATMLocationRequestErrorMessage,
   getATMLocationRequestListState,
   getGeolocationErrorMessage,
+  isAcceptableATMLocationRequestAccuracy,
   isEmployeeLocationRequestClosed,
   parseLocationCoordinates,
   validateRejectionReason,
@@ -72,6 +73,14 @@ test("GPS failures have actionable messages for denied and unavailable location"
   assert.match(getGeolocationErrorMessage(1), /permission was denied/);
   assert.match(getGeolocationErrorMessage(2), /location is unavailable/);
   assert.match(getGeolocationErrorMessage(3), /timed out/);
+});
+
+test("ATM location requests accept GPS accuracy up to 50 m and reject poor readings", () => {
+  assert.equal(isAcceptableATMLocationRequestAccuracy(0), true);
+  assert.equal(isAcceptableATMLocationRequestAccuracy(50), true);
+  assert.equal(isAcceptableATMLocationRequestAccuracy(50.1), false);
+  assert.equal(isAcceptableATMLocationRequestAccuracy(381), false);
+  assert.equal(isAcceptableATMLocationRequestAccuracy(Number.NaN), false);
 });
 
 test("review controls are limited to Admin and SuperAdmin", () => {
@@ -222,6 +231,8 @@ test("job field-work location proposal uses the approval workflow, not the legac
   assert.match(component, /canSubmitEmployeeATMLocationRequest\(atm\)/);
   assert.match(component, /inputSource:\s*"GPS"/);
   assert.match(component, /submitted for review/i);
+  assert.match(component, /isAcceptableATMLocationRequestAccuracy\(gps\.accuracy\)/);
+  assert.match(component, /Retry GPS capture in a clearer area/);
   assert.doesNotMatch(component, /useSetATMLocation|setATMLocationMutation/);
   assert.doesNotMatch(component, /set-location/);
 });

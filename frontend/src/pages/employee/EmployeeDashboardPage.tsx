@@ -323,7 +323,7 @@ function EmployeeDashboardPage() {
             id="assigned-jobs-heading"
             className="min-w-0 warp-break text-lg font-semibold leading-6"
           >
-            {t("Currently Assigned Jobs")}
+            {t("Currently Assigned Jobs")}11
           </h2>
         </div>
 

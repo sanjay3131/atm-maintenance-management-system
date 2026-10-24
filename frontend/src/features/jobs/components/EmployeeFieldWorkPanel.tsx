@@ -23,7 +23,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSubmitATMLocationRequest } from "@/features/atms/hooks/useATMLocationRequests";
-import { canSubmitEmployeeATMLocationRequest } from "@/features/atms/atmLocationRequest.utils";
+import {
+  canSubmitEmployeeATMLocationRequest,
+  isAcceptableATMLocationRequestAccuracy,
+} from "@/features/atms/atmLocationRequest.utils";
 import JobPhotoGallery from "@/features/jobs/components/JobPhotoGallery";
 import { useCompleteJob, useUploadJobPhoto } from "../hooks/useJobLifecycle";
 import type { Job, JobPhoto } from "../types/job.types";
@@ -504,6 +507,12 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
     ) {
       return;
     }
+    if (!isAcceptableATMLocationRequestAccuracy(gps.accuracy)) {
+      setGpsError(
+        t("GPS accuracy must be 50 meters or better. Retry GPS capture in a clearer area before submitting the location request."),
+      );
+      return;
+    }
 
     void locationRequestMutation
       .mutateAsync({
@@ -832,6 +841,11 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                   {t("GPS accuracy is low. Retry from a location with a clearer signal if possible.")}
                 </p>
               )}
+              {!isAcceptableATMLocationRequestAccuracy(gps.accuracy) && (
+                <p className="mt-1 text-destructive" role="alert">
+                  {t("GPS accuracy must be 50 meters or better. Retry GPS capture in a clearer area before submitting the location request.")}
+                </p>
+              )}
             </div>
           )}
           {atm &&
@@ -841,7 +855,10 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
               type="button"
               className="min-h-11 w-full sm:w-auto"
               onClick={submitCurrentLocationForReview}
-              disabled={locationRequestMutation.isPending}
+              disabled={
+                locationRequestMutation.isPending ||
+                !isAcceptableATMLocationRequestAccuracy(gps.accuracy)
+              }
             >
               {locationRequestMutation.isPending ? (
                 <LoaderCircle className="animate-spin" />
