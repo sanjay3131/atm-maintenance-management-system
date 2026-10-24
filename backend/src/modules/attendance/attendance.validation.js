@@ -142,7 +142,10 @@ export const onBehalfAttendanceRecordSchema = z
   });
 
 export const myAttendanceQuerySchema = z
-  .object(attendanceListFields)
+  .object({
+    ...attendanceListFields,
+    openOnly: z.literal("true").optional(),
+  })
   .strict()
   .superRefine(validateDateRange);
 
@@ -203,7 +206,7 @@ export const adminAttendanceDashboardQuerySchema = z
   .object({
     date: attendanceDateSchema.optional(),
     search: z.string().trim().max(100).optional(),
-    role: z.enum(["all", "employee"]).default("all"),
+    role: z.enum(["all", "employee", "supervisor"]).default("all"),
     status: z
       .enum(["all", "present", "absent", "incomplete", "unrecorded"])
       .default("all"),

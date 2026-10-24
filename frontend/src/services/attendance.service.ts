@@ -2,7 +2,8 @@ import api from "@/lib/axios";
 
 export interface AttendanceRecord {
   _id: string;
-  employeeId: string;
+  employeeId: string | null;
+  supervisorUserId?: string | null;
   attendanceDate: string;
   checkInAt: string;
   checkOutAt: string | null;
@@ -48,6 +49,7 @@ export interface AttendanceCalendarResponse {
 export interface AttendanceQuery {
   fromDate?: string;
   toDate?: string;
+  openOnly?: boolean;
   page: number;
   limit: number;
 }
@@ -100,7 +102,13 @@ export interface AdminAttendanceDashboardResponse {
       incomplete: number;
       unrecorded: number;
     };
-    supervisors: null;
+    supervisors: {
+      total: number;
+      present: number;
+      absent: number;
+      incomplete: number;
+      unrecorded: number;
+    };
   };
   records: AdminAttendanceDashboardRecord[];
   pagination: AttendancePagination;

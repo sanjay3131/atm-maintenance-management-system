@@ -5,6 +5,7 @@ import RoleSelectionStep from "./RoleSelectionStep";
 import EmployeeDetailsStep from "./EmployeeDetailsStep";
 import CustomerDetailsStep from "./CustomerDetailsStep";
 import {
+  useCreateSupervisor,
   useCreateCustomerWizard,
   useCreateUserWizard,
 } from "../hooks/user.hooks";
@@ -57,12 +58,15 @@ const initialCustomerDetails: CustomerDetailsForm = {
 export default function CreateUserWizard({
   onClose,
   customerOnly = false,
+  fixedRole,
 }: {
   onClose?: () => void;
   customerOnly?: boolean;
+  fixedRole?: "supervisor";
 }) {
   const createUserMutation = useCreateUserWizard();
   const createCustomerMutation = useCreateCustomerWizard();
+  const createSupervisorMutation = useCreateSupervisor();
   const { data: banks = [], isLoading: isBanksLoading, isError: isBanksError, refetch: refetchBanks } =
     useBanks({ isActive: true });
   const queryClient = useQueryClient();
@@ -103,6 +107,11 @@ export default function CreateUserWizard({
 
   const handleUserDetailsNext = (data: UserDetailsForm) => {
     setUserDetails(data);
+    if (fixedRole) {
+      setRole(fixedRole);
+      setStep(2);
+      return;
+    }
     if (customerOnly) {
       setCustomerDetails((current) =>
         prefillCustomerDetails(data, current, customerEditedFields),
@@ -168,7 +177,9 @@ export default function CreateUserWizard({
     );
   };
 
-  const visibleSteps = getCustomerWizardSteps(customerOnly);
+  const visibleSteps = fixedRole
+    ? [1, 2]
+    : getCustomerWizardSteps(customerOnly);
 
   return (
     <div className="relative mx-auto w-fit rounded-xl border bg-white p-6 shadow-sm">
@@ -232,7 +243,7 @@ export default function CreateUserWizard({
       )}
 
       {/* Step 2 */}
-      {!customerOnly && step === 2 && (
+      {!customerOnly && !fixedRole && step === 2 && (
         <RoleSelectionStep
           value={role}
           onNext={handleRoleNext}
@@ -270,7 +281,9 @@ export default function CreateUserWizard({
       )}
 
       {/* Step 3 - Supervisor */}
-      {!customerOnly && step === 3 && role === "supervisor" && (
+      {!customerOnly &&
+        step === (fixedRole ? 2 : 3) &&
+        role === "supervisor" && (
         <div className="space-y-6">
           <div>
             <h2 className="text-xl font-semibold">Supervisor</h2>
@@ -283,7 +296,7 @@ export default function CreateUserWizard({
           <div className="flex justify-between">
             <button
               type="button"
-              onClick={() => setStep(2)}
+              onClick={() => setStep(fixedRole ? 1 : 2)}
               className="rounded-md border px-5 py-2 text-sm font-medium hover:bg-gray-50"
             >
               Back
@@ -292,20 +305,33 @@ export default function CreateUserWizard({
             <button
               type="button"
               onClick={() => {
-                createUserMutation.mutate(
-                  {
-                    user: userDetails,
-                    role: "supervisor",
-                  },
-                  {
+                if (fixedRole === "supervisor") {
+                  createSupervisorMutation.mutate(userDetails, {
                     onSuccess: handleCreateSuccess,
                     onError: handleCreateError,
-                  },
-                );
+                  });
+                } else {
+                  createUserMutation.mutate(
+                    {
+                      user: userDetails,
+                      role: "supervisor",
+                    },
+                    {
+                      onSuccess: handleCreateSuccess,
+                      onError: handleCreateError,
+                    },
+                  );
+                }
               }}
+              disabled={
+                createSupervisorMutation.isPending ||
+                createUserMutation.isPending
+              }
               className="rounded-md bg-black px-5 py-2 text-sm font-medium text-white hover:bg-gray-800"
             >
-              Create Supervisor
+              {createSupervisorMutation.isPending || createUserMutation.isPending
+                ? "Creating..."
+                : "Create Supervisor"}
             </button>
           </div>
         </div>

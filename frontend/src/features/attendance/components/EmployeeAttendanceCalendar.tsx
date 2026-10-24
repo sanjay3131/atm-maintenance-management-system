@@ -212,7 +212,7 @@ export default function EmployeeAttendanceCalendar({
                 aria-label={`${date}: ${STATUS_LABELS[status]}`}
                 aria-pressed={selectedDate === date}
                 onClick={() => setSelectedDate(date)}
-                className={`text-2xl aspect-square w-full rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                className={` aspect-square w-full rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   STATUS_STYLES[status]
                 } ${
                   selectedDate === date ? "ring-2 ring-ring ring-offset-2" : ""

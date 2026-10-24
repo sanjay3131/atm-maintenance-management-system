@@ -6,7 +6,7 @@ import {
   type AttendanceQuery,
 } from "@/services/attendance.service";
 
-const ATTENDANCE_QUERY_KEY = ["employee-attendance", "me"];
+const ATTENDANCE_QUERY_KEY = ["attendance", "me"];
 
 export const useMyAttendance = (params: AttendanceQuery) =>
   useQuery({
@@ -18,6 +18,13 @@ export const useRecentMyAttendance = () =>
   useQuery({
     queryKey: [...ATTENDANCE_QUERY_KEY, "recent"],
     queryFn: () => getMyAttendance({ page: 1, limit: 100 }),
+  });
+
+export const useMyOpenAttendance = () =>
+  useQuery({
+    queryKey: [...ATTENDANCE_QUERY_KEY, "open"],
+    queryFn: () =>
+      getMyAttendance({ page: 1, limit: 1, openOnly: true }),
   });
 
 export const useCheckIn = () => {

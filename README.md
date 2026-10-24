@@ -24,3 +24,14 @@ Employee's linked User account and retains its assignment if the ATM is later
 reassigned. Jobs are due through the end of their scheduled day in India time.
 Unique occurrence keys prevent the same ATM/type/date from producing duplicate
 Jobs.
+
+## Supervisor attendance
+
+Supervisor self-attendance reuses the existing `Attendance` collection and
+keeps existing employee records intact. Before deploying the updated backend,
+run `npm --prefix backend run attendance:ensure-supervisor-indexes` against
+the configured `atm_management` database. The migration validates existing
+records, replaces the employee/date uniqueness index with an equivalent
+partial index, and adds supervisor/date and one-open-session uniqueness
+indexes; it does not modify or delete attendance records. Run it in a
+maintenance window before deploying the updated backend.

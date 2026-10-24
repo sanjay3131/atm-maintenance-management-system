@@ -68,6 +68,55 @@ const createEmployeeUserSchema = z.object({
     .regex(/^[0-9+\-()\s]{8,20}$/, "Please enter a valid phone number"),
 });
 
+const createSupervisorSchema = z
+  .object({
+    firstName: z.string().trim().min(2, "First name must be at least 2 characters"),
+    lastName: z.string().trim().min(1).optional().or(z.literal("")),
+    email: z.string().trim().email("Please enter a valid email").toLowerCase(),
+    password: z.string().min(8, "Password must be at least 8 characters"),
+    phoneNumber: z
+      .string()
+      .trim()
+      .regex(/^[0-9+\-()\s]{8,20}$/, "Please enter a valid phone number"),
+  })
+  .strict();
+
+const updateSupervisorSchema = z
+  .object({
+    firstName: z
+      .string()
+      .trim()
+      .min(2, "First name must be at least 2 characters")
+      .optional(),
+    lastName: z.string().trim().min(1).optional().or(z.literal("")),
+    email: z.string().trim().email("Please enter a valid email").toLowerCase().optional(),
+    phoneNumber: z
+      .string()
+      .trim()
+      .regex(/^[0-9+\-()\s]{8,20}$/, "Please enter a valid phone number")
+      .optional(),
+  })
+  .strict()
+  .refine((values) => Object.keys(values).length > 0, {
+    message: "At least one supervisor field must be provided",
+  });
+
+const supervisorManagementQuerySchema = z
+  .object({
+    search: z.string().trim().max(100).optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+
+const supervisorIdParamsSchema = z
+  .object({ id: z.string().regex(/^[a-fA-F0-9]{24}$/, "Invalid supervisor ID") })
+  .strict();
+
+const supervisorStatusSchema = z
+  .object({ status: z.enum(["active", "inactive"]) })
+  .strict();
+
 const validateRequest = (schema) => {
   return asyncHandler(async (req, res, next) => {
     const result = schema.safeParse(req.body);
@@ -91,5 +140,10 @@ export {
   assignRoleSchema,
   changeUserStatusSchema,
   createEmployeeUserSchema,
+  createSupervisorSchema,
+  updateSupervisorSchema,
+  supervisorManagementQuerySchema,
+  supervisorIdParamsSchema,
+  supervisorStatusSchema,
   validateRequest,
 };

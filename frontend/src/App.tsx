@@ -9,6 +9,7 @@ import SupervisorJobsPage from "@/pages/supervisor/SupervisorJobsPage";
 import SupervisorJobDetailsPage from "@/pages/supervisor/SupervisorJobDetailsPage";
 import SupervisorAMCsPage from "@/pages/supervisor/SupervisorAMCsPage";
 import SupervisorAMCDetailsPage from "@/pages/supervisor/SupervisorAMCDetailsPage";
+import SupervisorAttendancePage from "@/pages/supervisor/SupervisorAttendancePage";
 import EmployeeDashboardPage from "@/pages/employee/EmployeeDashboardPage";
 import ProtectedRoute from "@/routes/ProtectedRoute";
 import AdminLayout from "@/layouts/AdminLayout";
@@ -40,6 +41,7 @@ import CustomersPage from "@/pages/admin/CustomersPage";
 import CustomerDetailsPage from "@/pages/admin/CustomerDetailsPage";
 import ItemsPage from "@/pages/admin/ItemsPage";
 import AdminAttendancePage from "@/pages/admin/AdminAttendancePage";
+import SupervisorsPage from "@/pages/admin/SupervisorsPage";
 import ATMLocationRequestsPage from "@/pages/admin/ATMLocationRequestsPage";
 import ATMLocationRequestDetailsPage from "@/pages/admin/ATMLocationRequestDetailsPage";
 import CustomerPortalLayout from "@/layouts/CustomerPortalLayout";
@@ -70,6 +72,7 @@ export default function App() {
               element={<AdminAttendancePage />}
             />
             <Route path="/admin/employees" element={<EmployeesPage />} />
+            <Route path="/admin/supervisors" element={<SupervisorsPage />} />
             <Route
               path="/admin/employees/:employeeId"
               element={<EmployeeDetailsPage />}
@@ -124,6 +127,10 @@ export default function App() {
         <Route element={<ProtectedRoute allowedRoles={["supervisor"]} />}>
           <Route element={<SupervisorLayout />}>
             <Route path="/supervisor" element={<SupervisorDashboardPage />} />
+            <Route
+              path="/supervisor/attendance"
+              element={<SupervisorAttendancePage />}
+            />
             <Route
               path="/supervisor/employees"
               element={<SupervisorEmployeesPage />}

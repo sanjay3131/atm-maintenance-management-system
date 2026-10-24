@@ -7,6 +7,7 @@ import { getAdminAttendanceDashboard } from "../src/modules/attendance/attendanc
 import Attendance from "../src/modules/attendance/attendance.model.js";
 import AttendanceStatusOverride from "../src/modules/attendance/attendanceStatusOverride.model.js";
 import Employee from "../src/modules/employees/employee.model.js";
+import User from "../src/modules/users/user.model.js";
 
 const id = (number) => `64b00000000000000000000${number}`;
 const admin = { _id: id(9), userType: "admin" };
@@ -55,9 +56,13 @@ const runMiddleware = (middleware, req) =>
     );
   });
 
-async function withMocks({ employees, records, overrides }, callback) {
+async function withMocks(
+  { employees = [], records = [], overrides = [], supervisors = [] },
+  callback,
+) {
   const originals = [
     [Employee, "find", Employee.find],
+    [User, "find", User.find],
     [Attendance, "find", Attendance.find],
     [AttendanceStatusOverride, "find", AttendanceStatusOverride.find],
   ];
@@ -89,12 +94,24 @@ async function withMocks({ employees, records, overrides }, callback) {
       },
     };
   };
+  User.find = (filter) => {
+    assert.deepEqual(filter, { userType: "supervisor" });
+    return {
+      select(fields) {
+        assert.equal(fields, "_id firstName lastName status avatar.url");
+        return Promise.resolve(supervisors);
+      },
+    };
+  };
   Attendance.find = (filter) => {
     assert.equal(filter.attendanceDate, today);
-    const employeeIds = new Set(filter.employeeId.$in.map(String));
+    const subjectField = filter.supervisorUserId
+      ? "supervisorUserId"
+      : "employeeId";
+    const subjectIds = new Set(filter[subjectField].$in.map(String));
     return query(
       records.filter(
-        (record) => employeeIds.has(String(record.employeeId)),
+        (record) => subjectIds.has(String(record[subjectField])),
       ),
     );
   };
@@ -133,7 +150,13 @@ test("Admin dashboard defaults to today's Asia/Kolkata business date", async () 
       incomplete: 0,
       unrecorded: 0,
     });
-    assert.equal(result.summary.supervisors, null);
+    assert.deepEqual(result.summary.supervisors, {
+      total: 0,
+      present: 0,
+      absent: 0,
+      incomplete: 0,
+      unrecorded: 0,
+    });
   });
 });
 
@@ -274,7 +297,7 @@ test("dashboard distinguishes incomplete, recorded, and unrecorded attendance", 
   );
 });
 
-test("dashboard keeps role=all Employee-only and supports Employee search and pagination", async () => {
+test("dashboard scopes each role and supports search and pagination", async () => {
   const first = makeEmployee(1);
   const second = makeEmployee(2, { employeeCode: "TARGET-2" });
   const supervisor = makeEmployee(3, {
@@ -290,6 +313,16 @@ test("dashboard keeps role=all Employee-only and supports Employee search and pa
   await withMocks(
     {
       employees: [first, second, supervisor],
+      supervisors: [
+        {
+          _id: id(29),
+          firstName: "Target",
+          lastName: "Supervisor",
+          userType: "supervisor",
+          status: "active",
+          avatar: {},
+        },
+      ],
       records: [],
       overrides: [],
     },
@@ -305,22 +338,73 @@ test("dashboard keeps role=all Employee-only and supports Employee search and pa
 
       const byName = await getAdminAttendanceDashboard(
         admin,
-        { date: today, search: "supervisor", role: "all" },
+        { date: today, search: "supervisor", role: "supervisor" },
         new Date("2026-10-12T12:00:00.000Z"),
       );
-      assert.equal(byName.pagination.total, 0);
-      assert.equal(byName.records.length, 0);
+      assert.equal(byName.pagination.total, 1);
+      assert.equal(byName.records.length, 1);
+      assert.equal(byName.records[0].employee.role, "supervisor");
       assert.equal(byName.summary.employees.total, 2);
-      assert.equal(byName.summary.supervisors, null);
+      assert.equal(byName.summary.supervisors.total, 1);
 
       const paged = await getAdminAttendanceDashboard(
         admin,
-        { date: today, page: 2, limit: 1, role: "all" },
+        { date: today, page: 2, limit: 1, role: "employee" },
         new Date("2026-10-12T12:00:00.000Z"),
       );
       assert.equal(paged.records.length, 1);
       assert.equal(paged.pagination.total, 2);
       assert.equal(paged.pagination.totalPages, 2);
+    },
+  );
+});
+
+test("Admin dashboard exposes supervisor records separately without employee overrides", async () => {
+  const supervisor = {
+    _id: id(31),
+    firstName: "Casey",
+    lastName: "Supervisor",
+    userType: "supervisor",
+    status: "active",
+    avatar: { url: "https://images.example/supervisor.jpg" },
+  };
+  const attendance = {
+    _id: id(41),
+    supervisorUserId: supervisor._id,
+    attendanceDate: today,
+    checkInAt,
+    checkOutAt,
+    checkInSource: "supervisor",
+    checkOutSource: "supervisor",
+  };
+  await withMocks(
+    { supervisors: [supervisor], records: [attendance] },
+    async () => {
+      const result = await getAdminAttendanceDashboard(
+        admin,
+        { date: today, role: "supervisor" },
+        new Date("2026-10-12T12:00:00.000Z"),
+      );
+      assert.equal(result.records.length, 1);
+      assert.deepEqual(result.records[0].employee, {
+        id: supervisor._id,
+        employeeCode: null,
+        name: "Casey Supervisor",
+        role: "supervisor",
+        avatarUrl: supervisor.avatar.url,
+        employeeStatus: null,
+        userStatus: "active",
+      });
+      assert.equal(result.records[0].attendance.id, attendance._id);
+      assert.equal(result.records[0].attendance.effectiveStatus, "present");
+      assert.deepEqual(result.summary.supervisors, {
+        total: 1,
+        present: 1,
+        absent: 0,
+        incomplete: 0,
+        unrecorded: 0,
+      });
+      assert.equal(result.summary.employees.total, 0);
     },
   );
 });
@@ -403,7 +487,6 @@ test("dashboard service denies non-admin roles and rejects invalid date/query va
     for (const filters of [
       { date: "2026-02-30" },
       { date: today, role: "customer" },
-      { date: today, role: "supervisor" },
       { date: today, status: "late" },
       { date: today, page: "0" },
       { date: today, limit: "101" },
@@ -444,8 +527,13 @@ test("dashboard endpoint requires authentication and Admin/superAdmin authorizat
     limit: 20,
   });
 
-  const supervisorFilterError = await runMiddleware(route.stack[2].handle, {
+  const supervisorFilterRequest = {
     query: { role: "supervisor" },
-  });
-  assert.equal(supervisorFilterError.statusCode, 400);
+  };
+  const supervisorFilterError = await runMiddleware(
+    route.stack[2].handle,
+    supervisorFilterRequest,
+  );
+  assert.equal(supervisorFilterError, undefined);
+  assert.equal(supervisorFilterRequest.validatedQuery.role, "supervisor");
 });

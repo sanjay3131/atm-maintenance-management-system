@@ -11,6 +11,11 @@ import {
   createEmployeeUser,
   createUserWizard,
   createCustomerUserWizard,
+  createSupervisor,
+  getSupervisorManagementDetails,
+  getSupervisorManagementList,
+  updateSupervisor,
+  updateSupervisorStatus,
 } from "./user.controller.js";
 
 import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
@@ -25,7 +30,13 @@ import {
   updateUserSchema,
   validateRequest,
   createEmployeeUserSchema,
+  createSupervisorSchema,
+  updateSupervisorSchema,
+  supervisorManagementQuerySchema,
+  supervisorIdParamsSchema,
+  supervisorStatusSchema,
 } from "./user.validate.js";
+import { validateRequest as validate } from "../../middlewares/validate.middleware.js";
 
 const router = express.Router();
 // get all users
@@ -64,6 +75,45 @@ router.post(
   validateRequest(createCustomerUserWizardSchema),
   createCustomerUserWizard,
 );
+
+router.get(
+  "/supervisor-management",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validate(supervisorManagementQuerySchema, "query"),
+  getSupervisorManagementList,
+);
+router.post(
+  "/supervisor-management",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(createSupervisorSchema),
+  createSupervisor,
+);
+router.get(
+  "/supervisor-management/:id",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validate(supervisorIdParamsSchema, "params"),
+  getSupervisorManagementDetails,
+);
+router.put(
+  "/supervisor-management/:id",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validate(supervisorIdParamsSchema, "params"),
+  validateRequest(updateSupervisorSchema),
+  updateSupervisor,
+);
+router.patch(
+  "/supervisor-management/:id/status",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validate(supervisorIdParamsSchema, "params"),
+  validateRequest(supervisorStatusSchema),
+  updateSupervisorStatus,
+);
+
 // get user by id
 router.get(
   "/:id",

@@ -439,6 +439,7 @@ export default function AdminAttendancePage() {
   const [date, setDate] = useState(() => getBusinessDate(new Date()));
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | AdminAttendanceStatus>("all");
+  const [role, setRole] = useState<"employee" | "supervisor">("employee");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [selectedRecord, setSelectedRecord] =
@@ -448,16 +449,16 @@ export default function AdminAttendancePage() {
   const dashboardQuery = useAdminAttendanceDashboard({
     date,
     ...(search.trim() ? { search: search.trim() } : {}),
-    role: "employee",
+    role,
     status,
     page,
     limit,
   });
-  const summary = dashboardQuery.data?.summary.employees;
-  const records =
-    dashboardQuery.data?.records.filter(
-      (record) => record.employee.role === "employee",
-    ) ?? [];
+  const summary =
+    role === "employee"
+      ? dashboardQuery.data?.summary.employees
+      : dashboardQuery.data?.summary.supervisors;
+  const records = dashboardQuery.data?.records ?? [];
   const pagination = dashboardQuery.data?.pagination;
   const totalPages = Math.max(1, pagination?.totalPages ?? 1);
   const currentPage = Math.min(page, totalPages);
@@ -488,7 +489,8 @@ export default function AdminAttendancePage() {
             Attendance Dashboard
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Review Employee attendance and Admin status overrides.
+            Review employee and supervisor attendance. Admin status overrides
+            remain available for employees.
           </p>
         </div>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -497,7 +499,7 @@ export default function AdminAttendancePage() {
         </div>
       </header>
 
-      <section aria-label="Employee attendance summary">
+      <section aria-label={`${role} attendance summary`}>
         {dashboardQuery.isLoading && !summary ? (
           <div
             className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"
@@ -514,9 +516,11 @@ export default function AdminAttendancePage() {
         ) : summary ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <SummaryCard
-              label="Total active Employees"
+              label={`Total ${role === "employee" ? "Employees" : "Supervisors"}`}
               value={summary.total}
-              description="Active Employee profiles"
+              description={
+                role === "employee" ? "Active Employee profiles" : "Supervisor accounts"
+              }
             />
             <SummaryCard
               label="Present"
@@ -526,7 +530,11 @@ export default function AdminAttendancePage() {
             <SummaryCard
               label="Absent"
               value={summary.absent}
-              description="Explicit Admin overrides"
+              description={
+                role === "employee"
+                  ? "Explicit Admin overrides"
+                  : "Supervisor absence overrides are disabled"
+              }
             />
             <SummaryCard
               label="Incomplete"
@@ -546,7 +554,7 @@ export default function AdminAttendancePage() {
         <CardHeader>
           <CardTitle>Filter attendance</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <div className="space-y-2">
             <label htmlFor="attendance-date" className="text-sm font-medium">
               Business date
@@ -564,8 +572,26 @@ export default function AdminAttendancePage() {
             />
           </div>
           <div className="space-y-2">
+            <label htmlFor="attendance-role" className="text-sm font-medium">
+              Account type
+            </label>
+            <select
+              id="attendance-role"
+              value={role}
+              onChange={(event) =>
+                updateFilters(() =>
+                  setRole(event.target.value as typeof role),
+                )
+              }
+              className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+            >
+              <option value="employee">Employees</option>
+              <option value="supervisor">Supervisors</option>
+            </select>
+          </div>
+          <div className="space-y-2">
             <label htmlFor="attendance-search" className="text-sm font-medium">
-              Search Employees
+              Search {role === "employee" ? "Employees" : "Supervisors"}
             </label>
             <div className="relative">
               <Search
@@ -579,7 +605,9 @@ export default function AdminAttendancePage() {
                 onChange={(event) =>
                   updateFilters(() => setSearch(event.target.value))
                 }
-                placeholder="Employee code or name"
+                placeholder={
+                  role === "employee" ? "Employee code or name" : "Supervisor name"
+                }
                 className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm"
               />
             </div>
@@ -635,7 +663,9 @@ export default function AdminAttendancePage() {
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <div>
-            <CardTitle>Employee attendance</CardTitle>
+            <CardTitle>
+              {role === "employee" ? "Employee attendance" : "Supervisor attendance"}
+            </CardTitle>
             <p className="mt-2 text-sm text-muted-foreground">
               Selected business date: {date}
             </p>
@@ -691,26 +721,26 @@ export default function AdminAttendancePage() {
             <div className="space-y-3" role="status">
               <div className="h-12 animate-pulse rounded bg-muted/50" />
               <div className="h-64 animate-pulse rounded bg-muted/40" />
-              <span className="sr-only">Loading Employee attendance...</span>
+              <span className="sr-only">Loading {role} attendance...</span>
             </div>
           ) : dashboardQuery.data && records.length === 0 ? (
             <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
               {pagination?.total === 0
-                ? "No Employees match the selected date and filters."
-                : "No Employees on this page."}
+                ? `No ${role === "employee" ? "Employees" : "Supervisors"} match the selected date and filters.`
+                : `No ${role === "employee" ? "Employees" : "Supervisors"} on this page.`}
             </div>
           ) : dashboardQuery.data ? (
             <>
               <div className="overflow-x-auto rounded-lg border">
                 <table className="w-full min-w-[900px] text-left text-sm">
                   <caption className="sr-only">
-                    Employee attendance for {date}; {pagination?.total ?? 0}{" "}
+                    {role === "employee" ? "Employee" : "Supervisor"} attendance for {date}; {pagination?.total ?? 0}{" "}
                     matching records
                   </caption>
                   <thead className="bg-muted/50 text-muted-foreground">
                     <tr>
                       <th scope="col" className="px-4 py-3 font-medium">
-                        Employee
+                        {role === "employee" ? "Employee" : "Supervisor"}
                       </th>
                       <th scope="col" className="px-4 py-3 font-medium">
                         Check-in
@@ -731,7 +761,7 @@ export default function AdminAttendancePage() {
                   </thead>
                   <tbody className="divide-y">
                     {records.map((record) => (
-                      <tr key={record.employee.id}>
+                      <tr key={`${record.employee.role}:${record.employee.id}`}>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             <Avatar record={record} />
@@ -739,20 +769,27 @@ export default function AdminAttendancePage() {
                               <p className="truncate font-medium">
                                 {record.employee.name}
                               </p>
+                              {record.employee.role === "employee" && (
+                                <p className="text-xs text-muted-foreground">
+                                  {record.employee.employeeCode ??
+                                    "Employee code unavailable"}
+                                </p>
+                              )}
                               <p className="text-xs text-muted-foreground">
-                                {record.employee.employeeCode ??
-                                  "Employee code unavailable"}
+                                {record.employee.role === "employee"
+                                  ? "Employee ID"
+                                  : "Supervisor User ID"}
+                                : {record.employee.id}
                               </p>
-                              <p className="text-xs text-muted-foreground">
-                                Employee ID: {record.employee.id}
-                              </p>
-                              {(record.employee.employeeStatus !== "active" ||
+                              {((record.employee.role === "employee" &&
+                                record.employee.employeeStatus !== "active") ||
                                 (record.employee.userStatus &&
                                   record.employee.userStatus !== "active")) && (
                                 <p className="text-xs text-amber-700">
-                                  Profile:{" "}
-                                  {record.employee.employeeStatus ?? "unknown"}{" "}
-                                  · User:{" "}
+                                  {record.employee.role === "employee"
+                                    ? `Profile: ${record.employee.employeeStatus ?? "unknown"} · `
+                                    : ""}
+                                  User:{" "}
                                   {record.employee.userStatus ?? "unavailable"}
                                 </p>
                               )}
@@ -786,16 +823,18 @@ export default function AdminAttendancePage() {
                           {getOriginLabel(record.attendance.statusOrigin)}
                         </td>
                         <td className="px-4 py-3">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => openEditor(record)}
-                            aria-label={`Edit attendance for ${record.employee.name}`}
-                          >
-                            <Pencil aria-hidden="true" />
-                            Edit
-                          </Button>
+                          {record.employee.role === "employee" && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openEditor(record)}
+                              aria-label={`Edit attendance for ${record.employee.name}`}
+                            >
+                              <Pencil aria-hidden="true" />
+                              Edit
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -806,7 +845,8 @@ export default function AdminAttendancePage() {
               <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-muted-foreground" aria-live="polite">
                   Showing {firstVisible}–{lastVisible} of{" "}
-                  {pagination?.total ?? 0} Employees
+                  {pagination?.total ?? 0}{" "}
+                  {role === "employee" ? "Employees" : "Supervisors"}
                 </p>
                 <nav
                   aria-label="Attendance pagination"

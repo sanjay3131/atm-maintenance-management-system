@@ -1,8 +1,8 @@
 import asyncHandler from "../../utils/asyncHandler.js";
 import ApiResponse from "../../utils/ApiResponse.js";
 import {
-  checkInForEmployee,
-  checkOutForEmployee,
+  checkInForAuthenticatedUser,
+  checkOutForAuthenticatedUser,
   correctAttendance,
   getAdminAttendanceDashboard,
   getEmployeeAttendanceCalendar,
@@ -15,14 +15,14 @@ import {
 } from "./attendance.service.js";
 
 export const checkIn = asyncHandler(async (req, res) => {
-  const attendance = await checkInForEmployee(req.user);
+  const attendance = await checkInForAuthenticatedUser(req.user);
   return res
     .status(201)
     .json(new ApiResponse(201, attendance, "Attendance check-in recorded"));
 });
 
 export const checkOut = asyncHandler(async (req, res) => {
-  const attendance = await checkOutForEmployee(req.user);
+  const attendance = await checkOutForAuthenticatedUser(req.user);
   return res
     .status(200)
     .json(new ApiResponse(200, attendance, "Attendance check-out recorded"));

@@ -193,6 +193,7 @@ test("attendance query and path schemas validate bounds, dates, and reject ident
     toDate: "2026-10-31",
     page: "2",
     limit: "50",
+    openOnly: "true",
   });
   assert.equal(validSelfQuery.success, true);
   assert.deepEqual(validSelfQuery.data, {
@@ -200,6 +201,7 @@ test("attendance query and path schemas validate bounds, dates, and reject ident
     toDate: "2026-10-31",
     page: 2,
     limit: 50,
+    openOnly: "true",
   });
   assert.equal(
     myAttendanceQuerySchema.safeParse({ page: "0" }).success,
@@ -264,7 +266,29 @@ test("model definitions contain required references, validation, timestamps, and
       ([keys, options]) =>
         keys.employeeId === 1 &&
         keys.attendanceDate === 1 &&
-        options.unique === true,
+        options.unique === true &&
+        options.partialFilterExpression.employeeId.$type === "objectId",
+    ),
+  );
+  assert.ok(
+    attendanceIndexes.some(
+      ([keys, options]) =>
+        keys.supervisorUserId === 1 &&
+        keys.attendanceDate === 1 &&
+        options.unique === true &&
+        options.partialFilterExpression.supervisorUserId.$type === "objectId",
+    ),
+  );
+  assert.ok(
+    attendanceIndexes.some(
+      ([keys, options]) =>
+        keys.supervisorUserId === 1 &&
+        Object.keys(keys).length === 1 &&
+        options.unique === true &&
+        options.name === "supervisorUserId_1_open_session" &&
+        options.partialFilterExpression.supervisorUserId.$type ===
+          "objectId" &&
+        options.partialFilterExpression.checkOutAt === null,
     ),
   );
   assert.ok(
@@ -272,6 +296,7 @@ test("model definitions contain required references, validation, timestamps, and
   );
   assert.equal(Attendance.schema.options.timestamps, true);
   assert.equal(Attendance.schema.path("employeeId").options.ref, "Employee");
+  assert.equal(Attendance.schema.path("supervisorUserId").options.ref, "User");
   assert.equal(Attendance.schema.path("checkInRecordedBy").options.ref, "User");
 
   const correctionIndexes = AttendanceCorrection.schema.indexes();
@@ -290,6 +315,33 @@ test("model definitions contain required references, validation, timestamps, and
     checkInSource: "employee",
   });
   await assert.rejects(attendance.validate(), /attendanceDate/);
+
+  const supervisorAttendance = new Attendance({
+    supervisorUserId: objectId(),
+    attendanceDate: "2026-10-10",
+    checkInAt: new Date("2026-10-10T03:30:00.000Z"),
+    checkInRecordedBy: objectId(),
+    checkInSource: "supervisor",
+  });
+  await supervisorAttendance.validate();
+
+  const missingIdentity = new Attendance({
+    attendanceDate: "2026-10-10",
+    checkInAt: new Date("2026-10-10T03:30:00.000Z"),
+    checkInRecordedBy: objectId(),
+    checkInSource: "supervisor",
+  });
+  await assert.rejects(missingIdentity.validate(), /Exactly one/);
+
+  const multipleIdentities = new Attendance({
+    employeeId: objectId(),
+    supervisorUserId: objectId(),
+    attendanceDate: "2026-10-10",
+    checkInAt: new Date("2026-10-10T03:30:00.000Z"),
+    checkInRecordedBy: objectId(),
+    checkInSource: "supervisor",
+  });
+  await assert.rejects(multipleIdentities.validate(), /Exactly one/);
 
   const invalidChronology = new Attendance({
     employeeId: objectId(),

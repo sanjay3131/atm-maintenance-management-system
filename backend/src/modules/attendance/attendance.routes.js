@@ -38,21 +38,21 @@ const router = Router();
 router.post(
   "/me/check-in",
   verifyAccessToken,
-  authorizeRoles("employee"),
+  authorizeRoles("employee", "supervisor"),
   validateRequest(selfCheckInSchema),
   checkIn,
 );
 router.post(
   "/me/check-out",
   verifyAccessToken,
-  authorizeRoles("employee"),
+  authorizeRoles("employee", "supervisor"),
   validateRequest(selfCheckOutSchema),
   checkOut,
 );
 router.get(
   "/me",
   verifyAccessToken,
-  authorizeRoles("employee"),
+  authorizeRoles("employee", "supervisor"),
   validateRequest(myAttendanceQuerySchema, "query"),
   getMyAttendance,
 );

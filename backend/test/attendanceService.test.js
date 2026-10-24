@@ -7,8 +7,10 @@ import AttendanceEntryAudit from "../src/modules/attendance/attendanceEntryAudit
 import Employee from "../src/modules/employees/employee.model.js";
 import {
   checkInForEmployee,
+  checkInForAuthenticatedUser,
   checkOutAttendanceForEmployee,
   checkOutForEmployee,
+  checkOutForAuthenticatedUser,
   correctAttendance,
   getAttendanceRecord,
   listAttendanceRecords,
@@ -122,11 +124,20 @@ async function withMocks(
         return this;
       },
       then(resolve, reject) {
+        const identityField = filter.supervisorUserId
+          ? "supervisorUserId"
+          : "employeeId";
         return Promise.resolve(
           state.records.find(
-            (record) =>
-              sameId(record.employeeId, filter.employeeId) &&
-              record.attendanceDate === filter.attendanceDate,
+            (record) => {
+              if (!sameId(record[identityField], filter[identityField])) {
+                return false;
+              }
+              if (filter.checkOutAt === null) {
+                return record.checkOutAt == null;
+              }
+              return record.attendanceDate === filter.attendanceDate;
+            },
           ) ?? null,
         ).then(resolve, reject);
       },
@@ -151,25 +162,37 @@ async function withMocks(
           state.records
             .filter((record) => {
               if (filter.checkOutAt === null) {
+                const identityField = filter.supervisorUserId
+                  ? "supervisorUserId"
+                  : "employeeId";
                 return (
-                  sameId(record.employeeId, filter.employeeId) &&
+                  sameId(record[identityField], filter[identityField]) &&
                   record.checkOutAt == null
                 );
               }
-              const employeeMatches =
-                filter.employeeId?.$in !== undefined
-                  ? filter.employeeId.$in.some((id) =>
-                      sameId(record.employeeId, id),
+              const subjectMatches = filter.employeeId?.$in !== undefined
+                ? filter.employeeId.$in.some((id) =>
+                    sameId(record.employeeId, id),
+                  )
+                : filter.supervisorUserId?.$in !== undefined
+                  ? filter.supervisorUserId.$in.some((id) =>
+                      sameId(record.supervisorUserId, id),
                     )
-                  : filter.employeeId === undefined ||
-                    sameId(record.employeeId, filter.employeeId);
+                  : filter.employeeId !== undefined
+                    ? sameId(record.employeeId, filter.employeeId)
+                    : filter.supervisorUserId !== undefined
+                      ? sameId(
+                          record.supervisorUserId,
+                          filter.supervisorUserId,
+                        )
+                      : true;
               const dateMatches =
                 filter.attendanceDate === undefined ||
                 ((filter.attendanceDate.$gte === undefined ||
                   record.attendanceDate >= filter.attendanceDate.$gte) &&
                   (filter.attendanceDate.$lte === undefined ||
                     record.attendanceDate <= filter.attendanceDate.$lte));
-              return employeeMatches && dateMatches;
+              return subjectMatches && dateMatches;
             })
             .slice(skip, skip + limit),
         );
@@ -179,25 +202,34 @@ async function withMocks(
   };
   Attendance.countDocuments = async (filter) =>
     state.records.filter((record) => {
-      const employeeMatches =
-        filter.employeeId?.$in !== undefined
-          ? filter.employeeId.$in.some((id) => sameId(record.employeeId, id))
-          : filter.employeeId === undefined ||
-            sameId(record.employeeId, filter.employeeId);
+      const subjectMatches = filter.employeeId?.$in !== undefined
+        ? filter.employeeId.$in.some((id) => sameId(record.employeeId, id))
+        : filter.supervisorUserId?.$in !== undefined
+          ? filter.supervisorUserId.$in.some((id) =>
+              sameId(record.supervisorUserId, id),
+            )
+          : filter.employeeId !== undefined
+            ? sameId(record.employeeId, filter.employeeId)
+            : filter.supervisorUserId !== undefined
+              ? sameId(record.supervisorUserId, filter.supervisorUserId)
+              : true;
       const dateMatches =
         filter.attendanceDate === undefined ||
         ((filter.attendanceDate.$gte === undefined ||
           record.attendanceDate >= filter.attendanceDate.$gte) &&
           (filter.attendanceDate.$lte === undefined ||
             record.attendanceDate <= filter.attendanceDate.$lte));
-      return employeeMatches && dateMatches;
+      return subjectMatches && dateMatches;
     }).length;
   Attendance.create = async (documents) => {
     const input = Array.isArray(documents) ? documents[0] : documents;
     if (
       state.records.some(
         (record) =>
-          sameId(record.employeeId, input.employeeId) &&
+          sameId(
+            record[input.supervisorUserId ? "supervisorUserId" : "employeeId"],
+            input.supervisorUserId ?? input.employeeId,
+          ) &&
           record.attendanceDate === input.attendanceDate,
       )
     ) {
@@ -217,6 +249,8 @@ async function withMocks(
         (filter._id === undefined || sameId(candidate._id, filter._id)) &&
         (filter.employeeId === undefined ||
           sameId(candidate.employeeId, filter.employeeId)) &&
+        (filter.supervisorUserId === undefined ||
+          sameId(candidate.supervisorUserId, filter.supervisorUserId)) &&
         (filter.attendanceDate === undefined ||
           candidate.attendanceDate === filter.attendanceDate) &&
         (filter.checkOutAt === undefined ||
@@ -428,6 +462,86 @@ test("self check-in stores the Employee ID, authenticated User actor, and Kolkat
   });
 });
 
+test("Supervisor self check-in stores only the authenticated User ID and Kolkata business date", async () => {
+  const supervisor = {
+    _id: supervisorId,
+    userType: "supervisor",
+    status: "active",
+  };
+  await withMocks({}, async (state) => {
+    const result = await checkInForAuthenticatedUser(
+      supervisor,
+      new Date("2026-10-09T19:00:00.000Z"),
+    );
+    assert.equal(result.employeeId, undefined);
+    assert.equal(result.supervisorUserId, supervisorId);
+    assert.equal(result.checkInRecordedBy, supervisorId);
+    assert.equal(result.attendanceDate, "2026-10-10");
+    assert.equal(result.checkInSource, "supervisor");
+    assert.equal(state.records.length, 1);
+  });
+});
+
+test("Supervisor self check-in rejects inactive accounts and concurrent duplicate sessions", async () => {
+  await assert.rejects(
+    checkInForAuthenticatedUser(
+      { _id: supervisorId, userType: "supervisor", status: "inactive" },
+      now,
+    ),
+    (error) => error.statusCode === 403,
+  );
+
+  await withMocks({}, async (state) => {
+    const supervisor = {
+      _id: supervisorId,
+      userType: "supervisor",
+      status: "active",
+    };
+    const results = await Promise.allSettled([
+      checkInForAuthenticatedUser(supervisor, now),
+      checkInForAuthenticatedUser(supervisor, now),
+    ]);
+    assert.equal(
+      results.filter((result) => result.status === "fulfilled").length,
+      1,
+    );
+    assert.equal(
+      results.find((result) => result.status === "rejected").reason.statusCode,
+      409,
+    );
+    assert.equal(state.records.length, 1);
+  });
+
+  await withMocks(
+    {
+      records: [
+        makeAttendance({
+          employeeId: undefined,
+          supervisorUserId: supervisorId,
+          attendanceDate: "2026-10-09",
+          checkInRecordedBy: supervisorId,
+          checkInSource: "supervisor",
+        }),
+      ],
+    },
+    async () => {
+      await assert.rejects(
+        checkInForAuthenticatedUser(
+          {
+            _id: supervisorId,
+            userType: "supervisor",
+            status: "active",
+          },
+          now,
+        ),
+        (error) =>
+          error.statusCode === 409 &&
+          /open attendance session/.test(error.message),
+      );
+    },
+  );
+});
+
 test("existing record and concurrent duplicate check-ins return conflicts", async () => {
   const record = makeAttendance();
   await withMocks({ records: [record] }, async () => {
@@ -488,6 +602,87 @@ test("self check-out supports a pre-midnight check-in and preserves its business
       state.updateFilters[0].checkInAt.$lte >= overnightRecord.checkInAt,
     );
   });
+});
+
+test("Supervisor self check-out closes only its own open attendance record", async () => {
+  const record = makeAttendance({
+    employeeId: undefined,
+    supervisorUserId: supervisorId,
+    checkInRecordedBy: supervisorId,
+    checkInSource: "supervisor",
+  });
+  await withMocks({ records: [record] }, async (state) => {
+    const result = await checkOutForAuthenticatedUser(
+      { _id: supervisorId, userType: "supervisor", status: "active" },
+      new Date("2026-10-10T18:00:00.000Z"),
+    );
+    assert.equal(result.checkOutRecordedBy, supervisorId);
+    assert.equal(result.checkOutSource, "supervisor");
+    assert.equal(state.updateFilters[0].supervisorUserId, supervisorId);
+    assert.equal(state.updateFilters[0].employeeId, undefined);
+  });
+
+  await withMocks({}, async () => {
+    await assert.rejects(
+      checkOutForAuthenticatedUser(
+        { _id: supervisorId, userType: "supervisor", status: "active" },
+        now,
+      ),
+      (error) => error.statusCode === 409,
+    );
+  });
+});
+
+test("Supervisor attendance history is scoped to the authenticated supervisor", async () => {
+  const supervisorRecord = makeAttendance({
+    employeeId: undefined,
+    supervisorUserId: supervisorId,
+  });
+  const otherSupervisorRecord = makeAttendance({
+    _id: "64b000000000000000000006",
+    employeeId: undefined,
+    supervisorUserId: adminId,
+  });
+  await withMocks(
+    { records: [supervisorRecord, otherSupervisorRecord] },
+    async (state) => {
+      const result = await listMyAttendance(
+        { _id: supervisorId, userType: "supervisor", status: "active" },
+        { page: 1, limit: 20 },
+      );
+      assert.deepEqual(result.records, [supervisorRecord]);
+      assert.equal(
+        state.attendanceListFilters[0].supervisorUserId,
+        supervisorId,
+      );
+      assert.equal(state.attendanceListFilters[0].employeeId, undefined);
+    },
+  );
+});
+
+test("Supervisor open attendance lookup is not limited to recent history", async () => {
+  await withMocks(
+    {
+      records: [
+        makeAttendance({
+          employeeId: undefined,
+          supervisorUserId: supervisorId,
+        }),
+      ],
+    },
+    async (state) => {
+      const result = await listMyAttendance(
+        { _id: supervisorId, userType: "supervisor", status: "active" },
+        { page: 1, limit: 1, openOnly: "true" },
+      );
+      assert.equal(result.records.length, 1);
+      assert.equal(
+        state.attendanceListFilters[0].supervisorUserId,
+        supervisorId,
+      );
+      assert.equal(state.attendanceListFilters[0].checkOutAt, null);
+    },
+  );
 });
 
 test("self check-out rejects missing, completed, or concurrent checkout records", async () => {

@@ -6,6 +6,7 @@ import AttendanceEntryAudit from "./attendanceEntryAudit.model.js";
 import AttendanceStatusOverride from "./attendanceStatusOverride.model.js";
 import AttendanceStatusOverrideAudit from "./attendanceStatusOverrideAudit.model.js";
 import Employee from "../employees/employee.model.js";
+import User from "../users/user.model.js";
 import {
   attendanceDateOnlySchema,
   adminAttendanceDashboardQuerySchema,
@@ -93,6 +94,19 @@ const getEmployeeForUser = async (userId) => {
   return employee;
 };
 
+const requireActiveSupervisor = (authenticatedUser) => {
+  if (!authenticatedUser?._id) {
+    throw new ApiError(401, "Authenticated User is required");
+  }
+  if (
+    authenticatedUser.userType !== "supervisor" ||
+    authenticatedUser.status !== "active"
+  ) {
+    throw new ApiError(403, "An active supervisor account is required");
+  }
+  return authenticatedUser._id;
+};
+
 const getActiveEmployeeById = async (employeeId) => {
   requireObjectId(employeeId, "Employee ID");
   const employee = await Employee.findById(employeeId).populate(
@@ -178,8 +192,9 @@ const resolveOnBehalfEmployee = async (employeeId, actor) => {
 
 export const resolveEmployeeForAuthenticatedUser = getEmployeeForUser;
 
-const buildAttendanceFilter = ({ employeeId, fromDate, toDate }) => ({
+const buildAttendanceFilter = ({ employeeId, fromDate, toDate, openOnly }) => ({
   ...(employeeId ? { employeeId } : {}),
+  ...(openOnly ? { checkOutAt: null } : {}),
   ...(fromDate || toDate
     ? {
         attendanceDate: {
@@ -211,8 +226,18 @@ const getPaginatedAttendance = async (filter, { page, limit }) => {
 };
 
 export const listMyAttendance = async (authenticatedUser, filters) => {
-  if (authenticatedUser?.userType !== "employee") {
-    throw new ApiError(403, "Only employees can access their attendance");
+  if (!["employee", "supervisor"].includes(authenticatedUser?.userType)) {
+    throw new ApiError(403, "Only employees and supervisors can access their attendance");
+  }
+  if (authenticatedUser.userType === "supervisor") {
+    const supervisorUserId = requireActiveSupervisor(authenticatedUser);
+    return getPaginatedAttendance(
+      {
+        supervisorUserId,
+        ...buildAttendanceFilter(filters),
+      },
+      filters,
+    );
   }
   const employee = await getEmployeeForUser(authenticatedUser._id);
   return getPaginatedAttendance(
@@ -348,21 +373,36 @@ export const getAdminAttendanceDashboard = async (
         : null;
     return user?.userType !== "supervisor";
   });
+  const supervisorUsers = await User.find({ userType: "supervisor" }).select(
+    "_id firstName lastName status avatar.url",
+  );
   const employeeIds = eligibleEmployees.map((employee) => employee._id);
-  const [attendanceRecords, statusOverrides] = employeeIds.length
-    ? await Promise.all([
-        Attendance.find({
-          employeeId: { $in: employeeIds },
-          attendanceDate: date,
-        }).select(
-          "employeeId attendanceDate checkInAt checkOutAt checkInSource checkOutSource checkInRecordedBy checkOutRecordedBy",
-        ),
-        AttendanceStatusOverride.find({
-          employeeId: { $in: employeeIds },
-          attendanceDate: date,
-        }).select("employeeId attendanceDate status"),
-      ])
-    : [[], []];
+  const supervisorIds = supervisorUsers.map((supervisor) => supervisor._id);
+  const [attendanceRecords, supervisorAttendanceRecords, statusOverrides] =
+    await Promise.all([
+      employeeIds.length
+        ? Attendance.find({
+            employeeId: { $in: employeeIds },
+            attendanceDate: date,
+          }).select(
+            "employeeId attendanceDate checkInAt checkOutAt checkInSource checkOutSource checkInRecordedBy checkOutRecordedBy",
+          )
+        : [],
+      supervisorIds.length
+        ? Attendance.find({
+            supervisorUserId: { $in: supervisorIds },
+            attendanceDate: date,
+          }).select(
+            "supervisorUserId attendanceDate checkInAt checkOutAt checkInSource checkOutSource checkInRecordedBy checkOutRecordedBy",
+          )
+        : [],
+      employeeIds.length
+        ? AttendanceStatusOverride.find({
+            employeeId: { $in: employeeIds },
+            attendanceDate: date,
+          }).select("employeeId attendanceDate status")
+        : [],
+    ]);
 
   const attendanceByEmployee = new Map(
     attendanceRecords.map((record) => [String(record.employeeId), record]),
@@ -373,7 +413,7 @@ export const getAdminAttendanceDashboard = async (
       override,
     ]),
   );
-  const allRows = eligibleEmployees.map((employee) => {
+  const employeeRows = eligibleEmployees.map((employee) => {
       const user =
         employee.userId && typeof employee.userId === "object"
           ? employee.userId
@@ -416,26 +456,66 @@ export const getAdminAttendanceDashboard = async (
       return row;
     });
 
+  const attendanceBySupervisor = new Map(
+    supervisorAttendanceRecords.map((record) => [
+      String(record.supervisorUserId),
+      record,
+    ]),
+  );
+  const supervisorRows = supervisorUsers.map((supervisor) => {
+    const attendance = attendanceBySupervisor.get(String(supervisor._id)) ?? null;
+    return {
+      employee: {
+        id: String(supervisor._id),
+        employeeCode: null,
+        name: getEmployeeDisplayName(supervisor),
+        role: "supervisor",
+        avatarUrl: supervisor.avatar?.url ?? null,
+        employeeStatus: null,
+        userStatus: supervisor.status ?? null,
+      },
+      attendance: {
+        id: attendance ? String(attendance._id) : null,
+        attendanceDate: date,
+        actualCheckInAt: attendance?.checkInAt ?? null,
+        actualCheckOutAt: attendance?.checkOutAt ?? null,
+        effectiveCheckInAt: attendance?.checkInAt ?? null,
+        effectiveCheckOutAt: attendance?.checkOutAt ?? null,
+        effectiveStatus: attendance
+          ? attendance.checkOutAt
+            ? "present"
+            : "incomplete"
+          : "unrecorded",
+        statusOrigin: attendance ? "recorded" : "no_record",
+      },
+    };
+  });
+  const summarize = (rows) => ({
+    total: rows.length,
+    present: rows.filter(
+      (row) => row.attendance.effectiveStatus === "present",
+    ).length,
+    absent: rows.filter(
+      (row) => row.attendance.effectiveStatus === "absent",
+    ).length,
+    incomplete: rows.filter(
+      (row) => row.attendance.effectiveStatus === "incomplete",
+    ).length,
+    unrecorded: rows.filter(
+      (row) => row.attendance.effectiveStatus === "unrecorded",
+    ).length,
+  });
   const summary = {
-    employees: {
-      total: allRows.length,
-      present: allRows.filter(
-        (row) => row.attendance.effectiveStatus === "present",
-      ).length,
-      absent: allRows.filter(
-        (row) => row.attendance.effectiveStatus === "absent",
-      ).length,
-      incomplete: allRows.filter(
-        (row) => row.attendance.effectiveStatus === "incomplete",
-      ).length,
-      unrecorded: allRows.filter(
-        (row) => row.attendance.effectiveStatus === "unrecorded",
-      ).length,
-    },
-    supervisors: null,
+    employees: summarize(employeeRows),
+    supervisors: summarize(supervisorRows),
   };
 
-  const rows = allRows;
+  const rows =
+    query.role === "employee"
+      ? employeeRows
+      : query.role === "supervisor"
+        ? supervisorRows
+        : [...employeeRows, ...supervisorRows];
   const normalizedSearch = query.search?.toLocaleLowerCase();
   const filteredRows = rows.filter((row) => {
     const searchMatches =
@@ -471,6 +551,12 @@ export const getAttendanceRecord = async (attendanceId, actor) => {
   if (!attendance) throw new ApiError(404, "Attendance not found");
 
   if (actor.userType === "supervisor") {
+    if (attendance.supervisorUserId) {
+      if (!sameId(attendance.supervisorUserId, actor._id)) {
+        throw new ApiError(404, "Attendance not found");
+      }
+      return attendance;
+    }
     const employee = await Employee.findById(attendance.employeeId);
     if (!employee) throw new ApiError(404, "Employee not found");
     requireSupervisorScope(employee, actor);
@@ -626,6 +712,59 @@ export const checkInForEmployee = async (authenticatedUser, now = new Date()) =>
   }
 };
 
+const checkInForSupervisor = async (authenticatedUser, now) => {
+  const supervisorUserId = requireActiveSupervisor(authenticatedUser);
+  const checkInAt = new Date(now);
+  const attendanceDate = getBusinessDate(checkInAt);
+  const identity = { supervisorUserId };
+
+  try {
+    const openRecord = await Attendance.findOne({
+      ...identity,
+      checkOutAt: null,
+    });
+    if (openRecord) {
+      throw conflict("Supervisor already has an open attendance session");
+    }
+    const existing = await Attendance.findOne({
+      ...identity,
+      attendanceDate,
+    });
+    if (existing) {
+      throw conflict("Attendance already exists for this business date");
+    }
+
+    return await Attendance.create({
+      supervisorUserId,
+      attendanceDate,
+      checkInAt,
+      checkOutAt: null,
+      checkInRecordedBy: supervisorUserId,
+      checkOutRecordedBy: null,
+      checkInSource: "supervisor",
+      checkOutSource: null,
+    });
+  } catch (error) {
+    translateDuplicateKey(
+      error,
+      "Attendance already exists for this business date",
+    );
+  }
+};
+
+export const checkInForAuthenticatedUser = async (
+  authenticatedUser,
+  now = new Date(),
+) => {
+  if (authenticatedUser?.userType === "employee") {
+    return checkInForEmployee(authenticatedUser, now);
+  }
+  if (authenticatedUser?.userType === "supervisor") {
+    return checkInForSupervisor(authenticatedUser, now);
+  }
+  throw new ApiError(403, "Only employees and supervisors can check in");
+};
+
 export const checkOutForEmployee = async (
   authenticatedUser,
   now = new Date(),
@@ -667,6 +806,60 @@ export const checkOutForEmployee = async (
     throw conflict("No open attendance record exists for the current business date");
   }
   return attendance;
+};
+
+const checkOutForSupervisor = async (authenticatedUser, now) => {
+  const supervisorUserId = requireActiveSupervisor(authenticatedUser);
+  const checkOutAt = new Date(now);
+  if (!Number.isFinite(checkOutAt.getTime())) {
+    throw new ApiError(400, "Invalid attendance timestamp");
+  }
+  const identity = { supervisorUserId };
+  const openRecords = await Attendance.find({
+    ...identity,
+    checkOutAt: null,
+  }).limit(2);
+  if (openRecords.length === 0) {
+    throw conflict("No open attendance record exists for the supervisor");
+  }
+  if (openRecords.length > 1) {
+    throw conflict("Multiple open attendance records exist for the supervisor");
+  }
+
+  const [openRecord] = openRecords;
+  const attendance = await Attendance.findOneAndUpdate(
+    {
+      _id: openRecord._id,
+      ...identity,
+      checkOutAt: null,
+      checkInAt: { $lte: checkOutAt },
+    },
+    {
+      $set: {
+        checkOutAt,
+        checkOutRecordedBy: supervisorUserId,
+        checkOutSource: "supervisor",
+      },
+    },
+    { new: true, runValidators: true },
+  );
+  if (!attendance) {
+    throw conflict("No open attendance record exists for the supervisor");
+  }
+  return attendance;
+};
+
+export const checkOutForAuthenticatedUser = async (
+  authenticatedUser,
+  now = new Date(),
+) => {
+  if (authenticatedUser?.userType === "employee") {
+    return checkOutForEmployee(authenticatedUser, now);
+  }
+  if (authenticatedUser?.userType === "supervisor") {
+    return checkOutForSupervisor(authenticatedUser, now);
+  }
+  throw new ApiError(403, "Only employees and supervisors can check out");
 };
 
 export const recordAttendanceForEmployee = async ({
@@ -858,6 +1051,12 @@ export const correctAttendance = async ({
     return await withAttendanceTransaction(async (session) => {
       const current = await Attendance.findById(attendanceId).session(session);
       if (!current) throw new ApiError(404, "Attendance not found");
+      if (!current.employeeId) {
+        throw new ApiError(
+          400,
+          "Supervisor attendance cannot be corrected through employee attendance corrections",
+        );
+      }
 
       const originalValues = {
         checkInAt: new Date(current.checkInAt),

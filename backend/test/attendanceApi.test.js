@@ -145,9 +145,9 @@ async function withModelMocks(callback) {
 
 test("all Attendance endpoints require access-token authentication and expected roles", () => {
   const routes = [
-    ["/me/check-in", "post", ["employee"]],
-    ["/me/check-out", "post", ["employee"]],
-    ["/me", "get", ["employee"]],
+    ["/me/check-in", "post", ["employee", "supervisor"]],
+    ["/me/check-out", "post", ["employee", "supervisor"]],
+    ["/me", "get", ["employee", "supervisor"]],
     [
       "/employees/:employeeId/records",
       "post",

@@ -18,6 +18,7 @@ import {
   withAMCResponsibilityTransaction,
 } from "../amc/amcResponsibility.service.js";
 import { throwEmployeeUserIdConflict } from "../employees/employeeUserIdIndex.js";
+import { escapeRegex } from "../../utils/geographicQuery.js";
 
 export const getAllUsers = asyncHandler(async (req, res) => {
   const isAdmin =
@@ -57,6 +58,204 @@ export const getSupervisors = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, { supervisors }, "Supervisors fetched"));
+});
+
+const isDuplicateKeyError = (error) => error?.code === 11000;
+
+const supervisorManagementFilter = (search) => ({
+  userType: "supervisor",
+  ...(search
+    ? {
+        $or: ["firstName", "lastName", "email", "phoneNumber"].map((field) => ({
+          [field]: { $regex: escapeRegex(search), $options: "i" },
+        })),
+      }
+    : {}),
+});
+
+export const getSupervisorManagementList = asyncHandler(async (req, res) => {
+  const { search, page, limit } = req.validatedQuery;
+  const filter = supervisorManagementFilter(search);
+  const skip = (page - 1) * limit;
+  const [supervisors, total] = await Promise.all([
+    User.find(filter)
+      .select("_id firstName lastName email phoneNumber status createdAt")
+      .sort({ firstName: 1, lastName: 1, _id: 1 })
+      .skip(skip)
+      .limit(limit),
+    User.countDocuments(filter),
+  ]);
+  const supervisorIds = supervisors.map(({ _id }) => _id);
+  const teamCounts = supervisorIds.length
+    ? await Employee.aggregate([
+        { $match: { supervisorId: { $in: supervisorIds } } },
+        { $group: { _id: "$supervisorId", count: { $sum: 1 } } },
+      ])
+    : [];
+  const countsBySupervisor = new Map(
+    teamCounts.map(({ _id, count }) => [String(_id), count]),
+  );
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        supervisors: supervisors.map((supervisor) => ({
+          ...supervisor.toObject(),
+          teamCount: countsBySupervisor.get(String(supervisor._id)) ?? 0,
+        })),
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      },
+      "Supervisors listed successfully",
+    ),
+  );
+});
+
+export const getSupervisorManagementDetails = asyncHandler(async (req, res) => {
+  const supervisor = await User.findOne({
+    _id: req.validatedParams.id,
+    userType: "supervisor",
+  }).select("_id firstName lastName email phoneNumber status createdAt");
+  if (!supervisor) throw new ApiError(404, "Supervisor not found");
+
+  const teamCount = await Employee.countDocuments({
+    supervisorId: supervisor._id,
+  });
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      { supervisor: { ...supervisor.toObject(), teamCount } },
+      "Supervisor retrieved successfully",
+    ),
+  );
+});
+
+export const createSupervisor = asyncHandler(async (req, res) => {
+  const { firstName, lastName, email, password, phoneNumber } = req.body;
+  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedPhone = phoneNumber.trim();
+  const existingUser = await User.findOne({
+    $or: [{ email: normalizedEmail }, { phoneNumber: normalizedPhone }],
+  }).select("_id");
+  if (existingUser) {
+    throw new ApiError(409, "User already exists with this email or phone number");
+  }
+
+  let supervisor;
+  try {
+    supervisor = await User.create({
+      firstName: firstName.trim(),
+      lastName: lastName?.trim() || "",
+      email: normalizedEmail,
+      password: await hashPassword(password),
+      phoneNumber: normalizedPhone,
+      userType: "supervisor",
+    });
+  } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      throw new ApiError(409, "User already exists with this email or phone number");
+    }
+    throw error;
+  }
+  return res
+    .status(201)
+    .json(
+      new ApiResponse(
+        201,
+        { supervisor: sanitizeUser(supervisor) },
+        "Supervisor created successfully",
+      ),
+    );
+});
+
+export const updateSupervisor = asyncHandler(async (req, res) => {
+  const supervisor = await User.findOne({
+    _id: req.validatedParams.id,
+    userType: "supervisor",
+  });
+  if (!supervisor) throw new ApiError(404, "Supervisor not found");
+
+  const { firstName, lastName, email, phoneNumber } = req.body;
+  const normalizedEmail = email?.toLowerCase().trim();
+  const normalizedPhone = phoneNumber?.trim();
+  const duplicateFields = [
+    ...(normalizedEmail ? [{ email: normalizedEmail }] : []),
+    ...(normalizedPhone ? [{ phoneNumber: normalizedPhone }] : []),
+  ];
+  const duplicate = duplicateFields.length
+    ? await User.findOne({
+        _id: { $ne: supervisor._id },
+        $or: duplicateFields,
+      }).select("_id")
+    : null;
+  if (duplicate) {
+    throw new ApiError(409, "User already exists with this email or phone number");
+  }
+
+  if (firstName !== undefined) supervisor.firstName = firstName;
+  if (lastName !== undefined) supervisor.lastName = lastName;
+  if (normalizedEmail !== undefined) supervisor.email = normalizedEmail;
+  if (normalizedPhone !== undefined) supervisor.phoneNumber = normalizedPhone;
+  try {
+    await supervisor.save();
+  } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      throw new ApiError(409, "User already exists with this email or phone number");
+    }
+    throw error;
+  }
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        { supervisor: sanitizeUser(supervisor) },
+        "Supervisor updated successfully",
+      ),
+    );
+});
+
+export const updateSupervisorStatus = asyncHandler(async (req, res) => {
+  const { id } = req.validatedParams;
+  const { status } = req.body;
+  let supervisor = await User.findOne({ _id: id, userType: "supervisor" });
+  if (!supervisor) throw new ApiError(404, "Supervisor not found");
+
+  if (status === "inactive") {
+    supervisor = await withAMCResponsibilityTransaction(async (session) => {
+      const currentSupervisor = await User.findOne({
+        _id: id,
+        userType: "supervisor",
+      }).session(session);
+      if (!currentSupervisor) return null;
+      await guardUserEligibilityChange({
+        userId: currentSupervisor._id,
+        session,
+        updatedBy: req.user._id,
+      });
+      currentSupervisor.status = status;
+      await currentSupervisor.save({ session });
+      return currentSupervisor;
+    });
+    if (!supervisor) throw new ApiError(404, "Supervisor not found");
+  } else {
+    supervisor.status = status;
+    await supervisor.save();
+  }
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        { supervisor: sanitizeUser(supervisor) },
+        "Supervisor status updated successfully",
+      ),
+    );
 });
 
 // get user by id

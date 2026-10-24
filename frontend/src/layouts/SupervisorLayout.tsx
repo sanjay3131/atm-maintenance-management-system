@@ -8,12 +8,14 @@ import {
   Menu,
   Users,
   X,
+  ClipboardCheck,
 } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/features/auth/auth-context";
 
 const navigation = [
   { to: "/supervisor", label: "Dashboard", icon: LayoutDashboard, end: true },
+  { to: "/supervisor/attendance", label: "My Attendance", icon: ClipboardCheck },
   { to: "/supervisor/employees", label: "Employees", icon: Users },
   { to: "/supervisor/jobs", label: "Jobs", icon: BriefcaseBusiness },
   { to: "/supervisor/amc", label: "AMC", icon: CalendarDays },
@@ -21,6 +23,7 @@ const navigation = [
 
 const pageTitles: Record<string, string> = {
   "/supervisor": "Supervisor dashboard",
+  "/supervisor/attendance": "My attendance",
   "/supervisor/employees": "Assigned employees",
   "/supervisor/jobs": "Job monitoring",
   "/supervisor/amc": "AMC monitoring",
@@ -155,6 +158,7 @@ export default function SupervisorLayout() {
             {navigation.map(({ to, label, icon: Icon, end }) => {
               const isAvailable =
                 to === "/supervisor" ||
+                to === "/supervisor/attendance" ||
                 to === "/supervisor/employees" ||
                 to === "/supervisor/jobs" ||
                 to === "/supervisor/amc";
