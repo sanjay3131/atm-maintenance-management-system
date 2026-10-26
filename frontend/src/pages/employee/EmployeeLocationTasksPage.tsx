@@ -2,7 +2,7 @@ import { isAxiosError } from "axios";
 import { MapPin, Navigation } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,7 +12,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  useATMLocationTasks,
   useHoldATMLocationTask,
   useResumeATMLocationTask,
   useStartATMLocationTask,
@@ -26,9 +25,14 @@ import {
   canHoldATMLocationTask,
   canResumeATMLocationTask,
   createATMLocationTaskRequestPayload,
-  getEmployeeLocationTaskGroups,
+  EMPLOYEE_LOCATION_TASK_STATUSES,
+  getEmployeeLocationTaskTabCounts,
+  getEmployeeLocationTaskTabTasks,
   tryAcquireATMLocationTaskSubmissionLock,
+  type EmployeeLocationTaskTab,
 } from "@/features/atms/atmLocationTask.utils";
+import { getATMLocationTasks } from "@/features/atms/services/atm-location-tasks.service";
+import type { ATMLocationTaskStatus } from "@/features/atms/types/atm-location-task.types";
 import {
   isAcceptableATMLocationRequestAccuracy,
   parseLocationCoordinates,
@@ -44,6 +48,7 @@ import {
 } from "@/features/employee-portal/i18n";
 
 const PAGE_SIZE = 20;
+const API_PAGE_SIZE = 100;
 const inputClass =
   "min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100";
 
@@ -95,12 +100,43 @@ function getTaskErrorMessage(
     : t(fallback);
 }
 
+async function getAllEmployeeTasksForStatus(status: ATMLocationTaskStatus) {
+  const firstPage = await getATMLocationTasks({
+    status,
+    page: 1,
+    limit: API_PAGE_SIZE,
+  });
+  const remainingPages = await Promise.all(
+    Array.from(
+      { length: Math.max(0, firstPage.pagination.totalPages - 1) },
+      (_, index) =>
+        getATMLocationTasks({
+          status,
+          page: index + 2,
+          limit: API_PAGE_SIZE,
+        }),
+    ),
+  );
+  return {
+    tasks: [firstPage, ...remainingPages].flatMap(({ tasks }) => tasks),
+    total: firstPage.pagination.total,
+  };
+}
+
 function LocationTaskCard({
   task,
   isRefreshing,
+  workflowExpanded,
+  onContinue,
+  onTaskStarted,
+  onTaskResumed,
 }: {
   task: ATMLocationTask;
   isRefreshing: boolean;
+  workflowExpanded: boolean;
+  onContinue: (taskId: string) => void;
+  onTaskStarted: (taskId: string) => void;
+  onTaskResumed: (taskId: string) => void;
 }) {
   const { t, language } = useEmployeeLanguage();
   const queryClient = useQueryClient();
@@ -144,6 +180,7 @@ function LocationTaskCard({
       const startedTask = await startMutation.mutateAsync(task._id);
       if (canSubmitATMLocationTask(startedTask)) setSubmitted(false);
       toast.success(t("Task started."));
+      onTaskStarted(task._id);
     } catch (startError) {
       const message = getTaskErrorMessage(
         startError,
@@ -194,6 +231,7 @@ function LocationTaskCard({
     try {
       await resumeMutation.mutateAsync(task._id);
       toast.success(t("Task resumed."));
+      onTaskResumed(task._id);
     } catch (resumeError) {
       const refreshResults = await Promise.allSettled([
         queryClient.invalidateQueries({
@@ -392,120 +430,139 @@ function LocationTaskCard({
 
         {task.status === "IN_PROGRESS" && !hasLinkedRequest && (
           <section className="space-y-4 border-t border-slate-200 pt-4 dark:border-slate-800">
-            <div>
-              <h3 className="font-semibold">{t("Location proposal")}</h3>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                {t("Submit a proposal only after visiting this ATM.")}
-              </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="font-semibold">{t("Location proposal")}</h3>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                  {t("Submit a proposal only after visiting this ATM.")}
+                </p>
+              </div>
               <Button
                 type="button"
                 variant="outline"
-                className="min-h-11 max-w-full whitespace-normal"
-                onClick={() => void holdTask()}
-                disabled={
-                  !canHold ||
-                  holdMutation.isPending ||
-                  resumeMutation.isPending ||
-                  isRefreshing
-                }
+                className="min-h-11 whitespace-normal"
+                aria-expanded={workflowExpanded}
+                aria-controls={`location-proposal-workflow-${task._id}`}
+                onClick={() => onContinue(task._id)}
               >
-                {holdMutation.isPending
-                  ? t("Putting task on hold...")
-                  : t("Do Later / Hold")}
+                {t("Continue task")}
               </Button>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11"
-                onClick={captureGPS}
-                disabled={isLocating || submitMutation.isPending || holdMutation.isPending}
+            {workflowExpanded && (
+              <div
+                id={`location-proposal-workflow-${task._id}`}
+                className="space-y-4"
               >
-                <Navigation aria-hidden="true" />
-                {isLocating ? t("Capturing GPS...") : t("Use current GPS")}
-              </Button>
-              <Button
-                type="button"
-                variant={inputSource === "MANUAL" ? "secondary" : "outline"}
-                className="min-h-11"
-                onClick={useManualCoordinates}
-                disabled={isLocating || submitMutation.isPending || holdMutation.isPending}
-              >
-                {t("Enter coordinates manually")}
-              </Button>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label htmlFor={`task-latitude-${task._id}`} className="mb-1.5 block text-sm font-medium">
-                  {t("Latitude")}
-                </label>
-                <input
-                  id={`task-latitude-${task._id}`}
-                  type="number"
-                  inputMode="decimal"
-                  step="any"
-                  min="-90"
-                  max="90"
-                  autoComplete="off"
-                  className={inputClass}
-                  value={latitude}
-                  onChange={(event) => updateCoordinate(setLatitude, event.target.value)}
-                  disabled={isLocating || submitMutation.isPending}
-                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11 max-w-full whitespace-normal"
+                  onClick={() => void holdTask()}
+                  disabled={
+                    !canHold ||
+                    holdMutation.isPending ||
+                    resumeMutation.isPending ||
+                    isRefreshing
+                  }
+                >
+                  {holdMutation.isPending
+                    ? t("Putting task on hold...")
+                    : t("Do Later / Hold")}
+                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11"
+                    onClick={captureGPS}
+                    disabled={isLocating || submitMutation.isPending || holdMutation.isPending}
+                  >
+                    <Navigation aria-hidden="true" />
+                    {isLocating ? t("Capturing GPS...") : t("Use current GPS")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={inputSource === "MANUAL" ? "secondary" : "outline"}
+                    className="min-h-11"
+                    onClick={useManualCoordinates}
+                    disabled={isLocating || submitMutation.isPending || holdMutation.isPending}
+                  >
+                    {t("Enter coordinates manually")}
+                  </Button>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor={`task-latitude-${task._id}`} className="mb-1.5 block text-sm font-medium">
+                      {t("Latitude")}
+                    </label>
+                    <input
+                      id={`task-latitude-${task._id}`}
+                      type="number"
+                      inputMode="decimal"
+                      step="any"
+                      min="-90"
+                      max="90"
+                      autoComplete="off"
+                      className={inputClass}
+                      value={latitude}
+                      onChange={(event) => updateCoordinate(setLatitude, event.target.value)}
+                      disabled={isLocating || submitMutation.isPending}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor={`task-longitude-${task._id}`} className="mb-1.5 block text-sm font-medium">
+                      {t("Longitude")}
+                    </label>
+                    <input
+                      id={`task-longitude-${task._id}`}
+                      type="number"
+                      inputMode="decimal"
+                      step="any"
+                      min="-180"
+                      max="180"
+                      autoComplete="off"
+                      className={inputClass}
+                      value={longitude}
+                      onChange={(event) => updateCoordinate(setLongitude, event.target.value)}
+                      disabled={isLocating || submitMutation.isPending}
+                    />
+                  </div>
+                </div>
+                {inputSource === "GPS" && accuracy !== null && (
+                  <p className="text-sm text-slate-600 dark:text-slate-300" role="status">
+                    {t("GPS accuracy: {accuracy} m", { accuracy: Math.round(accuracy) })}
+                  </p>
+                )}
+                {inputSource === "MANUAL" && (
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    {t("Manual coordinates will be submitted as manual, without GPS accuracy.")}
+                  </p>
+                )}
+                {error && (
+                  <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
+                    {error}
+                  </p>
+                )}
+                <Button
+                  type="button"
+                  className="min-h-11 w-full sm:w-auto"
+                  onClick={() => void submitProposal()}
+                  disabled={
+                    isLocating ||
+                    submitMutation.isPending ||
+                    !canSubmit ||
+                    !latitude ||
+                    !longitude ||
+                    (inputSource === "GPS" &&
+                      !isAcceptableATMLocationRequestAccuracy(accuracy))
+                  }
+                >
+                  {submitMutation.isPending
+                    ? t("Submitting proposal...")
+                    : t("Submit for admin review")}
+                </Button>
               </div>
-              <div>
-                <label htmlFor={`task-longitude-${task._id}`} className="mb-1.5 block text-sm font-medium">
-                  {t("Longitude")}
-                </label>
-                <input
-                  id={`task-longitude-${task._id}`}
-                  type="number"
-                  inputMode="decimal"
-                  step="any"
-                  min="-180"
-                  max="180"
-                  autoComplete="off"
-                  className={inputClass}
-                  value={longitude}
-                  onChange={(event) => updateCoordinate(setLongitude, event.target.value)}
-                  disabled={isLocating || submitMutation.isPending}
-                />
-              </div>
-            </div>
-            {inputSource === "GPS" && accuracy !== null && (
-              <p className="text-sm text-slate-600 dark:text-slate-300" role="status">
-                {t("GPS accuracy: {accuracy} m", { accuracy: Math.round(accuracy) })}
-              </p>
             )}
-            {inputSource === "MANUAL" && (
-              <p className="text-sm text-slate-600 dark:text-slate-300">
-                {t("Manual coordinates will be submitted as manual, without GPS accuracy.")}
-              </p>
-            )}
-            {error && (
-              <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
-                {error}
-              </p>
-            )}
-            <Button
-              type="button"
-              className="min-h-11 w-full sm:w-auto"
-              onClick={() => void submitProposal()}
-              disabled={
-                isLocating ||
-                submitMutation.isPending ||
-                !canSubmit ||
-                !latitude ||
-                !longitude ||
-                (inputSource === "GPS" &&
-                  !isAcceptableATMLocationRequestAccuracy(accuracy))
-              }
-            >
-              {submitMutation.isPending
-                ? t("Submitting proposal...")
-                : t("Submit for admin review")}
-            </Button>
           </section>
         )}
 
@@ -532,6 +589,12 @@ function LocationTaskCard({
               {resumeMutation.isPending ? t("Resuming task...") : t("Resume task")}
             </Button>
           </section>
+        )}
+
+        {task.status === "COMPLETED" && task.completedAt && (
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            {t("Completed date")}: {formatDate(task.completedAt, language === "ta" ? "ta-IN" : "en-IN")}
+          </p>
         )}
 
         {(task.status === "PENDING_REVIEW" ||
@@ -593,9 +656,49 @@ function LocationTaskCard({
 export default function EmployeeLocationTasksPage() {
   const { t } = useEmployeeLanguage();
   const [page, setPage] = useState(1);
-  const tasksQuery = useATMLocationTasks({ page, limit: PAGE_SIZE });
-  const tasks = tasksQuery.data?.tasks ?? [];
-  const totalPages = tasksQuery.data?.pagination.totalPages ?? 0;
+  const [selectedTab, setSelectedTab] =
+    useState<EmployeeLocationTaskTab>("ASSIGNED");
+  const [workflowTaskId, setWorkflowTaskId] = useState<string | null>(null);
+  const statusQueries = useQueries({
+    queries: EMPLOYEE_LOCATION_TASK_STATUSES.map((status) => ({
+      queryKey: atmLocationTaskQueryKeys.list({
+        status,
+        page: 1,
+        limit: API_PAGE_SIZE,
+      }),
+      queryFn: () => getAllEmployeeTasksForStatus(status),
+    })),
+  });
+  const tasks = statusQueries.flatMap((query) => query.data?.tasks ?? []);
+  const counts = getEmployeeLocationTaskTabCounts(tasks);
+  const selectedTasks = getEmployeeLocationTaskTabTasks(tasks, selectedTab);
+  const totalPages = Math.ceil(selectedTasks.length / PAGE_SIZE);
+  const visibleTasks = selectedTasks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const isLoading = statusQueries.some((query) => query.isLoading);
+  const isError = statusQueries.some((query) => query.isError);
+  const isFetching = statusQueries.some((query) => query.isFetching);
+  const totalTasks = Object.values(counts).reduce((total, count) => total + count, 0);
+  const retry = () => {
+    void Promise.all(statusQueries.map((query) => query.refetch()));
+  };
+  const selectTab = (tab: EmployeeLocationTaskTab) => {
+    setSelectedTab(tab);
+    setPage(1);
+    setWorkflowTaskId(null);
+  };
+  const showStartedTask = (taskId: string) => {
+    setSelectedTab("IN_PROGRESS");
+    setPage(1);
+    setWorkflowTaskId(taskId);
+  };
+  const tabs: Array<{
+    status: EmployeeLocationTaskTab;
+    label: "Assigned" | "In progress" | "Completed";
+  }> = [
+    { status: "ASSIGNED", label: "Assigned" },
+    { status: "IN_PROGRESS", label: "In progress" },
+    { status: "COMPLETED", label: "Completed" },
+  ];
 
   return (
     <main className="min-w-0 space-y-5">
@@ -606,86 +709,121 @@ export default function EmployeeLocationTasksPage() {
         </p>
       </header>
 
-      {tasksQuery.isLoading ? (
+      {isLoading ? (
         <p role="status" className="rounded-2xl border bg-white p-6 text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">
           {t("Loading location tasks...")}
         </p>
-      ) : tasksQuery.isError ? (
+      ) : isError ? (
         <div role="alert" className="rounded-2xl border border-rose-300 bg-rose-50 p-5 dark:border-rose-900 dark:bg-rose-950/30">
           <p className="font-medium text-rose-900 dark:text-rose-200">{t("Could not load location tasks.")}</p>
           <Button
             type="button"
             variant="outline"
             className="mt-3 min-h-11"
-            onClick={() => void tasksQuery.refetch()}
-            disabled={tasksQuery.isFetching}
+            onClick={retry}
+            disabled={isFetching}
           >
-            {tasksQuery.isFetching ? t("Loading...") : t("Retry")}
+            {isFetching ? t("Loading...") : t("Retry")}
           </Button>
-        </div>
-      ) : tasks.length === 0 ? (
-        <div className="rounded-2xl border border-dashed bg-white p-8 text-center dark:bg-slate-950">
-          <p className="font-semibold">{t("No location tasks assigned to you.")}</p>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-            {t("Assigned ATM location collection and correction tasks will appear here.")}
-          </p>
         </div>
       ) : (
         <>
-          <section aria-label={t("Tasks by status")} className="space-y-5">
-            <h2 className="text-lg font-semibold">{t("Tasks by status")}</h2>
-            {getEmployeeLocationTaskGroups(tasks).map((group) => (
-              <section
-                key={group.status}
-                aria-labelledby={`location-task-group-${group.status}`}
-                className="min-w-0 space-y-3"
+          <section
+            role="tablist"
+            aria-label={t("Location task status tabs")}
+            className="grid grid-cols-3 gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+          >
+            {tabs.map(({ status, label }) => (
+              <button
+                key={status}
+                type="button"
+                role="tab"
+                id={`location-task-tab-${status}`}
+                aria-selected={selectedTab === status}
+                aria-controls="location-task-panel"
+                onClick={() => selectTab(status)}
+                className={`flex min-h-12 min-w-0 flex-wrap items-center justify-center gap-1 rounded-xl px-2 py-2 text-center text-sm font-semibold leading-5 transition-colors ${
+                  selectedTab === status
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                }`}
               >
-                <h3
-                  id={`location-task-group-${group.status}`}
-                  className="flex flex-wrap items-center gap-2 text-base font-semibold"
+                <span className="min-w-0 break-words">{t(label)}</span>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs ${
+                    selectedTab === status
+                      ? "bg-white/20 text-white"
+                      : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                  }`}
+                  aria-label={t("{count} task(s)", { count: counts[status] })}
                 >
-                  {employeeJobStatusLabel(group.status, t)}
-                  <span className="text-sm font-normal text-slate-500 dark:text-slate-400">
-                    {t("{count} task(s)", { count: group.tasks.length })}
-                  </span>
-                </h3>
-                <div className="grid min-w-0 gap-4">
-                  {group.tasks.map((task) => (
-                    <LocationTaskCard
-                      key={task._id}
-                      task={task}
-                      isRefreshing={tasksQuery.isFetching}
-                    />
-                  ))}
-                </div>
-              </section>
+                  {counts[status]}
+                </span>
+              </button>
             ))}
           </section>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white p-4 dark:bg-slate-950">
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              {tasksQuery.data?.pagination.total ?? 0} · {page} / {totalPages}
-            </p>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11"
-                disabled={page <= 1 || tasksQuery.isFetching}
-                onClick={() => setPage((current) => current - 1)}
-              >
-                {t("Previous")}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11"
-                disabled={!totalPages || page >= totalPages || tasksQuery.isFetching}
-                onClick={() => setPage((current) => current + 1)}
-              >
-                {t("Next")}
-              </Button>
-            </div>
-          </div>
+
+          <section
+            role="tabpanel"
+            id="location-task-panel"
+            aria-labelledby={`location-task-tab-${selectedTab}`}
+            className="min-w-0 space-y-4"
+          >
+            {totalTasks === 0 ? (
+              <div className="rounded-2xl border border-dashed bg-white p-8 text-center dark:bg-slate-950">
+                <p className="font-semibold">{t("No location tasks assigned to you.")}</p>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                  {t("Assigned ATM location collection and correction tasks will appear here.")}
+                </p>
+              </div>
+            ) : selectedTasks.length === 0 ? (
+              <div className="rounded-2xl border border-dashed bg-white p-8 text-center dark:bg-slate-950">
+                <p className="font-semibold">{t("No tasks in this status.")}</p>
+              </div>
+            ) : (
+              <div className="grid min-w-0 gap-4">
+                {visibleTasks.map((task) => (
+                  <LocationTaskCard
+                    key={task._id}
+                    task={task}
+                    isRefreshing={isFetching}
+                    workflowExpanded={workflowTaskId === task._id}
+                    onContinue={setWorkflowTaskId}
+                    onTaskStarted={showStartedTask}
+                    onTaskResumed={showStartedTask}
+                  />
+                ))}
+              </div>
+            )}
+
+            {selectedTasks.length > PAGE_SIZE && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white p-4 dark:bg-slate-950">
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  {selectedTasks.length} · {page} / {totalPages}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11"
+                    disabled={page <= 1 || isFetching}
+                    onClick={() => setPage((current) => current - 1)}
+                  >
+                    {t("Previous")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11"
+                    disabled={page >= totalPages || isFetching}
+                    onClick={() => setPage((current) => current + 1)}
+                  >
+                    {t("Next")}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </section>
         </>
       )}
     </main>

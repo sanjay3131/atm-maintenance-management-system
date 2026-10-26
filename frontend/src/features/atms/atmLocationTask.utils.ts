@@ -118,6 +118,52 @@ export const canResumeATMLocationTask = (task: ATMLocationTask) =>
   task.status === "ON_HOLD" &&
   task.locationRequestId == null;
 
+export type EmployeeLocationTaskTab =
+  | "ASSIGNED"
+  | "IN_PROGRESS"
+  | "COMPLETED";
+
+export const EMPLOYEE_LOCATION_TASK_STATUSES = [
+  "ASSIGNED",
+  "IN_PROGRESS",
+  "ON_HOLD",
+  "PENDING_REVIEW",
+  "REJECTED",
+  "COMPLETED",
+] as const;
+
+const EMPLOYEE_LOCATION_TASK_TAB_STATUSES: Record<
+  EmployeeLocationTaskTab,
+  readonly ATMLocationTask["status"][]
+> = {
+  ASSIGNED: ["ASSIGNED"],
+  IN_PROGRESS: ["IN_PROGRESS", "ON_HOLD", "PENDING_REVIEW", "REJECTED"],
+  COMPLETED: ["COMPLETED"],
+};
+
+export const getEmployeeLocationTaskTabTasks = (
+  tasks: ATMLocationTask[],
+  tab: EmployeeLocationTaskTab,
+) =>
+  tasks.filter((task) =>
+    EMPLOYEE_LOCATION_TASK_TAB_STATUSES[tab].includes(task.status),
+  );
+
+export const getEmployeeLocationTaskTabCounts = (tasks: ATMLocationTask[]) => {
+  const counts: Record<EmployeeLocationTaskTab, number> = {
+    ASSIGNED: 0,
+    IN_PROGRESS: 0,
+    COMPLETED: 0,
+  };
+  for (const task of tasks) {
+    if (task.status === "ASSIGNED") counts.ASSIGNED += 1;
+    else if (EMPLOYEE_LOCATION_TASK_TAB_STATUSES.IN_PROGRESS.includes(task.status)) {
+      counts.IN_PROGRESS += 1;
+    } else if (task.status === "COMPLETED") counts.COMPLETED += 1;
+  }
+  return counts;
+};
+
 export const getEmployeeLocationTaskGroups = (tasks: ATMLocationTask[]) =>
   (
     [

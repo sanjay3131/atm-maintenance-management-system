@@ -9,6 +9,8 @@ import {
   createATMLocationTaskRequestPayload,
   filterATMLocationTaskInventory,
   getEmployeeLocationTaskGroups,
+  getEmployeeLocationTaskTabCounts,
+  getEmployeeLocationTaskTabTasks,
   getATMLocationTaskRequestId,
   getBulkATMLocationTaskErrorMessage,
   getLocationTaskActionErrorMessage,
@@ -417,6 +419,36 @@ test("employee task list groups tasks using authoritative lifecycle statuses", (
   );
 });
 
+test("employee location tabs count and filter lifecycle statuses without showing cancelled tasks", () => {
+  const tasks = [
+    inProgressTask({ _id: "assigned", status: "ASSIGNED" }),
+    inProgressTask({ _id: "progress", status: "IN_PROGRESS" }),
+    inProgressTask({ _id: "held", status: "ON_HOLD" }),
+    inProgressTask({ _id: "review", status: "PENDING_REVIEW" }),
+    inProgressTask({ _id: "rejected", status: "REJECTED" }),
+    inProgressTask({ _id: "completed", status: "COMPLETED" }),
+    inProgressTask({ _id: "cancelled", status: "CANCELLED" }),
+  ];
+
+  assert.deepEqual(getEmployeeLocationTaskTabCounts(tasks), {
+    ASSIGNED: 1,
+    IN_PROGRESS: 4,
+    COMPLETED: 1,
+  });
+  assert.deepEqual(
+    getEmployeeLocationTaskTabTasks(tasks, "ASSIGNED").map(({ _id }) => _id),
+    ["assigned"],
+  );
+  assert.deepEqual(
+    getEmployeeLocationTaskTabTasks(tasks, "IN_PROGRESS").map(({ _id }) => _id),
+    ["progress", "held", "review", "rejected"],
+  );
+  assert.deepEqual(
+    getEmployeeLocationTaskTabTasks(tasks, "COMPLETED").map(({ _id }) => _id),
+    ["completed"],
+  );
+});
+
 test("linked request identification handles populated, string, and missing task relationships", () => {
   assert.equal(
     getATMLocationTaskRequestId({ locationRequestId: "request-1" }),
@@ -593,13 +625,20 @@ test("task lifecycle APIs, translated controls, and proposal flows use scoped in
   assert.match(hooks, /useResumeATMLocationTask/);
   assert.match(hooks, /queryKey: atmLocationTaskQueryKeys\.all/);
   assert.match(requestHooks, /queryKey: \["my-atm-location-requests", payload\.atmId\]/);
-  assert.match(page, /useATMLocationTasks\(\{ page, limit: PAGE_SIZE \}\)/);
+  assert.match(page, /useQueries\(\{/);
+  assert.match(page, /getAllEmployeeTasksForStatus\(status\)/);
+  assert.match(page, /getEmployeeLocationTaskTabCounts\(tasks\)/);
+  assert.match(page, /getEmployeeLocationTaskTabTasks\(tasks, selectedTab\)/);
+  assert.match(page, /role="tablist"/);
+  assert.match(page, /role="tab"/);
+  assert.match(page, /onTaskStarted=\{showStartedTask\}/);
+  assert.match(page, /onTaskResumed=\{showStartedTask\}/);
+  assert.doesNotMatch(page, /useATMLocationTasks\(/);
   assert.match(page, /useStartATMLocationTask/);
   assert.match(page, /useHoldATMLocationTask/);
   assert.match(page, /useResumeATMLocationTask/);
   assert.match(page, /canHoldATMLocationTask/);
   assert.match(page, /canResumeATMLocationTask/);
-  assert.match(page, /getEmployeeLocationTaskGroups\(tasks\)/);
   assert.match(page, /catch \(holdError\)[\s\S]*?toast\.error\(message\)/);
   assert.match(page, /catch \(resumeError\)[\s\S]*?toast\.error\(message\)/);
   assert.match(page, /createATMLocationTaskRequestPayload/);
@@ -611,7 +650,7 @@ test("task lifecycle APIs, translated controls, and proposal flows use scoped in
     /const startedTask = await startMutation\.mutateAsync\(task\._id\);\s*if \(canSubmitATMLocationTask\(startedTask\)\) setSubmitted\(false\);/,
   );
   assert.match(page, /await submitMutation\.mutateAsync\(payload\);\s*setSubmitted\(true\);/);
-  assert.match(page, /isRefreshing=\{tasksQuery\.isFetching\}/);
+  assert.match(page, /isRefreshing=\{isFetching\}/);
   const submitCatchStart = page.indexOf("} catch (submitError)");
   const submitFinallyStart = page.indexOf("} finally {", submitCatchStart);
   assert.ok(submitCatchStart >= 0 && submitFinallyStart > submitCatchStart);
@@ -627,6 +666,9 @@ test("task lifecycle APIs, translated controls, and proposal flows use scoped in
   assert.match(adminPage, /"ON_HOLD"/);
   assert.match(i18n, /"Do Later \/ Hold": "Do Later \/ Hold"/);
   assert.match(i18n, /"Do Later \/ Hold": "பிறகு செய் \/ நிறுத்தி வை"/);
+  assert.match(i18n, /"Continue task": "Continue task"/);
+  assert.match(i18n, /"Continue task": "பணியைத் தொடரவும்"/);
+  assert.match(i18n, /"No tasks in this status\.": "இந்த நிலையில் பணிகள் இல்லை\."/);
 });
 
 test("mutation errors expose backend messages and explain conflicts", () => {
