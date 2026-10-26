@@ -53,6 +53,11 @@ const navItems = [
     icon: MapPinCheck,
   },
   {
+    label: "ATM Location Tasks",
+    path: "/admin/location-tasks",
+    icon: MapPinned,
+  },
+  {
     label: "Banks",
     path: "/admin/banks",
     icon: Landmark,

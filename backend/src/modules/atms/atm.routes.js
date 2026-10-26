@@ -15,6 +15,14 @@ import {
   approveATMLocationRequest,
   rejectATMLocationRequest,
   reopenATMLocationRequests,
+  createATMLocationTasks,
+  getATMLocationTasks,
+  holdATMLocationTask,
+  startATMLocationTask,
+  resumeATMLocationTask,
+  reassignATMLocationTask,
+  reopenATMLocationTask,
+  cancelATMLocationTask,
 } from "./atm.controller.js";
 import {
   createAtmSchema,
@@ -26,6 +34,12 @@ import {
   atmLocationRequestListQuerySchema,
   atmIdParamsSchema,
   rejectATMLocationRequestSchema,
+  createATMLocationTasksSchema,
+  listATMLocationTasksQuerySchema,
+  locationTaskIdParamsSchema,
+  reassignATMLocationTaskSchema,
+  reopenATMLocationTaskSchema,
+  cancelATMLocationTaskSchema,
   validateRequest,
 } from "./atm.validation.js";
 import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
@@ -90,6 +104,73 @@ router.patch(
   authorizeRoles("admin", "superAdmin"),
   validateRequest(setATMAMCResponsibleEmployeeSchema),
   setATMAMCResponsible,
+);
+
+router.post(
+  "/location-tasks/bulk",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(createATMLocationTasksSchema),
+  createATMLocationTasks,
+);
+
+router.get(
+  "/location-tasks",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin", "employee"),
+  validateRouteRequest(listATMLocationTasksQuerySchema, "query"),
+  getATMLocationTasks,
+);
+
+router.post(
+  "/location-tasks/:taskId/start",
+  verifyAccessToken,
+  authorizeRoles("employee"),
+  validateRouteRequest(locationTaskIdParamsSchema, "params"),
+  startATMLocationTask,
+);
+
+router.post(
+  "/location-tasks/:taskId/hold",
+  verifyAccessToken,
+  authorizeRoles("employee"),
+  validateRouteRequest(locationTaskIdParamsSchema, "params"),
+  holdATMLocationTask,
+);
+
+router.post(
+  "/location-tasks/:taskId/resume",
+  verifyAccessToken,
+  authorizeRoles("employee"),
+  validateRouteRequest(locationTaskIdParamsSchema, "params"),
+  resumeATMLocationTask,
+);
+
+router.patch(
+  "/location-tasks/:taskId/reassign",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRouteRequest(locationTaskIdParamsSchema, "params"),
+  validateRequest(reassignATMLocationTaskSchema),
+  reassignATMLocationTask,
+);
+
+router.post(
+  "/location-tasks/:taskId/reopen",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRouteRequest(locationTaskIdParamsSchema, "params"),
+  validateRequest(reopenATMLocationTaskSchema),
+  reopenATMLocationTask,
+);
+
+router.post(
+  "/location-tasks/:taskId/cancel",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRouteRequest(locationTaskIdParamsSchema, "params"),
+  validateRequest(cancelATMLocationTaskSchema),
+  cancelATMLocationTask,
 );
 
 router.post(

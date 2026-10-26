@@ -65,6 +65,11 @@ const atmSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    locationWorkflowRevision: {
+      type: Number,
+      default: 0,
+      select: false,
+    },
     locationCapturedAt: {
       type: Date,
       default: null,
@@ -173,6 +178,18 @@ atmSchema.index({ regionId: 1 });
 atmSchema.index({ assignedEmployeeId: 1 });
 atmSchema.index({ location: "2dsphere" });
 atmSchema.index({ locationConfigured: 1 });
+
+atmSchema.statics.bumpLocationWorkflowRevision = async function (
+  atmId,
+  session,
+) {
+  const result = await this.updateOne(
+    { _id: atmId, isDeleted: false },
+    { $inc: { locationWorkflowRevision: 1 } },
+    { session, timestamps: false },
+  );
+  return result.matchedCount === 1;
+};
 
 const ATM = mongoose.model("ATM", atmSchema);
 

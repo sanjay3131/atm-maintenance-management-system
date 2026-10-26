@@ -12,6 +12,7 @@ import {
   submitATMlocationRequest,
 } from "../src/modules/atms/atmLocationRequest.service.js";
 import ATMLocationRequest from "../src/modules/atms/atmLocationRequest.model.js";
+import ATMLocationTask from "../src/modules/atms/atmLocationTask.model.js";
 import {
   rejectATMLocationRequestSchema,
   submitATMLocationRequestSchema,
@@ -23,6 +24,7 @@ const atmId = "64b000000000000000000101";
 const employeeRecordId = "64b000000000000000000102";
 const employeeUserId = "64b000000000000000000103";
 const adminId = "64b000000000000000000104";
+const superAdminId = "64b000000000000000000107";
 const amcId = "64b000000000000000000105";
 const requestId = "64b000000000000000000106";
 
@@ -39,6 +41,7 @@ const makeATM = (updates = {}) => ({
   locationRequestWindowOpen: false,
   locationRequestApproved: false,
   locationRequestReopenHistory: [],
+  locationWorkflowRevision: 0,
   updatedBy: null,
   assignedEmployeeId: [employeeRecordId],
   ...updates,
@@ -75,6 +78,38 @@ test("employee-owned request history is scoped to the requester and selected ATM
   );
 });
 
+test("admin request filters combine ATM search, district, region, and employee before pagination", async () => {
+  const otherEmployeeRequest = makeRequest({
+    _id: "64b000000000000000000114",
+    requesterEmployeeId: "64b000000000000000000115",
+  });
+  await withHarness(
+    {
+      atm: makeATM({
+        atmId: "ATM-101",
+        locationName: "Central Market",
+        address: "Main Road",
+        districtId: "district-1",
+        regionId: "region-1",
+      }),
+      requests: [makeRequest(), otherEmployeeRequest],
+    },
+    async () => {
+      const result = await listATMlocationRequests({
+        page: 1,
+        limit: 20,
+        status: "PENDING",
+        search: "central",
+        districtId: "district-1",
+        regionId: "region-1",
+        employeeId: employeeRecordId,
+      });
+      assert.equal(result.requests.length, 1);
+      assert.equal(result.requests[0]._id, requestId);
+    },
+  );
+});
+
 const makeRequest = (updates = {}) => ({
   _id: requestId,
   atmId,
@@ -103,10 +138,19 @@ const makeRequest = (updates = {}) => ({
 
 const makeSession = (state) => ({
   async withTransaction(operation) {
+    const previousTransaction = state.transactionTail;
+    let releaseTransaction;
+    state.transactionTail = new Promise((resolve) => {
+      releaseTransaction = resolve;
+    });
+    await previousTransaction;
     const atmBefore = { ...state.atm };
     const requestsBefore = new Map(
       [...state.requests].map(([id, request]) => [id, { ...request }]),
     );
+      const tasksBefore = new Map(
+        [...state.tasks].map(([id, task]) => [id, { ...task }]),
+      );
     try {
       await operation(this);
     } catch (error) {
@@ -115,14 +159,26 @@ const makeSession = (state) => ({
       for (const [id, request] of requestsBefore) {
         state.requests.set(id, request);
       }
+      state.tasks.clear();
+      for (const [id, task] of tasksBefore) state.tasks.set(id, task);
       throw error;
+    } finally {
+      releaseTransaction();
     }
   },
   async endSession() {},
 });
 
 async function withHarness(
-  { atm = makeATM(), employees, amcs, requests = [], failATMWrite = false } = {},
+  {
+    atm = makeATM(),
+    employees,
+    amcs,
+    requests = [],
+    tasks = [],
+    failATMWrite = false,
+    failTaskUpdate = false,
+  } = {},
   callback,
 ) {
   const state = {
@@ -139,29 +195,75 @@ async function withHarness(
       ],
     amcs: amcs ?? [],
     requests: new Map(requests.map((request) => [String(request._id), request])),
+    tasks: new Map(tasks.map((task) => [String(task._id), task])),
     failATMWrite,
+    failTaskUpdate,
+    transactionTail: Promise.resolve(),
     nextRequestId: 200,
   };
 
   const originals = [
     [mongoose, "startSession", mongoose.startSession],
+    [ATM, "find", ATM.find],
     [ATM, "findOne", ATM.findOne],
     [ATM, "findOneAndUpdate", ATM.findOneAndUpdate],
+    [ATM, "bumpLocationWorkflowRevision", ATM.bumpLocationWorkflowRevision],
     [Employee, "findOne", Employee.findOne],
     [AMC, "findOne", AMC.findOne],
     [ATMLocationRequest, "create", ATMLocationRequest.create],
+    [ATMLocationRequest, "findOne", ATMLocationRequest.findOne],
     [ATMLocationRequest, "exists", ATMLocationRequest.exists],
     [ATMLocationRequest, "findOneAndUpdate", ATMLocationRequest.findOneAndUpdate],
     [ATMLocationRequest, "find", ATMLocationRequest.find],
     [ATMLocationRequest, "countDocuments", ATMLocationRequest.countDocuments],
+    [ATMLocationTask, "findOne", ATMLocationTask.findOne],
+    [ATMLocationTask, "findOneAndUpdate", ATMLocationTask.findOneAndUpdate],
   ];
 
   mongoose.startSession = async () => makeSession(state);
+  ATM.find = (filter) => ({
+    distinct: async () => {
+      const candidate = state.atm;
+      if (filter.isDeleted === false && candidate.isDeleted) return [];
+      if (
+        filter.districtId &&
+        String(filter.districtId) !== String(candidate.districtId)
+      ) {
+        return [];
+      }
+      if (
+        filter.regionId &&
+        String(filter.regionId) !== String(candidate.regionId)
+      ) {
+        return [];
+      }
+      if (
+        filter.$or &&
+        !filter.$or.some((condition) => {
+          const [field, matcher] = Object.entries(condition)[0];
+          return new RegExp(matcher.$regex, matcher.$options).test(
+            candidate[field] ?? "",
+          );
+        })
+      ) {
+        return [];
+      }
+      return [candidate._id];
+    },
+  });
   ATM.findOne = async ({ _id, isDeleted }) =>
     String(_id) === String(state.atm._id) &&
     (!isDeleted || state.atm.isDeleted === isDeleted)
       ? state.atm
       : null;
+  ATM.bumpLocationWorkflowRevision = async (id) => {
+    if (String(id) !== String(state.atm._id) || state.atm.isDeleted) {
+      return false;
+    }
+    state.atm.locationWorkflowRevision =
+      (state.atm.locationWorkflowRevision ?? 0) + 1;
+    return true;
+  };
   ATM.findOneAndUpdate = async (filter, update) => {
     if (state.failATMWrite) throw new Error("ATM update failed");
     if (String(filter._id) !== String(state.atm._id)) return null;
@@ -231,10 +333,11 @@ async function withHarness(
         (!filter.status || filter.status.$in.includes(amc.status)),
     ) ?? null;
   ATMLocationRequest.create = async (data) => {
+    const requestData = Array.isArray(data) ? data[0] : data;
     if (
       [...state.requests.values()].some(
         (request) =>
-          String(request.atmId) === String(data.atmId) &&
+          String(request.atmId) === String(requestData.atmId) &&
           request.status === "PENDING",
       )
     ) {
@@ -243,10 +346,14 @@ async function withHarness(
     const request = {
       _id: `64b000000000000000000${String(state.nextRequestId++).padStart(3, "0")}`,
       submittedAt: new Date(),
-      ...data,
+      ...requestData,
     };
     state.requests.set(String(request._id), request);
-    return request;
+    return Array.isArray(data) ? [request] : request;
+  };
+  ATMLocationRequest.findOne = async (filter) => {
+    const request = state.requests.get(String(filter._id));
+    return request?.status === filter.status ? request : null;
   };
   ATMLocationRequest.findOneAndUpdate = async (filter, update) => {
     const request = state.requests.get(String(filter._id));
@@ -262,13 +369,51 @@ async function withHarness(
     )
       ? { _id: "existing-request" }
       : null;
+  ATMLocationTask.findOne = async (filter) =>
+    [...state.tasks.values()].find((task) =>
+      Object.entries(filter).every(([key, value]) => {
+        if (value && typeof value === "object" && "$in" in value) {
+          return value.$in.includes(task[key]);
+        }
+        return String(task[key]?._id ?? task[key]) === String(value?._id ?? value);
+      }),
+    ) ?? null;
+  ATMLocationTask.findOneAndUpdate = async (filter, update) => {
+    if (state.failTaskUpdate) return null;
+    const task = state.tasks.get(String(filter._id));
+    if (
+      !task ||
+      !Object.entries(filter).every(([key, value]) => {
+        if (value && typeof value === "object" && "$in" in value) {
+          return value.$in.includes(task[key]);
+        }
+        return String(task[key]?._id ?? task[key]) === String(value?._id ?? value);
+      })
+    ) {
+      return null;
+    }
+    Object.assign(task, update.$set ?? {});
+    return task;
+  };
+  const matchesRequestFilter = (request, filter) =>
+    (!filter.status || request.status === filter.status) &&
+    (!filter.requestedBy ||
+      String(request.requestedBy) === String(filter.requestedBy)) &&
+    (!filter.requesterEmployeeId ||
+      String(request.requesterEmployeeId) === String(filter.requesterEmployeeId)) &&
+    (!filter.atmId ||
+      (filter.atmId.$in
+        ? filter.atmId.$in.some((id) => String(id) === String(request.atmId))
+        : String(request.atmId) === String(filter.atmId))) &&
+    (!filter.$and ||
+      filter.$and.every((condition) =>
+        condition.atmId.$in
+          ? condition.atmId.$in.some((id) => String(id) === String(request.atmId))
+          : String(condition.atmId) === String(request.atmId),
+      ));
   ATMLocationRequest.find = (filter) => {
-    const matches = [...state.requests.values()].filter(
-      (request) =>
-        (!filter.status || request.status === filter.status) &&
-        (!filter.atmId || String(request.atmId) === String(filter.atmId)) &&
-        (!filter.requestedBy ||
-          String(request.requestedBy) === String(filter.requestedBy)),
+    const matches = [...state.requests.values()].filter((request) =>
+      matchesRequestFilter(request, filter),
     );
     const query = {
       sort() {
@@ -291,11 +436,7 @@ async function withHarness(
   };
   ATMLocationRequest.countDocuments = async (filter) =>
     [...state.requests.values()].filter(
-      (request) =>
-        (!filter.status || request.status === filter.status) &&
-        (!filter.atmId || String(request.atmId) === String(filter.atmId)) &&
-        (!filter.requestedBy ||
-          String(request.requestedBy) === String(filter.requestedBy)),
+      (request) => matchesRequestFilter(request, filter),
     ).length;
 
   try {
@@ -338,6 +479,49 @@ test("request schema rejects invalid coordinates and accuracy", () => {
     submitATMLocationRequestSchema.safeParse({
       ...valid,
       accuracy: 50,
+    }).success,
+    true,
+  );
+  for (const invalidAccuracy of [
+    undefined,
+    null,
+    "5",
+    -0.01,
+    50.01,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+  ]) {
+    assert.equal(
+      submitATMLocationRequestSchema.safeParse({
+        ...valid,
+        accuracy: invalidAccuracy,
+      }).success,
+      false,
+      `expected GPS accuracy ${String(invalidAccuracy)} to be rejected`,
+    );
+  }
+  for (const boundaryAccuracy of [0, 50]) {
+    assert.equal(
+      submitATMLocationRequestSchema.safeParse({
+        ...valid,
+        accuracy: boundaryAccuracy,
+      }).success,
+      true,
+    );
+  }
+  assert.equal(
+    submitATMLocationRequestSchema.safeParse({
+      ...valid,
+      accuracy: null,
+      inputSource: "MANUAL",
+    }).success,
+    false,
+  );
+  assert.equal(
+    submitATMLocationRequestSchema.safeParse({
+      ...valid,
+      accuracy: undefined,
+      inputSource: "MANUAL",
     }).success,
     true,
   );
@@ -412,6 +596,233 @@ test("valid employee submission stores an unverified proposal without changing o
   });
 });
 
+test("location task submission is limited to its current assignee and atomically enters review", async () => {
+  const locationTaskId = "64b000000000000000000120";
+  const task = {
+    _id: locationTaskId,
+    atmId,
+    assignedEmployeeId: employeeRecordId,
+    status: "IN_PROGRESS",
+    active: true,
+    locationRequestId: null,
+  };
+  await withHarness(
+    {
+      atm: makeATM({ assignedEmployeeId: [] }),
+      tasks: [{ ...task }],
+    },
+    async (state) => {
+      const request = await submitATMlocationRequest({
+        ...proposal({ locationTaskId }),
+        requester: employee,
+      });
+      assert.equal(request.locationTaskId, locationTaskId);
+      assert.equal(request.status, "PENDING");
+      assert.equal(state.tasks.get(locationTaskId).status, "PENDING_REVIEW");
+      assert.equal(
+        String(state.tasks.get(locationTaskId).locationRequestId),
+        String(request._id),
+      );
+      assert.deepEqual(state.atm.location, undefined);
+      assert.equal(state.atm.locationConfigured, false);
+      await assert.rejects(
+        submitATMlocationRequest({
+          ...proposal({ locationTaskId }),
+          requester: employee,
+        }),
+        { statusCode: 403 },
+      );
+      assert.equal(state.requests.size, 1);
+      assert.equal(state.tasks.get(locationTaskId).locationRequestId, request._id);
+      await assert.rejects(
+        submitATMlocationRequest({
+          ...proposal(),
+          requester: employee,
+        }),
+        { statusCode: 409 },
+      );
+    },
+  );
+
+  for (const invalidTask of [
+    { ...task, status: "ASSIGNED" },
+    { ...task, status: "PENDING_REVIEW", locationRequestId: requestId },
+    { ...task, status: "CANCELLED", active: false },
+    { ...task, status: "COMPLETED", active: false },
+    { ...task, atmId: "64b000000000000000000199" },
+  ]) {
+    await withHarness(
+      {
+        atm: makeATM({ assignedEmployeeId: [] }),
+        tasks: [invalidTask],
+      },
+      async (state) => {
+        await assert.rejects(
+          submitATMlocationRequest({
+            ...proposal({ locationTaskId }),
+            requester: employee,
+          }),
+          { statusCode: 403 },
+        );
+        assert.equal(state.requests.size, 0);
+        assert.equal(state.tasks.get(locationTaskId).status, invalidTask.status);
+      },
+    );
+  }
+
+  await withHarness(
+    {
+      atm: makeATM({ assignedEmployeeId: [] }),
+      tasks: [
+        {
+          ...task,
+          assignedEmployeeId: "64b000000000000000000121",
+        },
+      ],
+    },
+    async () => {
+      await assert.rejects(
+        submitATMlocationRequest({
+          ...proposal({ locationTaskId }),
+          requester: employee,
+        }),
+        { statusCode: 403 },
+      );
+    },
+  );
+
+  await withHarness(
+    {
+      atm: makeATM({ assignedEmployeeId: [] }),
+      tasks: [{ ...task }],
+      failTaskUpdate: true,
+    },
+    async (state) => {
+      await assert.rejects(
+        submitATMlocationRequest({
+          ...proposal({ locationTaskId }),
+          requester: employee,
+        }),
+        { statusCode: 409 },
+      );
+      assert.equal(state.requests.size, 0);
+      assert.equal(state.tasks.get(locationTaskId).status, "IN_PROGRESS");
+      assert.equal(state.tasks.get(locationTaskId).locationRequestId, null);
+      assert.deepEqual(state.atm.location, undefined);
+    },
+  );
+});
+
+test("task becomes completed only after linked request approval and rejected proposals require explicit reopening", async () => {
+  const locationTaskId = "64b000000000000000000122";
+  const task = {
+    _id: locationTaskId,
+    atmId,
+    assignedEmployeeId: employeeRecordId,
+    status: "PENDING_REVIEW",
+    active: true,
+    locationRequestId: requestId,
+  };
+  await withHarness(
+    {
+      requests: [makeRequest({ locationTaskId })],
+      tasks: [
+        {
+          ...task,
+          assignmentHistory: [],
+        },
+      ],
+    },
+    async (state) => {
+      const approved = await approveATMlocationRequest({
+        requestId,
+        reviewerId: adminId,
+      });
+      assert.equal(approved.status, "APPROVED");
+      assert.equal(state.tasks.get(locationTaskId).status, "COMPLETED");
+      assert.equal(state.tasks.get(locationTaskId).active, false);
+      assert.ok(state.tasks.get(locationTaskId).completedAt instanceof Date);
+    },
+  );
+
+  await withHarness(
+    {
+      requests: [makeRequest({ locationTaskId })],
+      tasks: [task],
+    },
+    async (state) => {
+      const rejected = await rejectATMlocationRequest({
+        requestId,
+        reviewerId: adminId,
+        reason: "Coordinates do not match the ATM",
+      });
+      assert.equal(rejected.status, "REJECTED");
+      assert.equal(state.tasks.get(locationTaskId).status, "REJECTED");
+      assert.equal(state.tasks.get(locationTaskId).active, true);
+      assert.deepEqual(state.atm.location, undefined);
+    },
+  );
+});
+
+test("rejecting a linked correction preserves official ATM coordinates and rejects repeated stale decisions", async () => {
+  const locationTaskId = "64b000000000000000000123";
+  const coordinates = [77.1, 12.1];
+  const confirmedAt = new Date("2026-10-18T08:00:00.000Z");
+  const task = {
+    _id: locationTaskId,
+    atmId,
+    assignedEmployeeId: employeeRecordId,
+    status: "PENDING_REVIEW",
+    active: true,
+    locationRequestId: requestId,
+  };
+  await withHarness(
+    {
+      atm: makeATM({
+        locationConfigured: true,
+        location: { type: "Point", coordinates },
+        locationCapturedAt: confirmedAt,
+        locationCapturedBy: adminId,
+      }),
+      requests: [
+        makeRequest({
+          locationTaskId,
+          requestType: "LOCATION_CHANGE",
+          officialLocationSnapshot: {
+            locationConfigured: true,
+            coordinates,
+            locationCapturedAt: confirmedAt,
+            locationCapturedBy: adminId,
+          },
+        }),
+      ],
+      tasks: [task],
+    },
+    async (state) => {
+      const rejected = await rejectATMlocationRequest({
+        requestId,
+        reviewerId: superAdminId,
+        reason: "Coordinates need field verification",
+      });
+      assert.equal(rejected.status, "REJECTED");
+      assert.equal(state.tasks.get(locationTaskId).status, "REJECTED");
+      assert.equal(state.tasks.get(locationTaskId).active, true);
+      assert.deepEqual(state.atm.location.coordinates, coordinates);
+      assert.equal(state.atm.locationCapturedAt, confirmedAt);
+      await assert.rejects(
+        rejectATMlocationRequest({
+          requestId,
+          reviewerId: adminId,
+          reason: "Duplicate decision",
+        }),
+        { statusCode: 409 },
+      );
+      assert.deepEqual(state.atm.location.coordinates, coordinates);
+      assert.equal(state.requests.get(requestId).status, "REJECTED");
+    },
+  );
+});
+
 test("concurrent submissions produce only one pending request and one conflict", async () => {
   await withHarness({}, async (state) => {
     const results = await Promise.allSettled([
@@ -431,6 +842,65 @@ test("concurrent submissions produce only one pending request and one conflict",
       1,
     );
   });
+});
+
+test("task-unlinked request submissions reject an active task for employees and admins", async () => {
+  const activeTask = {
+    _id: "64b000000000000000000124",
+    atmId,
+    active: true,
+    status: "ASSIGNED",
+  };
+  for (const requester of [employee, admin]) {
+    await withHarness({ tasks: [{ ...activeTask }] }, async (state) => {
+      await assert.rejects(
+        submitATMlocationRequest({ ...proposal(), requester }),
+        { statusCode: 409 },
+      );
+      assert.equal(state.requests.size, 0);
+      assert.equal(state.atm.locationWorkflowRevision, 0);
+    });
+  }
+});
+
+test("standalone approval cannot update official coordinates while a legacy task is active", async () => {
+  const officialCoordinates = [77.1, 12.1];
+  const request = makeRequest({
+    officialLocationSnapshot: {
+      locationConfigured: true,
+      coordinates: officialCoordinates,
+      locationCapturedAt: new Date("2026-10-18T08:00:00.000Z"),
+      locationCapturedBy: adminId,
+    },
+  });
+  await withHarness(
+    {
+      atm: makeATM({
+        locationConfigured: true,
+        location: { type: "Point", coordinates: officialCoordinates },
+        locationCapturedAt: request.officialLocationSnapshot.locationCapturedAt,
+        locationCapturedBy: adminId,
+      }),
+      requests: [request],
+      tasks: [
+        {
+          _id: "64b000000000000000000125",
+          atmId,
+          active: true,
+          status: "ASSIGNED",
+        },
+      ],
+    },
+    async (state) => {
+      await assert.rejects(
+        approveATMlocationRequest({ requestId, reviewerId: adminId }),
+        { statusCode: 409 },
+      );
+      assert.equal(state.requests.get(requestId).status, "PENDING");
+      assert.deepEqual(state.atm.location.coordinates, officialCoordinates);
+      assert.equal(state.atm.locationWorkflowRevision, 0);
+    },
+  );
 });
 
 test("approved location requests close employee submissions until Admin reopens", async () => {
@@ -606,6 +1076,7 @@ test("admins may request initial configuration and changes to configured locatio
         location: { type: "Point", coordinates: [77.1, 12.1] },
         locationCapturedAt: new Date("2026-10-18T08:00:00.000Z"),
         locationCapturedBy: "64b000000000000000000108",
+        locationRequestWindowOpen: true,
       }),
     },
     async (state) => {
@@ -622,10 +1093,10 @@ test("admins may request initial configuration and changes to configured locatio
       });
       const approved = await approveATMlocationRequest({
         requestId: request._id,
-        reviewerId: adminId,
+        reviewerId: superAdminId,
       });
       assert.equal(approved.requestedBy, adminId);
-      assert.equal(approved.reviewedBy, adminId);
+      assert.equal(approved.reviewedBy, superAdminId);
       assert.equal(state.atm.locationConfigured, true);
     },
   );
@@ -740,14 +1211,150 @@ test("approval atomically applies GeoJSON coordinates and official audit metadat
   );
 });
 
+test("mismatched linked task ATM prevents approval and rolls back the official location update", async () => {
+  const locationTaskId = "64b000000000000000000124";
+  const otherAtmId = "64b000000000000000000125";
+  const task = {
+    _id: locationTaskId,
+    atmId: otherAtmId,
+    assignedEmployeeId: employeeRecordId,
+    status: "PENDING_REVIEW",
+    active: true,
+    locationRequestId: requestId,
+  };
+  await withHarness(
+    {
+      requests: [makeRequest({ locationTaskId })],
+      tasks: [task],
+    },
+    async (state) => {
+      await assert.rejects(
+        approveATMlocationRequest({ requestId, reviewerId: adminId }),
+        { statusCode: 409 },
+      );
+      assert.equal(state.requests.get(requestId).status, "PENDING");
+      assert.equal(state.tasks.get(locationTaskId).status, "PENDING_REVIEW");
+      assert.equal(state.tasks.get(locationTaskId).active, true);
+      assert.equal(state.atm.locationConfigured, false);
+      assert.equal(state.atm.location, undefined);
+    },
+  );
+});
+
+test("mismatched linked task ATM prevents rejection from changing task or request state", async () => {
+  const locationTaskId = "64b000000000000000000126";
+  const otherAtmId = "64b000000000000000000127";
+  const task = {
+    _id: locationTaskId,
+    atmId: otherAtmId,
+    assignedEmployeeId: employeeRecordId,
+    status: "PENDING_REVIEW",
+    active: true,
+    locationRequestId: requestId,
+  };
+  await withHarness(
+    {
+      requests: [makeRequest({ locationTaskId })],
+      tasks: [task],
+    },
+    async (state) => {
+      await assert.rejects(
+        rejectATMlocationRequest({
+          requestId,
+          reviewerId: adminId,
+          reason: "Linked ATM mismatch",
+        }),
+        { statusCode: 409 },
+      );
+      assert.equal(state.requests.get(requestId).status, "PENDING");
+      assert.equal(state.tasks.get(locationTaskId).status, "PENDING_REVIEW");
+      assert.equal(state.atm.locationConfigured, false);
+      assert.equal(state.atm.location, undefined);
+    },
+  );
+});
+
+test("request submitters cannot approve or reject their own proposal", async () => {
+  await withHarness(
+    {
+      requests: [makeRequest({ requestedBy: adminId, requesterRole: "admin" })],
+    },
+    async (state) => {
+      await assert.rejects(
+        approveATMlocationRequest({ requestId, reviewerId: adminId }),
+        { statusCode: 403 },
+      );
+      assert.equal(state.requests.get(requestId).status, "PENDING");
+      assert.equal(state.atm.locationConfigured, false);
+      assert.equal(state.atm.location, undefined);
+    },
+  );
+
+  await withHarness(
+    {
+      atm: makeATM({
+        locationConfigured: true,
+        location: { type: "Point", coordinates: [77.1, 12.1] },
+      }),
+      requests: [
+        makeRequest({
+          requestedBy: adminId,
+          requesterRole: "admin",
+          requestType: "LOCATION_CHANGE",
+          officialLocationSnapshot: {
+            locationConfigured: true,
+            coordinates: [77.1, 12.1],
+            locationCapturedAt: null,
+            locationCapturedBy: null,
+          },
+        }),
+      ],
+    },
+    async (state) => {
+      const confirmedLocation = structuredClone(state.atm.location);
+      await assert.rejects(
+        rejectATMlocationRequest({
+          requestId,
+          reviewerId: adminId,
+          reason: "Cannot self-review",
+        }),
+        { statusCode: 403 },
+      );
+      assert.equal(state.requests.get(requestId).status, "PENDING");
+      assert.deepEqual(state.atm.location, confirmedLocation);
+    },
+  );
+});
+
 test("rejection requires a reason and allows a later request", async () => {
   assert.equal(
     rejectATMLocationRequestSchema.safeParse({ reason: "   " }).success,
     false,
   );
   await withHarness(
-    { requests: [makeRequest()] },
+    {
+      atm: makeATM({
+        locationConfigured: true,
+        location: { type: "Point", coordinates: [77.1, 12.1] },
+        locationCapturedAt: new Date("2026-10-18T08:00:00.000Z"),
+        locationCapturedBy: adminId,
+        locationRequestWindowOpen: true,
+      }),
+      requests: [
+        makeRequest({
+          requestType: "LOCATION_CHANGE",
+          officialLocationSnapshot: {
+            locationConfigured: true,
+            coordinates: [77.1, 12.1],
+            locationCapturedAt: new Date("2026-10-18T08:00:00.000Z"),
+            locationCapturedBy: adminId,
+          },
+        }),
+      ],
+    },
     async (state) => {
+      const confirmedLocation = structuredClone(state.atm.location);
+      const reviewedAtBefore = Date.now();
       const rejected = await rejectATMlocationRequest({
         requestId,
         reviewerId: adminId,
@@ -755,6 +1362,11 @@ test("rejection requires a reason and allows a later request", async () => {
       });
       assert.equal(rejected.status, "REJECTED");
       assert.equal(rejected.rejectionReason, "Coordinates need rechecking");
+      assert.equal(rejected.requestedBy, employeeUserId);
+      assert.equal(rejected.reviewedBy, adminId);
+      assert.ok(rejected.reviewedAt.getTime() >= reviewedAtBefore);
+      assert.deepEqual(rejected.officialLocationSnapshot.coordinates, [77.1, 12.1]);
+      assert.deepEqual(state.atm.location, confirmedLocation);
       await submitATMlocationRequest({
         ...proposal(),
         requester: employee,

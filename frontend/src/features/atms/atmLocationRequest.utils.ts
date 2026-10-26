@@ -83,6 +83,70 @@ export const validateRejectionReason = (reason: string) => {
   return "";
 };
 
+export const isValidATMLocationCoordinatePair = (
+  latitude: number,
+  longitude: number,
+) =>
+  Number.isFinite(latitude) &&
+  latitude >= -90 &&
+  latitude <= 90 &&
+  Number.isFinite(longitude) &&
+  longitude >= -180 &&
+  longitude <= 180;
+
+export const buildATMLocationMapUrl = (
+  latitude: number,
+  longitude: number,
+) => {
+  if (!isValidATMLocationCoordinatePair(latitude, longitude)) return null;
+  const query = encodeURIComponent(`${latitude},${longitude}`);
+  return `https://www.google.com/maps/search/?api=1&query=${query}`;
+};
+
+export const copyATMLocationCoordinate = async (
+  coordinate: number,
+  writeText: (text: string) => Promise<void>,
+) => {
+  if (!Number.isFinite(coordinate)) {
+    throw new Error("Coordinate must be a finite number.");
+  }
+  await writeText(String(coordinate));
+};
+
+export const canDecideATMLocationRequest = (
+  status: ATMLocationRequestStatus,
+) => status === "PENDING";
+
+export const canDecideLinkedATMLocationTaskRequest = (
+  task: {
+    _id: string;
+    atmId?: string | { _id?: string } | null;
+    status: string;
+    locationRequestId?: string | { _id: string } | null;
+  },
+  request: {
+    _id: string;
+    atmId?: string | { _id?: string } | null;
+    status: ATMLocationRequestStatus;
+    locationTaskId?: string | null;
+  },
+) => {
+  const taskATMId =
+    typeof task.atmId === "string" ? task.atmId : task.atmId?._id;
+  const requestATMId =
+    typeof request.atmId === "string" ? request.atmId : request.atmId?._id;
+  return (
+    task.status === "PENDING_REVIEW" &&
+    canDecideATMLocationRequest(request.status) &&
+    (typeof task.locationRequestId === "string"
+      ? task.locationRequestId
+      : task.locationRequestId?._id) === request._id &&
+    request.locationTaskId === task._id &&
+    Boolean(taskATMId) &&
+    taskATMId === requestATMId
+  );
+};
+
 export const canReviewATMLocationRequests = (userType?: string | null) =>
   userType === "admin" || userType === "superAdmin";
 

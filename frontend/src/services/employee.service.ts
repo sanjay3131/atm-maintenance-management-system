@@ -40,6 +40,9 @@ export interface Employee {
     phoneNumber?: string;
     userType: string;
     status?: string;
+    avatar?: {
+      url?: string | null;
+    } | null;
   };
 
   districtIds: string[];

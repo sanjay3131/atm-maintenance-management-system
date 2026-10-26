@@ -30,6 +30,17 @@ import {
   reopenATMlocationRequests,
   submitATMlocationRequest,
 } from "./atmLocationRequest.service.js";
+import {
+  cancelATMLocationTask as cancelLocationTask,
+  createBulkATMLocationTasks,
+  holdATMLocationTask as holdLocationTask,
+  listATMLocationTasks as listLocationTasks,
+  listMyATMLocationTasks,
+  reassignATMLocationTask as reassignLocationTask,
+  reopenRejectedATMLocationTask,
+  resumeATMLocationTask as resumeLocationTask,
+  startATMLocationTask as startLocationTask,
+} from "./atmLocationTask.service.js";
 import { generateATMId } from "./atm.utils.js";
 import {
   buildATMGeographicQuery,
@@ -687,4 +698,92 @@ export const reopenATMLocationRequests = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, result, "ATM location requests reopened"));
+});
+
+export const createATMLocationTasks = asyncHandler(async (req, res) => {
+  const tasks = await createBulkATMLocationTasks({
+    tasks: req.body.tasks,
+    adminId: req.user._id,
+  });
+  return res
+    .status(201)
+    .json(new ApiResponse(201, { tasks }, "ATM location tasks created"));
+});
+
+export const getATMLocationTasks = asyncHandler(async (req, res) => {
+  const result =
+    req.user.userType === "employee"
+      ? await listMyATMLocationTasks({
+          ...req.validatedQuery,
+          userId: req.user._id,
+        })
+      : await listLocationTasks(req.validatedQuery);
+  return res
+    .status(200)
+    .json(new ApiResponse(200, result, "ATM location tasks fetched"));
+});
+
+export const startATMLocationTask = asyncHandler(async (req, res) => {
+  const task = await startLocationTask({
+    taskId: req.validatedParams.taskId,
+    employeeUserId: req.user._id,
+  });
+  return res
+    .status(200)
+    .json(new ApiResponse(200, task, "ATM location task started"));
+});
+
+export const holdATMLocationTask = asyncHandler(async (req, res) => {
+  const task = await holdLocationTask({
+    taskId: req.validatedParams.taskId,
+    employeeUserId: req.user._id,
+  });
+  return res
+    .status(200)
+    .json(new ApiResponse(200, task, "ATM location task put on hold"));
+});
+
+export const resumeATMLocationTask = asyncHandler(async (req, res) => {
+  const task = await resumeLocationTask({
+    taskId: req.validatedParams.taskId,
+    employeeUserId: req.user._id,
+  });
+  return res
+    .status(200)
+    .json(new ApiResponse(200, task, "ATM location task resumed"));
+});
+
+export const reassignATMLocationTask = asyncHandler(async (req, res) => {
+  const task = await reassignLocationTask({
+    taskId: req.validatedParams.taskId,
+    employeeId: req.body.employeeId,
+    adminId: req.user._id,
+    reason: req.body.reason,
+  });
+  return res
+    .status(200)
+    .json(new ApiResponse(200, task, "ATM location task reassigned"));
+});
+
+export const reopenATMLocationTask = asyncHandler(async (req, res) => {
+  const task = await reopenRejectedATMLocationTask({
+    taskId: req.validatedParams.taskId,
+    employeeId: req.body.employeeId,
+    adminId: req.user._id,
+    reason: req.body.reason,
+  });
+  return res
+    .status(200)
+    .json(new ApiResponse(200, task, "Rejected ATM location task reopened"));
+});
+
+export const cancelATMLocationTask = asyncHandler(async (req, res) => {
+  const task = await cancelLocationTask({
+    taskId: req.validatedParams.taskId,
+    adminId: req.user._id,
+    reason: req.body.reason,
+  });
+  return res
+    .status(200)
+    .json(new ApiResponse(200, task, "ATM location task cancelled"));
 });
