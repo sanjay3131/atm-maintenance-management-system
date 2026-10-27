@@ -18,7 +18,7 @@ import {
   VALID_AMC_TRANSITIONS,
 } from "./amc.config.js";
 import { validateChecklist } from "./amcChecklist.js";
-import Notification from "../notification/notification.model.js";
+import { createNotification } from "../notification/notification.service.js";
 import User from "../users/user.model.js";
 import mongoose from "mongoose";
 import {
@@ -518,9 +518,10 @@ export const completeAMC = asyncHandler(async (req, res) => {
     status: "active",
   });
   for (const admin of admins) {
-    await Notification.create({
+    await createNotification({
       userId: admin._id,
       type: "amc_completed",
+      dedupeKey: `amc_completed:${completedAMC._id}`,
       title: "AMC Completed",
       message: `Employee ${req.user.firstName} ${req.user.lastName} completed AMC for ATM ${completedAMC.atmId}.`,
       data: { amcId: completedAMC._id, atmId: completedAMC.atmId },

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Menu, PanelLeftOpen, X } from "lucide-react";
 import { Outlet } from "react-router-dom";
 import { useAuth } from "@/features/auth/auth-context";
+import NotificationBell from "@/features/notifications/NotificationBell";
 import AdminSidebar from "./AdminSidebar";
 
 export default function AdminLayout() {
@@ -180,6 +181,7 @@ export default function AdminLayout() {
           </div>
 
           <div className="flex items-center gap-4">
+            <NotificationBell />
             <div className="text-right">
               <p className="text-sm font-medium">
                 {user?.firstName} {user?.lastName}

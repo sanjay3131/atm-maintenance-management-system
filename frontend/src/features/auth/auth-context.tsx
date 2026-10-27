@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useCallback,
   useEffect,
   useState,
   type ReactNode,
@@ -28,6 +29,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (payload: LoginPayload) => Promise<User>;
   logout: () => Promise<void>;
+  refreshSocketAccessToken: () => Promise<string>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -91,6 +93,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const refreshSocketAccessToken = useCallback(async () => {
+    const refreshData = await refreshAccessToken();
+    const token = refreshData.accessToken;
+    if (typeof token !== "string" || !token) {
+      throw new Error("Access token refresh returned no token");
+    }
+    localStorage.setItem("accessToken", token);
+    setAccessToken(token);
+    return token;
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -99,6 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         login,
         logout,
+        refreshSocketAccessToken,
       }}
     >
       {children}
