@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/features/auth/auth-context";
+import NotificationBell from "@/features/notifications/NotificationBell";
 
 const navigation = [
   { to: "/supervisor", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -254,9 +255,12 @@ export default function SupervisorLayout() {
             <h1 className="truncate text-base font-semibold sm:text-lg">
               {pageTitle}
             </h1>
-            <span className="hidden rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800 sm:inline-flex">
-              Operations overview
-            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="hidden rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800 sm:inline-flex">
+                Operations overview
+              </span>
+              <NotificationBell />
+            </div>
           </div>
         </header>
         <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">

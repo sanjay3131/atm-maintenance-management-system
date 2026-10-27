@@ -9,7 +9,8 @@ import {
 import { validateChecklist } from "./amcChecklist.js";
 import { validateGpsProximity } from "../../utils/haversine.js";
 import ApiError from "../../utils/ApiError.js";
-import Notification from "../notification/notification.model.js";
+import { createNotification } from "../notification/notification.service.js";
+
 /**
  * Generate AMC ID: AMC-YYYY-MM-NNN
  */
@@ -168,7 +169,7 @@ export const generateMonthlyAMC = async (month, year, createdBy) => {
 
 /**
  * Mark overdue AMCs and notify admins.
- * Idempotent: only creates notification if not already sent for this AMC.
+ * Idempotent per recipient: a notification is created for each recipient at most once per AMC.
  */
 export const markOverdueAMCs = async () => {
   const now = new Date();
@@ -186,7 +187,7 @@ export const markOverdueAMCs = async () => {
     status: "active",
   });
 
-  const results = { marked: 0, notified: 0 };
+  const results = { marked: 0, notified: 0, notificationFailures: 0 };
 
   for (const amc of overdueAmcs) {
     const updatedAMC = await AMC.findOneAndUpdate(
@@ -205,15 +206,12 @@ export const markOverdueAMCs = async () => {
 
     results.marked++;
 
-    const existingNotification = await Notification.findOne({
-      "data.amcId": updatedAMC._id,
-      type: "amc_overdue",
-    });
-
-    if (!existingNotification) {
-      await Notification.create({
+    // Each recipient is deduplicated independently, so an existing
+    // notification for one recipient never suppresses the others.
+    const recipients = [];
+    if (updatedAMC.employeeId?._id) {
+      recipients.push({
         userId: updatedAMC.employeeId._id,
-        type: "amc_overdue",
         title: "AMC Overdue",
         message: `AMC for ${updatedAMC.atmId.locationName} (${updatedAMC.atmId.atmId}) is overdue. Deadline was ${updatedAMC.deadlineDate.toDateString()}.`,
         data: {
@@ -222,24 +220,41 @@ export const markOverdueAMCs = async () => {
           year: updatedAMC.year,
         },
       });
-
-      for (const admin of admins) {
-        await Notification.create({
-          userId: admin._id,
-          type: "amc_overdue",
-          title: "AMC Overdue Alert",
-          message: `Employee ${updatedAMC.employeeId.firstName} ${updatedAMC.employeeId.lastName} has overdue AMC for ${updatedAMC.atmId.atmId}.`,
-          data: {
-            amcId: updatedAMC._id,
-            employeeId: updatedAMC.employeeId._id,
-            month: updatedAMC.month,
-            year: updatedAMC.year,
-          },
-        });
-      }
-
-      results.notified++;
     }
+    for (const admin of admins) {
+      recipients.push({
+        userId: admin._id,
+        title: "AMC Overdue Alert",
+        message: `Employee ${updatedAMC.employeeId?.firstName} ${updatedAMC.employeeId?.lastName} has overdue AMC for ${updatedAMC.atmId.atmId}.`,
+        data: {
+          amcId: updatedAMC._id,
+          employeeId: updatedAMC.employeeId?._id,
+          month: updatedAMC.month,
+          year: updatedAMC.year,
+        },
+      });
+    }
+
+    let createdForAmc = 0;
+    for (const recipient of recipients) {
+      try {
+        const { created } = await createNotification({
+          ...recipient,
+          type: "amc_overdue",
+          dedupeKey: `amc_overdue:${updatedAMC._id}`,
+        });
+        if (created) createdForAmc++;
+      } catch (error) {
+        // The AMC is already OVERDUE; do not abort the remaining recipients.
+        results.notificationFailures++;
+        console.error(
+          `Failed to create AMC overdue notification for AMC ${updatedAMC._id}:`,
+          error.message,
+        );
+      }
+    }
+
+    if (createdForAmc > 0) results.notified++;
   }
 
   return results;

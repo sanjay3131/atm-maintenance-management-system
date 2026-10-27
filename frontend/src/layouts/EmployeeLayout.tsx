@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/features/auth/auth-context";
+import NotificationBell from "@/features/notifications/NotificationBell";
 import {
   employeeLanguageClasses,
   useEmployeeLanguage,
@@ -322,9 +323,12 @@ export default function EmployeeLayout() {
               {t(pageTitle)}
             </h2>
           </div>
-          <span className="hidden rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700 dark:bg-teal-950/60 dark:text-teal-300 sm:inline-flex">
-            {t("Field service")}
-          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="hidden rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700 dark:bg-teal-950/60 dark:text-teal-300 sm:inline-flex">
+              {t("Field service")}
+            </span>
+            <NotificationBell />
+          </div>
         </header>
 
         <div className={`min-w-0 flex-1 bg-slate-50 dark:bg-slate-900 ${employeeLanguageClasses(language, "p-4 sm:p-6 lg:p-8", "p-3 sm:p-5 lg:p-6")}`}>

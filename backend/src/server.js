@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import http from "http";
 import { fileURLToPath } from "url";
 import path from "path";
 
@@ -31,6 +32,7 @@ import itemRouter from "./modules/items/item.routes.js";
 import attendanceRouter from "./modules/attendance/attendance.routes.js";
 import { initializeItemNameIndex } from "./modules/items/itemIndexReadiness.js";
 
+import { initSocketServer } from "./realtime/socket.js";
 import errorMiddleware from "./middlewares/error.middleware.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -166,7 +168,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
         );
       }
 
-      app.listen(PORT, () => {
+      const httpServer = http.createServer(app);
+      initSocketServer(httpServer, { allowedOrigins });
+
+      httpServer.listen(PORT, () => {
         console.log(`Server is running on port ${PORT}`);
         initCronJobs();
       });

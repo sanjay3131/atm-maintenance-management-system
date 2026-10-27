@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "@/features/auth/auth-context";
+import NotificationBell from "@/features/notifications/NotificationBell";
 
 const links = [
   { to: "/customer", label: "Overview", icon: LayoutDashboard, end: true },
@@ -28,6 +29,7 @@ export default function CustomerPortalLayout() {
             <p className="text-sm text-muted-foreground">Customer portal</p>
           </div>
           <div className="flex items-center gap-3">
+            <NotificationBell />
             <span className="hidden text-sm text-muted-foreground sm:inline">
               {user?.firstName} {user?.lastName}
             </span>

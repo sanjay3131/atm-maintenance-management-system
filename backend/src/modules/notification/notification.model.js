@@ -27,6 +27,12 @@ const notificationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
+    // Optional per-recipient idempotency key; legacy documents do not have it.
+    dedupeKey: {
+      type: String,
+      trim: true,
+      select: false,
+    },
     isRead: {
       type: Boolean,
       default: false,
@@ -48,6 +54,16 @@ notificationSchema.index({ "data.amcId": 1, type: 1 }, { sparse: true });
 notificationSchema.index(
   { userId: 1, type: 1, "data.amcId": 1 },
   { unique: true, partialFilterExpression: { type: "amc_overdue" } },
+);
+
+// Partial so legacy documents without a dedupeKey are never indexed.
+notificationSchema.index(
+  { userId: 1, dedupeKey: 1 },
+  {
+    unique: true,
+    name: "userId_1_dedupeKey_1_unique",
+    partialFilterExpression: { dedupeKey: { $type: "string" } },
+  },
 );
 
 const Notification = mongoose.model("Notification", notificationSchema);
