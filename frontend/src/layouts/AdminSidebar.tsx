@@ -53,6 +53,11 @@ const navItems = [
     icon: MapPinCheck,
   },
   {
+    label: "ATM Location Tasks",
+    path: "/admin/location-tasks",
+    icon: MapPinned,
+  },
+  {
     label: "Banks",
     path: "/admin/banks",
     icon: Landmark,
@@ -107,8 +112,8 @@ export default function AdminSidebar({
             onClick={onNavigate}
             className={({ isActive }) =>
               `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                isActive
-                  ? "bg-amber-500 text-white"
+                                isActive
+                  ? "bg-gradient-to-r from-orange-600 to-orange-400 text-white"
                   : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
               }`
             }

@@ -18,10 +18,17 @@ export const useATMLocationRequests = (
   page = 1,
   limit = 20,
   atmId?: string,
+  filters: {
+    search?: string;
+    districtId?: string;
+    regionId?: string;
+    employeeId?: string;
+  } = {},
 ) =>
   useQuery({
-    queryKey: ["atm-location-requests", status, page, limit, atmId],
-    queryFn: () => getATMLocationRequests({ status, page, limit, atmId }),
+    queryKey: ["atm-location-requests", status, page, limit, atmId, filters],
+    queryFn: () =>
+      getATMLocationRequests({ status, page, limit, atmId, ...filters }),
   });
 
 export const useMyATMLocationRequests = (atmId: string) =>
@@ -67,13 +74,13 @@ const useReviewMutation = <TVariables, TData>(
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["atm-location-requests"] }),
         queryClient.invalidateQueries({ queryKey: ["atm-location-request"] }),
+        queryClient.invalidateQueries({ queryKey: ["atm-location-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["atms"] }),
+        queryClient.invalidateQueries({ queryKey: ["atm"] }),
         ...(atmId
-          ? [
-              queryClient.invalidateQueries({ queryKey: ["atm", atmId] }),
-              queryClient.invalidateQueries({
-                queryKey: ["my-atm-location-requests", atmId],
-              }),
-            ]
+          ? [queryClient.invalidateQueries({
+              queryKey: ["my-atm-location-requests", atmId],
+            })]
           : []),
       ]);
     },

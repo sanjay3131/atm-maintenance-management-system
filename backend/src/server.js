@@ -155,23 +155,25 @@ app.use(errorMiddleware);
 
 const PORT = process.env.PORT || 5000;
 
-connectDb()
-  .then(async () => {
-    try {
-      await initializeItemNameIndex();
-    } catch {
-      console.error(
-        "Item Master unique-name index initialization failed; Item writes will remain disabled.",
-      );
-    }
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  connectDb()
+    .then(async () => {
+      try {
+        await initializeItemNameIndex();
+      } catch {
+        console.error(
+          "Item Master unique-name index initialization failed; Item writes will remain disabled.",
+        );
+      }
 
-    app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
-      initCronJobs();
+      app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+        initCronJobs();
+      });
+    })
+    .catch((err) => {
+      console.log("MongoDB connection failed !!!", err);
     });
-  })
-  .catch((err) => {
-    console.log("MongoDB connection failed !!!", err);
-  });
+}
 
 export default app;

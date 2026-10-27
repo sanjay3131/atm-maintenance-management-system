@@ -6,6 +6,9 @@ export interface ATMLocationRequestATM {
   atmId?: string;
   locationName?: string;
   address?: string;
+  districtId?: { _id?: string; districtName?: string } | string | null;
+  regionId?: { _id?: string; name?: string } | string | null;
+  location?: { coordinates?: number[] } | null;
   locationConfigured?: boolean;
   locationRequestReopenedAt?: string | null;
   locationRequestWindowOpen?: boolean;
@@ -33,6 +36,7 @@ export interface ATMLocationRequest {
   requestedBy: string | ATMLocationRequestPerson;
   requesterRole: "employee" | "admin" | "superAdmin";
   requesterEmployeeId: string | ATMLocationRequestPerson | null;
+  locationTaskId?: string | null;
   amcId: string | null;
   proposedLatitude: number;
   proposedLongitude: number;
@@ -60,6 +64,7 @@ export interface ATMLocationRequestListResponse {
 
 export interface SubmitATMLocationRequestPayload {
   atmId: string;
+  locationTaskId?: string;
   latitude: number;
   longitude: number;
   accuracy?: number;

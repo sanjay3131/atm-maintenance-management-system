@@ -30,6 +30,11 @@ const atmLocationRequestSchema = new mongoose.Schema(
       ref: "ATM",
       required: true,
     },
+    locationTaskId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ATMLocationTask",
+      default: null,
+    },
     requestType: {
       type: String,
       enum: ["INITIAL_CONFIGURATION", "LOCATION_CHANGE"],

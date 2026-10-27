@@ -19,11 +19,19 @@ export const submitATMLocationRequest = async (
 export const getATMLocationRequests = async ({
   status,
   atmId,
+  search,
+  districtId,
+  regionId,
+  employeeId,
   page = 1,
   limit = 20,
 }: {
   status?: ATMLocationRequestStatus;
   atmId?: string;
+  search?: string;
+  districtId?: string;
+  regionId?: string;
+  employeeId?: string;
   page?: number;
   limit?: number;
 } = {}): Promise<ATMLocationRequestListResponse> => {
@@ -33,6 +41,10 @@ export const getATMLocationRequests = async ({
       params: {
         ...(status ? { status } : {}),
         ...(atmId ? { atmId } : {}),
+        ...(search?.trim() ? { search: search.trim() } : {}),
+        ...(districtId ? { districtId } : {}),
+        ...(regionId ? { regionId } : {}),
+        ...(employeeId ? { employeeId } : {}),
         page,
         limit,
       },

@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import ATM from "../src/modules/atms/atm.model.js";
 import ATMLocationRequest from "../src/modules/atms/atmLocationRequest.model.js";
+import ATMLocationTask from "../src/modules/atms/atmLocationTask.model.js";
 import Customer from "../src/modules/customers/customer.model.js";
 import District from "../src/modules/districts/district.models.js";
 import Employee from "../src/modules/employees/employee.model.js";
@@ -68,6 +69,9 @@ const makePersistedRecord = (data, extra = {}) => ({
 function createMemoryPersistence() {
   const ids = {
     admin: objectId(),
+    superAdmin: objectId(),
+    supervisor: objectId(),
+    customerUser: objectId(),
     employeeUser: objectId(),
     otherEmployeeUser: objectId(),
     employee: objectId(),
@@ -85,6 +89,32 @@ function createMemoryPersistence() {
         status: "active",
         firstName: "Test",
         lastName: "Admin",
+      },
+    ],
+    [
+      ids.superAdmin,
+      {
+        _id: ids.superAdmin,
+        userType: "superAdmin",
+        status: "active",
+        firstName: "Test",
+        lastName: "SuperAdmin",
+      },
+    ],
+    [
+      ids.supervisor,
+      {
+        _id: ids.supervisor,
+        userType: "supervisor",
+        status: "active",
+      },
+    ],
+    [
+      ids.customerUser,
+      {
+        _id: ids.customerUser,
+        userType: "customer",
+        status: "active",
       },
     ],
     [
@@ -146,8 +176,10 @@ function createMemoryPersistence() {
   const atms = new Map();
   const jobs = new Map();
   const requests = new Map();
+  const locationTasks = new Map();
   const photos = new Map();
   const jobHistory = [];
+  let workflowLockTail = Promise.resolve();
 
   const matchesATM = (atm, filter) => {
     if (!atm) return false;
@@ -203,25 +235,47 @@ function createMemoryPersistence() {
 
   replace(mongoose, "startSession", async () => ({
     async withTransaction(operation) {
-      const atmSnapshots = new Map(
-        [...atms].map(([id, atm]) => [
-          id,
-          { ...atm, location: structuredClone(atm.location) },
-        ]),
-      );
-      const requestSnapshots = new Map(
-        [...requests].map(([id, request]) => [id, { ...request }]),
-      );
+      const captureSnapshots = () => ({
+        atms: new Map(
+          [...atms].map(([id, atm]) => [
+            id,
+            { ...atm, location: structuredClone(atm.location) },
+          ]),
+        ),
+        requests: new Map(
+          [...requests].map(([id, request]) => [id, { ...request }]),
+        ),
+        tasks: new Map(
+          [...locationTasks].map(([id, task]) => [id, { ...task }]),
+        ),
+        requestIds: new Set(requests.keys()),
+        taskIds: new Set(locationTasks.keys()),
+      });
+      let snapshots = captureSnapshots();
+      this.refreshWorkflowSnapshot = () => {
+        snapshots = captureSnapshots();
+      };
       try {
         return await operation(this);
       } catch (error) {
-        for (const [id, snapshot] of atmSnapshots) {
+        for (const [id, snapshot] of snapshots.atms) {
           Object.assign(atms.get(id), snapshot);
         }
-        for (const [id, snapshot] of requestSnapshots) {
+        for (const [id, snapshot] of snapshots.requests) {
           Object.assign(requests.get(id), snapshot);
         }
+        for (const [id, snapshot] of snapshots.tasks) {
+          Object.assign(locationTasks.get(id), snapshot);
+        }
+        for (const id of requests.keys()) {
+          if (!snapshots.requestIds.has(id)) requests.delete(id);
+        }
+        for (const id of locationTasks.keys()) {
+          if (!snapshots.taskIds.has(id)) locationTasks.delete(id);
+        }
         throw error;
+      } finally {
+        this.releaseWorkflowLock?.();
       }
     },
     async endSession() {},
@@ -277,6 +331,22 @@ function createMemoryPersistence() {
     );
     return makeQuery(found ?? null);
   });
+  replace(ATM, "bumpLocationWorkflowRevision", async (atmId, session) => {
+    if (!session.releaseWorkflowLock) {
+      const previousLock = workflowLockTail;
+      let releaseLock;
+      workflowLockTail = new Promise((resolve) => {
+        releaseLock = resolve;
+      });
+      await previousLock;
+      session.releaseWorkflowLock = releaseLock;
+      session.refreshWorkflowSnapshot?.();
+    }
+    const atm = atms.get(String(atmId));
+    if (!atm || atm.isDeleted) return false;
+    atm.locationWorkflowRevision = (atm.locationWorkflowRevision ?? 0) + 1;
+    return true;
+  });
   replace(ATM, "findById", (id) =>
     makeQuery(atms.get(String(id)) ?? null),
   );
@@ -318,17 +388,81 @@ function createMemoryPersistence() {
     ).length;
   });
   replace(ATMLocationRequest, "create", async (data) => {
+    const requestData = Array.isArray(data) ? data[0] : data;
     const pendingExists = [...requests.values()].some(
       (request) =>
-        sameId(request.atmId, data.atmId) && request.status === "PENDING",
+        sameId(request.atmId, requestData.atmId) &&
+        request.status === "PENDING",
     );
     if (pendingExists) {
       throw Object.assign(new Error("duplicate pending request"), { code: 11000 });
     }
-    const request = { ...data, _id: objectId(), submittedAt: new Date() };
+    const request = {
+      ...requestData,
+      _id: objectId(),
+      submittedAt: new Date(),
+    };
     requests.set(String(request._id), request);
-    return request;
+    return Array.isArray(data) ? [request] : request;
   });
+  const matchesLocationTask = (task, filter) => {
+    if (!task) return false;
+    return Object.entries(filter).every(([key, expected]) => {
+      if (expected && typeof expected === "object" && "$in" in expected) {
+        return expected.$in.includes(task[key]);
+      }
+      return sameId(task[key]?._id ?? task[key], expected?._id ?? expected);
+    });
+  };
+  replace(ATMLocationTask, "findOne", (filter) =>
+    makeQuery(
+      [...locationTasks.values()].find((task) =>
+        matchesLocationTask(task, filter),
+      ) ?? null,
+    ),
+  );
+  replace(ATMLocationTask, "create", async (records) => {
+    const data = records[0];
+    if (
+      [...locationTasks.values()].some(
+        (task) => sameId(task.atmId, data.atmId) && task.active,
+      )
+    ) {
+      throw Object.assign(new Error("duplicate active location task"), {
+        code: 11000,
+      });
+    }
+    const task = {
+      ...data,
+      _id: objectId(),
+      locationRequestId: null,
+      assignmentHistory: data.assignmentHistory ?? [],
+      active: data.active ?? true,
+    };
+    locationTasks.set(String(task._id), task);
+    return [task];
+  });
+  replace(ATMLocationTask, "findOneAndUpdate", async (filter, update) => {
+    const task = locationTasks.get(String(filter._id));
+    if (!matchesLocationTask(task, filter)) return null;
+    Object.assign(task, update.$set ?? {});
+    if (update.$push?.assignmentHistory) {
+      task.assignmentHistory.push(update.$push.assignmentHistory);
+    }
+    return task;
+  });
+  replace(ATMLocationTask, "find", (filter) =>
+    makeQuery(
+      [...locationTasks.values()].filter((task) =>
+        matchesLocationTask(task, filter),
+      ),
+    ),
+  );
+  replace(ATMLocationTask, "countDocuments", async (filter) =>
+    [...locationTasks.values()].filter((task) =>
+      matchesLocationTask(task, filter),
+    ).length,
+  );
   replace(ATMLocationRequest, "find", (filter) =>
     makeQuery(
       [...requests.values()].filter(
@@ -349,6 +483,18 @@ function createMemoryPersistence() {
   );
   replace(ATMLocationRequest, "findById", (id) =>
     makeQuery(requests.get(String(id)) ?? null),
+  );
+  replace(ATMLocationRequest, "findOne", (filter) =>
+    makeQuery(
+      [...requests.values()].find(
+        (request) =>
+          (!filter._id || sameId(request._id, filter._id)) &&
+          (!filter.atmId || sameId(request.atmId, filter.atmId)) &&
+          (!filter.status || request.status === filter.status) &&
+          (filter.locationTaskId === undefined ||
+            request.locationTaskId == null),
+      ) ?? null,
+    ),
   );
   replace(ATMLocationRequest, "findOneAndUpdate", async (filter, update) => {
     const request = requests.get(String(filter._id));
@@ -375,6 +521,7 @@ function createMemoryPersistence() {
     atms,
     jobs,
     requests,
+    locationTasks,
     photos,
     jobHistory,
     restore() {
@@ -446,6 +593,12 @@ test("integrated ATM lifecycle runs through authenticated HTTP routes", async (t
     server.request(method, path, ids.employeeUser, body);
   const otherEmployeeRequest = (method, path, body) =>
     server.request(method, path, ids.otherEmployeeUser, body);
+  const superAdminRequest = (method, path, body) =>
+    server.request(method, path, ids.superAdmin, body);
+  const supervisorRequest = (method, path, body) =>
+    server.request(method, path, ids.supervisor, body);
+  const customerRequest = (method, path, body) =>
+    server.request(method, path, ids.customerUser, body);
 
   const createATMResponse = await adminRequest("POST", "/api/v1/atm/createATM", {
     bankId: ids.bank,
@@ -606,6 +759,75 @@ test("integrated ATM lifecycle runs through authenticated HTTP routes", async (t
   assert.equal(duplicateApproval.status, 409);
   assert.equal(locationRequest.status, "APPROVED");
 
+  const officialCoordinatesBeforeAdminProposal = structuredClone(atm.location);
+  const adminProposal = await adminRequest(
+    "POST",
+    "/api/v1/atm/location-requests",
+    {
+      atmId,
+      latitude: proposedGPS.latitude + 0.00003,
+      longitude: proposedGPS.longitude,
+      inputSource: "MANUAL",
+      requestedBy: ids.superAdmin,
+      requesterRole: "superAdmin",
+    },
+  );
+  assert.equal(adminProposal.status, 201, JSON.stringify(adminProposal.body));
+  const adminSubmittedRequest = memory.requests.get(adminProposal.body.data._id);
+  assert.equal(String(adminSubmittedRequest.requestedBy), ids.admin);
+  assert.equal(adminSubmittedRequest.requesterRole, "admin");
+  assert.deepEqual(
+    adminSubmittedRequest.officialLocationSnapshot.coordinates,
+    officialCoordinatesBeforeAdminProposal.coordinates,
+  );
+  assert.equal(adminSubmittedRequest.proposedLatitude, proposedGPS.latitude + 0.00003);
+  assert.equal(adminSubmittedRequest.proposedLongitude, proposedGPS.longitude);
+  assert.ok(adminSubmittedRequest.submittedAt instanceof Date);
+
+  const unauthorizedRejection = await employeeRequest(
+    "POST",
+    `/api/v1/atm/location-requests/${adminSubmittedRequest._id}/reject`,
+    { reason: "Employee cannot review" },
+  );
+  assert.equal(unauthorizedRejection.status, 403);
+  const selfApproval = await adminRequest(
+    "POST",
+    `/api/v1/atm/location-requests/${adminSubmittedRequest._id}/approve`,
+  );
+  assert.equal(selfApproval.status, 403);
+  const selfRejection = await adminRequest(
+    "POST",
+    `/api/v1/atm/location-requests/${adminSubmittedRequest._id}/reject`,
+    { reason: "Cannot review my own proposal" },
+  );
+  assert.equal(selfRejection.status, 403);
+  assert.equal(adminSubmittedRequest.status, "PENDING");
+  assert.deepEqual(atm.location, officialCoordinatesBeforeAdminProposal);
+
+  const independentApproval = await superAdminRequest(
+    "POST",
+    `/api/v1/atm/location-requests/${adminSubmittedRequest._id}/approve`,
+  );
+  assert.equal(independentApproval.status, 200);
+  assert.equal(adminSubmittedRequest.status, "APPROVED");
+  assert.equal(String(adminSubmittedRequest.reviewedBy), ids.superAdmin);
+  assert.equal(independentApproval.body.data.reviewedBy, ids.superAdmin);
+  assert.ok(adminSubmittedRequest.reviewedAt instanceof Date);
+  assert.equal(independentApproval.body.data.status, "APPROVED");
+  assert.equal(independentApproval.body.data.requestedBy, ids.admin);
+  assert.equal(independentApproval.body.data.rejectionReason, null);
+  assert.deepEqual(
+    independentApproval.body.data.officialLocationSnapshot.coordinates,
+    officialCoordinatesBeforeAdminProposal.coordinates,
+  );
+  assert.deepEqual(atm.location, {
+    type: "Point",
+    coordinates: [
+      proposedGPS.longitude,
+      proposedGPS.latitude + 0.00003,
+    ],
+  });
+
   const startResponse = await employeeRequest(
     "PUT",
     `/api/v1/jobs/${jobId}/start`,
@@ -697,6 +919,558 @@ test("integrated ATM lifecycle runs through authenticated HTTP routes", async (t
     ),
   );
 
+  await t.test(
+    "authenticated location-task routes enforce roles, assignment, review, and correction integrity",
+    async () => {
+      const secondATMResponse = await adminRequest(
+        "POST",
+        "/api/v1/atm/createATM",
+        {
+          bankId: ids.bank,
+          customerId: ids.customer,
+          districtId: ids.district,
+          regionId: null,
+          locationName: "Integrated location-task initial ATM",
+          address: "Test-only location-task address",
+          installationType: "ONSITE",
+        },
+      );
+      assert.equal(secondATMResponse.status, 201);
+      const secondATMId = secondATMResponse.body.data._id;
+      const conflictATMResponse = await adminRequest(
+        "POST",
+        "/api/v1/atm/createATM",
+        {
+          bankId: ids.bank,
+          customerId: ids.customer,
+          districtId: ids.district,
+          regionId: null,
+          locationName: "Integrated location-task conflict ATM",
+          address: "Test-only conflict address",
+          installationType: "ONSITE",
+        },
+      );
+      assert.equal(conflictATMResponse.status, 201);
+      const conflictATMId = conflictATMResponse.body.data._id;
+
+      const pendingStandaloneRequest = await adminRequest(
+        "POST",
+        "/api/v1/atm/location-requests",
+        {
+          atmId: conflictATMId,
+          latitude: proposedGPS.latitude,
+          longitude: proposedGPS.longitude,
+          inputSource: "MANUAL",
+        },
+      );
+      assert.equal(pendingStandaloneRequest.status, 201);
+      const blockedTaskAssignment = await adminRequest(
+        "POST",
+        "/api/v1/atm/location-tasks/bulk",
+        {
+          tasks: [
+            {
+              atmId: conflictATMId,
+              employeeId: ids.otherEmployee,
+              taskType: "INITIAL_COLLECTION",
+            },
+          ],
+        },
+      );
+      assert.equal(blockedTaskAssignment.status, 400);
+      assert.equal(blockedTaskAssignment.body.errors[0].statusCode, 409);
+      assert.equal(
+        [...memory.locationTasks.values()].some((task) =>
+          sameId(task.atmId, conflictATMId),
+        ),
+        false,
+      );
+      assert.equal(
+        memory.requests.get(String(pendingStandaloneRequest.body.data._id))
+          .status,
+        "PENDING",
+      );
+      assert.equal(
+        memory.atms.get(String(conflictATMId)).locationConfigured,
+        false,
+      );
+
+      const rejectStandaloneRequest = await superAdminRequest(
+        "POST",
+        `/api/v1/atm/location-requests/${pendingStandaloneRequest.body.data._id}/reject`,
+        { reason: "Test-only request rejection" },
+      );
+      assert.equal(rejectStandaloneRequest.status, 200);
+      const assignConflictATM = await adminRequest(
+        "POST",
+        "/api/v1/atm/location-tasks/bulk",
+        {
+          tasks: [
+            {
+              atmId: conflictATMId,
+              employeeId: ids.otherEmployee,
+              taskType: "INITIAL_COLLECTION",
+            },
+          ],
+        },
+      );
+      assert.equal(assignConflictATM.status, 201);
+      const blockedStandaloneRequest = await adminRequest(
+        "POST",
+        "/api/v1/atm/location-requests",
+        {
+          atmId: conflictATMId,
+          latitude: proposedGPS.latitude,
+          longitude: proposedGPS.longitude,
+          inputSource: "MANUAL",
+        },
+      );
+      assert.equal(blockedStandaloneRequest.status, 409);
+      assert.equal(
+        [...memory.requests.values()].filter(
+          (request) =>
+            sameId(request.atmId, conflictATMId) &&
+            request.status === "PENDING",
+        ).length,
+        0,
+      );
+      assert.equal(
+        memory.atms.get(String(conflictATMId)).locationConfigured,
+        false,
+      );
+
+      const raceATMResponse = await adminRequest(
+        "POST",
+        "/api/v1/atm/createATM",
+        {
+          bankId: ids.bank,
+          customerId: ids.customer,
+          districtId: ids.district,
+          regionId: null,
+          locationName: "Integrated location-task race ATM",
+          address: "Test-only race address",
+          installationType: "ONSITE",
+        },
+      );
+      assert.equal(raceATMResponse.status, 201);
+      const raceATMId = raceATMResponse.body.data._id;
+      const competingOperations = await Promise.all([
+        adminRequest("POST", "/api/v1/atm/location-requests", {
+          atmId: raceATMId,
+          latitude: proposedGPS.latitude,
+          longitude: proposedGPS.longitude,
+          inputSource: "MANUAL",
+        }),
+        adminRequest("POST", "/api/v1/atm/location-tasks/bulk", {
+          tasks: [
+            {
+              atmId: raceATMId,
+              employeeId: ids.otherEmployee,
+              taskType: "INITIAL_COLLECTION",
+            },
+          ],
+        }),
+      ]);
+      assert.equal(
+        competingOperations.filter((result) => result.status === 201).length,
+        1,
+      );
+      assert.ok(
+        competingOperations.every((result) =>
+          [201, 400, 409].includes(result.status),
+        ),
+      );
+      const raceHasPendingRequest = [...memory.requests.values()].some(
+        (request) =>
+          sameId(request.atmId, raceATMId) && request.status === "PENDING",
+      );
+      const raceHasActiveTask = [...memory.locationTasks.values()].some(
+        (task) => sameId(task.atmId, raceATMId) && task.active,
+      );
+      assert.equal(raceHasPendingRequest && raceHasActiveTask, false);
+      assert.equal(
+        memory.atms.get(String(raceATMId)).locationConfigured,
+        false,
+      );
+      if (raceHasPendingRequest) {
+        const racedRequest = [...memory.requests.values()].find(
+          (request) =>
+            sameId(request.atmId, raceATMId) &&
+            request.status === "PENDING",
+        );
+        const rejected = await superAdminRequest(
+          "POST",
+          `/api/v1/atm/location-requests/${racedRequest._id}/reject`,
+          { reason: "Test-only race cleanup" },
+        );
+        assert.equal(rejected.status, 200);
+      }
+      if (raceHasActiveTask) {
+        const racedTask = [...memory.locationTasks.values()].find(
+          (task) => sameId(task.atmId, raceATMId) && task.active,
+        );
+        const cancelled = await adminRequest(
+          "POST",
+          `/api/v1/atm/location-tasks/${racedTask._id}/cancel`,
+          { reason: "Test-only race cleanup" },
+        );
+        assert.equal(cancelled.status, 200);
+      }
+
+      const bulkBody = {
+        tasks: [
+          {
+            atmId,
+            employeeId: ids.employee,
+            taskType: "LOCATION_CORRECTION",
+          },
+          {
+            atmId: secondATMId,
+            employeeId: ids.otherEmployee,
+            taskType: "INITIAL_COLLECTION",
+          },
+        ],
+      };
+      const bulkCreate = await adminRequest(
+        "POST",
+        "/api/v1/atm/location-tasks/bulk",
+        bulkBody,
+      );
+      assert.equal(bulkCreate.status, 201, JSON.stringify(bulkCreate.body));
+      assert.equal(bulkCreate.body.data.tasks.length, 2);
+      const correctionTask = [...memory.locationTasks.values()].find((task) =>
+        sameId(task.atmId, atmId),
+      );
+      const initialTask = [...memory.locationTasks.values()].find((task) =>
+        sameId(task.atmId, secondATMId),
+      );
+      assert.ok(correctionTask);
+      assert.ok(initialTask);
+      assert.equal(correctionTask.correctionReason, null);
+      assert.equal(correctionTask.status, "ASSIGNED");
+
+      const invalidTaskPayload = await adminRequest(
+        "POST",
+        "/api/v1/atm/location-tasks/bulk",
+        {
+          tasks: [
+            {
+              atmId: "invalid",
+              employeeId: ids.employee,
+              taskType: "INITIAL_COLLECTION",
+            },
+          ],
+        },
+      );
+      assert.equal(invalidTaskPayload.status, 400);
+      const malformedReason = await adminRequest(
+        "POST",
+        "/api/v1/atm/location-tasks/bulk",
+        {
+          tasks: [
+            {
+              atmId,
+              employeeId: ids.employee,
+              taskType: "LOCATION_CORRECTION",
+              correctionReason: 5,
+            },
+          ],
+        },
+      );
+      assert.equal(malformedReason.status, 400);
+      assert.equal(memory.locationTasks.size, 3);
+
+      for (const deniedRequest of [
+        supervisorRequest(
+          "POST",
+          "/api/v1/atm/location-tasks/bulk",
+          bulkBody,
+        ),
+        customerRequest(
+          "POST",
+          "/api/v1/atm/location-tasks/bulk",
+          bulkBody,
+        ),
+        employeeRequest(
+          "POST",
+          "/api/v1/atm/location-tasks/bulk",
+          bulkBody,
+        ),
+        supervisorRequest("GET", "/api/v1/atm/location-tasks"),
+        customerRequest("GET", "/api/v1/atm/location-tasks"),
+        supervisorRequest(
+          "PATCH",
+          `/api/v1/atm/location-tasks/${correctionTask._id}/reassign`,
+        ),
+        customerRequest(
+          "PATCH",
+          `/api/v1/atm/location-tasks/${correctionTask._id}/reassign`,
+        ),
+        employeeRequest(
+          "PATCH",
+          `/api/v1/atm/location-tasks/${correctionTask._id}/reassign`,
+        ),
+        supervisorRequest(
+          "POST",
+          `/api/v1/atm/location-tasks/${correctionTask._id}/reopen`,
+        ),
+        customerRequest(
+          "POST",
+          `/api/v1/atm/location-tasks/${correctionTask._id}/cancel`,
+        ),
+      ]) {
+        assert.equal((await deniedRequest).status, 403);
+      }
+      assert.equal(
+        (
+          await superAdminRequest(
+            "GET",
+            "/api/v1/atm/location-tasks?status=ASSIGNED",
+          )
+        ).status,
+        200,
+      );
+
+      const employeeTaskList = await employeeRequest(
+        "GET",
+        `/api/v1/atm/location-tasks?assignedEmployeeId=${ids.otherEmployee}`,
+      );
+      assert.equal(employeeTaskList.status, 200);
+      assert.deepEqual(
+        employeeTaskList.body.data.tasks.map((task) => String(task._id)),
+        [String(correctionTask._id)],
+      );
+
+      const wrongStart = await otherEmployeeRequest(
+        "POST",
+        `/api/v1/atm/location-tasks/${correctionTask._id}/start`,
+      );
+      assert.equal(wrongStart.status, 409);
+      const rightStart = await employeeRequest(
+        "POST",
+        `/api/v1/atm/location-tasks/${correctionTask._id}/start`,
+      );
+      assert.equal(rightStart.status, 200);
+      assert.equal(correctionTask.status, "IN_PROGRESS");
+
+      const initialWrongStart = await employeeRequest(
+        "POST",
+        `/api/v1/atm/location-tasks/${initialTask._id}/start`,
+      );
+      assert.equal(initialWrongStart.status, 409);
+      assert.equal(
+        (
+          await supervisorRequest(
+            "POST",
+            `/api/v1/atm/location-tasks/${initialTask._id}/start`,
+          )
+        ).status,
+        403,
+      );
+      assert.equal(
+        (
+          await customerRequest(
+            "POST",
+            `/api/v1/atm/location-tasks/${initialTask._id}/start`,
+          )
+        ).status,
+        403,
+      );
+      const initialRightStart = await otherEmployeeRequest(
+        "POST",
+        `/api/v1/atm/location-tasks/${initialTask._id}/start`,
+      );
+      assert.equal(initialRightStart.status, 200);
+
+      const reassignment = await adminRequest(
+        "PATCH",
+        `/api/v1/atm/location-tasks/${correctionTask._id}/reassign`,
+        { employeeId: ids.otherEmployee, reason: "Coverage change" },
+      );
+      assert.equal(reassignment.status, 200);
+      assert.equal(
+        String(correctionTask.assignedEmployeeId),
+        String(ids.otherEmployee),
+      );
+      assert.equal(correctionTask.assignmentHistory.length, 2);
+
+      const oldAssigneeSubmission = await employeeRequest(
+        "POST",
+        "/api/v1/atm/location-requests",
+        {
+          atmId,
+          locationTaskId: correctionTask._id,
+          latitude: proposedGPS.latitude,
+          longitude: proposedGPS.longitude,
+          accuracy: 0,
+          inputSource: "GPS",
+        },
+      );
+      assert.equal(oldAssigneeSubmission.status, 403);
+
+      const sameAssigneeReassignment = await adminRequest(
+        "PATCH",
+        `/api/v1/atm/location-tasks/${correctionTask._id}/reassign`,
+        { employeeId: ids.otherEmployee, reason: "No change" },
+      );
+      assert.equal(sameAssigneeReassignment.status, 400);
+      assert.equal(correctionTask.assignmentHistory.length, 2);
+
+      const currentAssigneeStart = await otherEmployeeRequest(
+        "POST",
+        `/api/v1/atm/location-tasks/${correctionTask._id}/start`,
+      );
+      assert.equal(currentAssigneeStart.status, 200);
+      assert.equal(correctionTask.status, "IN_PROGRESS");
+      assert.equal(correctionTask.locationRequestId, null);
+      assert.equal(String(correctionTask.assignedEmployeeId), String(ids.otherEmployee));
+
+      const invalidTaskGPSRequests = [
+        { accuracy: undefined },
+        { accuracy: null },
+        { accuracy: "5" },
+        { accuracy: -1 },
+        { accuracy: 50.01 },
+      ];
+      for (const accuracyInput of invalidTaskGPSRequests) {
+        const invalidGPS = await otherEmployeeRequest(
+          "POST",
+          "/api/v1/atm/location-requests",
+          {
+            atmId,
+            locationTaskId: correctionTask._id,
+            latitude: proposedGPS.latitude,
+            longitude: proposedGPS.longitude,
+            inputSource: "GPS",
+            ...accuracyInput,
+          },
+        );
+        assert.equal(invalidGPS.status, 400);
+      }
+      const genericMissingAccuracy = await otherEmployeeRequest(
+        "POST",
+        "/api/v1/atm/location-requests",
+        {
+          atmId,
+          latitude: proposedGPS.latitude,
+          longitude: proposedGPS.longitude,
+          inputSource: "GPS",
+        },
+      );
+      assert.equal(genericMissingAccuracy.status, 400);
+
+      const confirmedBeforeTaskProposal = structuredClone(atm.location);
+      const taskProposal = await otherEmployeeRequest(
+        "POST",
+        "/api/v1/atm/location-requests",
+        {
+          atmId,
+          locationTaskId: correctionTask._id,
+          latitude: proposedGPS.latitude + 0.0001,
+          longitude: proposedGPS.longitude,
+          accuracy: 0,
+          inputSource: "GPS",
+        },
+      );
+      assert.equal(taskProposal.status, 201, JSON.stringify(taskProposal.body));
+      assert.equal(correctionTask.status, "PENDING_REVIEW");
+      assert.equal(
+        String(correctionTask.locationRequestId),
+        String(taskProposal.body.data._id),
+      );
+      assert.equal(correctionTask.active, true);
+      assert.deepEqual(atm.location, confirmedBeforeTaskProposal);
+
+      const taskApproval = await superAdminRequest(
+        "POST",
+        `/api/v1/atm/location-requests/${taskProposal.body.data._id}/approve`,
+      );
+      assert.equal(taskApproval.status, 200);
+      assert.equal(correctionTask.status, "COMPLETED");
+      assert.equal(correctionTask.active, false);
+      assert.ok(correctionTask.completedAt instanceof Date);
+      const confirmedAfterApproval = structuredClone(atm.location);
+
+      const rejectedCorrectionCreation = await superAdminRequest(
+        "POST",
+        "/api/v1/atm/location-tasks/bulk",
+        {
+          tasks: [
+            {
+              atmId,
+              employeeId: ids.employee,
+              taskType: "LOCATION_CORRECTION",
+            },
+          ],
+        },
+      );
+      assert.equal(rejectedCorrectionCreation.status, 201);
+      const rejectedCorrectionTask = [...memory.locationTasks.values()].find(
+        (task) =>
+          sameId(task.atmId, atmId) &&
+          sameId(task._id, rejectedCorrectionCreation.body.data.tasks[0]._id),
+      );
+      const startRejectedCorrection = await employeeRequest(
+        "POST",
+        `/api/v1/atm/location-tasks/${rejectedCorrectionTask._id}/start`,
+      );
+      assert.equal(startRejectedCorrection.status, 200);
+      const rejectedCorrectionProposal = await employeeRequest(
+        "POST",
+        "/api/v1/atm/location-requests",
+        {
+          atmId,
+          locationTaskId: rejectedCorrectionTask._id,
+          latitude: proposedGPS.latitude + 0.0002,
+          longitude: proposedGPS.longitude,
+          inputSource: "MANUAL",
+        },
+      );
+      assert.equal(rejectedCorrectionProposal.status, 201);
+      assert.equal(
+        rejectedCorrectionProposal.body.data.inputSource,
+        "MANUAL",
+      );
+      assert.equal(rejectedCorrectionProposal.body.data.accuracy, null);
+      const rejectCorrection = await adminRequest(
+        "POST",
+        `/api/v1/atm/location-requests/${rejectedCorrectionProposal.body.data._id}/reject`,
+        { reason: "Correction proposal not verified" },
+      );
+      assert.equal(rejectCorrection.status, 200);
+      assert.equal(rejectedCorrectionTask.status, "REJECTED");
+      assert.equal(rejectedCorrectionTask.active, true);
+      assert.deepEqual(atm.location, confirmedAfterApproval);
+
+      const reopenRejected = await superAdminRequest(
+        "POST",
+        `/api/v1/atm/location-tasks/${rejectedCorrectionTask._id}/reopen`,
+        {
+          employeeId: ids.otherEmployee,
+          reason: "Rechecking field evidence",
+        },
+      );
+      assert.equal(reopenRejected.status, 200);
+      assert.equal(rejectedCorrectionTask.status, "ASSIGNED");
+      const cancelReopened = await adminRequest(
+        "POST",
+        `/api/v1/atm/location-tasks/${rejectedCorrectionTask._id}/cancel`,
+        { reason: "Verification no longer needed" },
+      );
+      assert.equal(cancelReopened.status, 200);
+      assert.equal(rejectedCorrectionTask.status, "CANCELLED");
+      assert.equal(rejectedCorrectionTask.active, false);
+
+      const superAdminCancel = await superAdminRequest(
+        "POST",
+        `/api/v1/atm/location-tasks/${initialTask._id}/cancel`,
+        { reason: "Test cleanup" },
+      );
+      assert.equal(superAdminCancel.status, 200);
+      assert.equal(initialTask.status, "CANCELLED");
+    },
+  );
+
   await t.test("a stale location proposal cannot overwrite a newer canonical location", async () => {
     const reopen = await adminRequest(
       "POST",
@@ -726,6 +1500,16 @@ test("integrated ATM lifecycle runs through authenticated HTTP routes", async (t
     assert.equal(
       memory.requests.get(rejectedRequestId).status,
       "REJECTED",
+    );
+    const rejectedAudit = memory.requests.get(rejectedRequestId);
+    assert.equal(String(rejectedAudit.requestedBy), ids.employeeUser);
+    assert.equal(String(rejectedAudit.reviewedBy), ids.admin);
+    assert.ok(rejectedAudit.submittedAt instanceof Date);
+    assert.ok(rejectedAudit.reviewedAt instanceof Date);
+    assert.equal(rejectedAudit.rejectionReason, "Test-only rejected proposal");
+    assert.deepEqual(
+      rejectedAudit.officialLocationSnapshot.coordinates,
+      canonicalLocationBeforeRejection.coordinates,
     );
     assert.deepEqual(atm.location, canonicalLocationBeforeRejection);
 

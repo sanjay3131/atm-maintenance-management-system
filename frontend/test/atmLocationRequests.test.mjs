@@ -2,8 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
+  buildATMLocationMapUrl,
+  canDecideATMLocationRequest,
+  canDecideLinkedATMLocationTaskRequest,
   canReviewATMLocationRequests,
   canSubmitEmployeeATMLocationRequest,
+  copyATMLocationCoordinate,
   createATMLocationRequestPayload,
   formatATMLocationRequestStatus,
   getATMLocationRequestErrorMessage,
@@ -11,6 +15,7 @@ import {
   getGeolocationErrorMessage,
   isAcceptableATMLocationRequestAccuracy,
   isEmployeeLocationRequestClosed,
+  isValidATMLocationCoordinatePair,
   parseLocationCoordinates,
   validateRejectionReason,
 } from "../src/features/atms/atmLocationRequest.utils.ts";
@@ -128,6 +133,101 @@ test("rejection requires trimmed text and caps accepted input at backend maximum
   assert.equal(validateRejectionReason(" Coordinates do not match "), "");
   assert.equal(validateRejectionReason("x".repeat(1000)), "");
   assert.match(validateRejectionReason("x".repeat(1001)), /1000 characters/);
+});
+
+test("proposal coordinate helpers validate, copy each exact value, and build a map link from the proposal", async () => {
+  const latitude = 12.345678;
+  const longitude = -76.54321;
+  const copiedValues = [];
+  const writeText = async (text) => copiedValues.push(text);
+
+  assert.equal(isValidATMLocationCoordinatePair(latitude, longitude), true);
+  assert.equal(isValidATMLocationCoordinatePair(91, longitude), false);
+  assert.equal(isValidATMLocationCoordinatePair(latitude, -181), false);
+  assert.equal(
+    buildATMLocationMapUrl(latitude, longitude),
+    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${latitude},${longitude}`)}`,
+  );
+  assert.equal(buildATMLocationMapUrl(Number.NaN, longitude), null);
+
+  await copyATMLocationCoordinate(latitude, writeText);
+  await copyATMLocationCoordinate(longitude, writeText);
+  assert.deepEqual(copiedValues, [String(latitude), String(longitude)]);
+  await assert.rejects(
+    copyATMLocationCoordinate(Number.NaN, writeText),
+    /finite number/,
+  );
+});
+
+test("only pending location requests can be approved or rejected", () => {
+  assert.equal(canDecideATMLocationRequest("PENDING"), true);
+  assert.equal(canDecideATMLocationRequest("APPROVED"), false);
+  assert.equal(canDecideATMLocationRequest("REJECTED"), false);
+});
+
+test("linked task decisions require the matching pending request and PENDING_REVIEW task", () => {
+  const task = {
+    _id: "task-1",
+    atmId: "atm-1",
+    status: "PENDING_REVIEW",
+    locationRequestId: "request-1",
+  };
+  const request = {
+    _id: "request-1",
+    atmId: "atm-1",
+    locationTaskId: "task-1",
+    status: "PENDING",
+  };
+  assert.equal(canDecideLinkedATMLocationTaskRequest(task, request), true);
+  assert.equal(
+    canDecideLinkedATMLocationTaskRequest(
+      { ...task, status: "REJECTED" },
+      request,
+    ),
+    false,
+  );
+  assert.equal(
+    canDecideLinkedATMLocationTaskRequest(
+      task,
+      { ...request, status: "REJECTED" },
+    ),
+    false,
+  );
+  assert.equal(
+    canDecideLinkedATMLocationTaskRequest(
+      task,
+      { ...request, locationTaskId: "task-other" },
+    ),
+    false,
+  );
+  assert.equal(
+    canDecideLinkedATMLocationTaskRequest(
+      { ...task, atmId: "atm-other" },
+      request,
+    ),
+    false,
+  );
+  assert.equal(
+    canDecideLinkedATMLocationTaskRequest(
+      task,
+      { ...request, atmId: "atm-other" },
+    ),
+    false,
+  );
+  assert.equal(
+    canDecideLinkedATMLocationTaskRequest(
+      { ...task, atmId: undefined },
+      request,
+    ),
+    false,
+  );
+  assert.equal(
+    canDecideLinkedATMLocationTaskRequest(
+      { ...task, locationRequestId: null },
+      request,
+    ),
+    false,
+  );
 });
 
 test("list state, status label, and API errors are presented clearly", () => {
@@ -249,4 +349,113 @@ test("Admin decision detail refetches its populated request", async () => {
   assert.match(page, /refreshed\.data \?\?/);
   assert.match(page, /atmId:\s*request\.atmId/);
   assert.match(page, /requestedBy:\s*request\.requestedBy/);
+  assert.match(page, /Copy Latitude/);
+  assert.match(page, /Copy Longitude/);
+  assert.match(page, /buildATMLocationMapUrl\(\s*request\.proposedLatitude,\s*request\.proposedLongitude/s);
+  assert.match(page, /target="_blank"\s*rel="noopener noreferrer"/);
+  assert.match(page, /Current official location/);
+  assert.match(page, /Official location at submission/);
+  assert.match(page, /DialogTitle/);
+  assert.match(page, /Confirm approval/);
+  assert.match(page, /Confirm rejection/);
+  assert.match(page, /validateRejectionReason\(reason\)/);
+  assert.match(page, /canDecideATMLocationRequest\(request\.status\)/);
+  assert.match(page, /useATM\(atmId, Boolean\(atmId\)\)/);
+  assert.doesNotMatch(page, /setATMLocation|setATMCoordinates/);
+
+  const approvalSuccessStart = page.indexOf("const result = await approveMutation.mutateAsync");
+  const approvalSuccessEnd = page.indexOf("} catch (actionError)", approvalSuccessStart);
+  assert.ok(approvalSuccessStart >= 0 && approvalSuccessEnd > approvalSuccessStart);
+  assert.match(
+    page.slice(approvalSuccessStart, approvalSuccessEnd),
+    /setNotice\("Location request approved/,
+  );
+  const approvalFailureBlock = page.slice(approvalSuccessEnd);
+  assert.match(approvalFailureBlock, /setError\(getATMLocationRequestErrorMessage\(actionError\)\)/);
+});
+
+test("linked task proposal dialog loads, retries, guards decisions, and uses reviewed request endpoints", async () => {
+  const dialog = await readFile(
+    new URL(
+      "../src/pages/admin/ATMLocationTaskRequestDialog.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(dialog, /useATMLocationRequest\(requestId\)/);
+  assert.match(dialog, /requestQuery\.isLoading/);
+  assert.match(dialog, /requestQuery\.isError/);
+  assert.match(dialog, /requestQuery\.refetch\(\)/);
+  assert.match(dialog, /canDecideLinkedATMLocationTaskRequest\(task, request\)/);
+  assert.match(dialog, /validateRejectionReason\(reason\)/);
+  assert.match(dialog, /decisionLock\.current/);
+  assert.match(dialog, /useApproveATMLocationRequest/);
+  assert.match(dialog, /useRejectATMLocationRequest/);
+  assert.match(dialog, /buildATMLocationMapUrl\(/);
+  assert.match(dialog, /copyATMLocationCoordinate\(/);
+  assert.doesNotMatch(dialog, /setATMLocation|setATMCoordinates/);
+});
+
+test("admin request filters share paginated server query parameters and reset dependent regions", async () => {
+  const page = await readFile(
+    new URL("../src/pages/admin/ATMLocationRequestsPage.tsx", import.meta.url),
+    "utf8",
+  );
+  const service = await readFile(
+    new URL(
+      "../src/features/atms/services/atm-location-requests.service.ts",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const hooks = await readFile(
+    new URL(
+      "../src/features/atms/hooks/useATMLocationRequests.ts",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const backendValidation = await readFile(
+    new URL(
+      "../../backend/src/modules/atms/atm.validation.js",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const backendService = await readFile(
+    new URL(
+      "../../backend/src/modules/atms/atmLocationRequest.service.js",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  for (const filter of ["search", "districtId", "regionId", "employeeId"]) {
+    assert.ok(service.includes(filter), `service should send ${filter}`);
+    assert.ok(hooks.includes(filter), `query key should include ${filter}`);
+    assert.ok(
+      backendValidation.includes(`${filter}:`),
+      `query validator should accept ${filter}`,
+    );
+    assert.ok(backendService.includes(filter), `backend should apply ${filter}`);
+  }
+  assert.match(page, /setDistrictId\(event\.target\.value\);\s*setRegionId\(""\)/);
+  assert.match(page, /useDeferredValue\(search\)/);
+  assert.match(page, /onClick=\{clearFilters\}/);
+  assert.match(page, /No .*location requests match these filters/);
+  assert.match(page, /setPage\(1\)/);
+});
+
+test("review mutations refresh request lists, request detail, and ATM data after server success", async () => {
+  const hooks = await readFile(
+    new URL(
+      "../src/features/atms/hooks/useATMLocationRequests.ts",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(hooks, /invalidateQueries\(\{ queryKey: \["atm-location-requests"\] \}\)/);
+  assert.match(hooks, /invalidateQueries\(\{ queryKey: \["atm-location-request"\] \}\)/);
+  assert.match(hooks, /invalidateQueries\(\{ queryKey: \["atms"\] \}\)/);
+  assert.match(hooks, /invalidateQueries\(\{ queryKey: \["atm"\] \}\)/);
+  assert.match(hooks, /invalidateQueries\(\{ queryKey: \["atm-location-tasks"\] \}\)/);
 });

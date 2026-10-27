@@ -93,11 +93,27 @@ export const setATMAMCResponsibleEmployeeSchema = z.object({
 
 export const submitATMLocationRequestSchema = z.object({
   atmId: objectIdSchema,
+  locationTaskId: objectIdSchema.optional(),
   latitude: z.number().finite().min(-90).max(90),
   longitude: z.number().finite().min(-180).max(180),
   accuracy: z.number().finite().min(0).max(50).optional(),
   inputSource: z.enum(["GPS", "MANUAL"]),
   amcId: objectIdSchema.optional(),
+}).superRefine((request, context) => {
+  if (request.inputSource === "GPS" && request.accuracy === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["accuracy"],
+      message: "GPS submissions require accuracy metadata",
+    });
+  }
+  if (request.locationTaskId && request.amcId) {
+    context.addIssue({
+      code: "custom",
+      path: ["amcId"],
+      message: "Location-task submissions cannot be linked to an AMC",
+    });
+  }
 });
 
 export const atmLocationRequestParamsSchema = z.object({
@@ -107,12 +123,68 @@ export const atmLocationRequestParamsSchema = z.object({
 export const atmLocationRequestListQuerySchema = z.object({
   status: z.enum(["PENDING", "APPROVED", "REJECTED"]).optional(),
   atmId: objectIdSchema.optional(),
+  search: z.string().trim().max(200).optional(),
+  districtId: objectIdSchema.optional(),
+  regionId: objectIdSchema.optional(),
+  employeeId: objectIdSchema.optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
 export const atmIdParamsSchema = z.object({
   id: objectIdSchema,
+});
+
+export const locationTaskIdParamsSchema = z.object({
+  taskId: objectIdSchema,
+});
+
+export const createATMLocationTasksSchema = z.object({
+  tasks: z
+    .array(
+      z.object({
+        atmId: objectIdSchema,
+        employeeId: objectIdSchema,
+        taskType: z.enum(["INITIAL_COLLECTION", "LOCATION_CORRECTION"]),
+        correctionReason: z.string().trim().min(1).max(1000).optional(),
+        assignmentReason: z.string().trim().max(1000).optional(),
+      }),
+    )
+    .min(1)
+    .max(100),
+});
+
+export const listATMLocationTasksQuerySchema = z.object({
+  status: z
+    .enum([
+      "ASSIGNED",
+      "IN_PROGRESS",
+      "ON_HOLD",
+      "PENDING_REVIEW",
+      "REJECTED",
+      "COMPLETED",
+      "CANCELLED",
+    ])
+    .optional(),
+  taskType: z.enum(["INITIAL_COLLECTION", "LOCATION_CORRECTION"]).optional(),
+  atmId: objectIdSchema.optional(),
+  assignedEmployeeId: objectIdSchema.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export const reassignATMLocationTaskSchema = z.object({
+  employeeId: objectIdSchema,
+  reason: z.string().trim().min(1).max(1000).optional(),
+});
+
+export const reopenATMLocationTaskSchema = z.object({
+  employeeId: objectIdSchema,
+  reason: z.string().trim().min(1).max(1000),
+});
+
+export const cancelATMLocationTaskSchema = z.object({
+  reason: z.string().trim().min(1).max(1000),
 });
 
 export const rejectATMLocationRequestSchema = z.object({

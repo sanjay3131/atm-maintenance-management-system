@@ -4,6 +4,9 @@ import AMC from "../amc/amc.model.js";
 import ATM from "./atm.model.js";
 import ATMLocationRequest from "./atmLocationRequest.model.js";
 import Employee from "../employees/employee.model.js";
+import ATMLocationTask from "./atmLocationTask.model.js";
+import { taskRequestSubmissionFilter } from "./atmLocationTask.service.js";
+import { escapeRegex } from "../../utils/geographicQuery.js";
 
 const sameId = (left, right) =>
   String(left?._id ?? left) === String(right?._id ?? right);
@@ -20,6 +23,9 @@ const withTransaction = async (operation) => {
     await session.endSession();
   }
 };
+
+const sessionQuery = (query, session) =>
+  typeof query?.session === "function" ? query.session(session) : query;
 
 const officialLocationSnapshot = (atm) => {
   const coordinates = atm.location?.coordinates;
@@ -44,6 +50,7 @@ const requestView = (request) => ({
   requesterRole: request.requesterRole,
   requesterEmployeeId: request.requesterEmployeeId,
   amcId: request.amcId,
+  locationTaskId: request.locationTaskId,
   proposedLatitude: request.proposedLatitude,
   proposedLongitude: request.proposedLongitude,
   accuracy: request.accuracy,
@@ -60,6 +67,12 @@ const requestView = (request) => ({
 
 const isDuplicateKeyError = (error) => error?.code === 11000;
 
+const assertReviewerIsNotRequester = (request, reviewerId) => {
+  if (sameId(request.requestedBy, reviewerId)) {
+    throw new ApiError(403, "You cannot review your own location request");
+  }
+};
+
 export const submitATMlocationRequest = async ({
   atmId,
   requester,
@@ -68,7 +81,11 @@ export const submitATMlocationRequest = async ({
   accuracy,
   inputSource,
   amcId,
+  locationTaskId,
 }) => {
+  if (locationTaskId && requester.userType !== "employee") {
+    throw new ApiError(403, "Only the assigned employee can submit for a location task");
+  }
   const atm = await ATM.findOne({ _id: atmId, isDeleted: false });
   if (!atm) throw new ApiError(404, "ATM not found");
 
@@ -100,16 +117,57 @@ export const submitATMlocationRequest = async ({
     });
     if (!employee) throw new ApiError(403, "Active employee record not found");
 
+    let activeLocationTask = null;
+    if (locationTaskId) {
+      activeLocationTask = await ATMLocationTask.findOne({
+        _id: locationTaskId,
+        atmId: atm._id,
+        assignedEmployeeId: employee._id,
+        active: true,
+        status: "IN_PROGRESS",
+        locationRequestId: null,
+      });
+      if (!activeLocationTask) {
+        throw new ApiError(
+          403,
+          "Location task is not active or is no longer assigned to you",
+        );
+      }
+      if (
+        (activeLocationTask.taskType === "INITIAL_COLLECTION" &&
+          atm.locationConfigured === true) ||
+        (activeLocationTask.taskType === "LOCATION_CORRECTION" &&
+          atm.locationConfigured !== true)
+      ) {
+        throw new ApiError(
+          409,
+          "Location task type no longer matches the ATM's confirmed-location state",
+        );
+      }
+    } else {
+      const taskForATM = await ATMLocationTask.findOne({
+        atmId: atm._id,
+        active: true,
+      });
+      if (taskForATM) {
+        throw new ApiError(
+          409,
+          "Submit this proposal through the currently assigned location task",
+        );
+      }
+    }
+
     const isAssignedToATM = (atm.assignedEmployeeId ?? []).some((id) =>
       sameId(id, employee._id),
     );
 
-    if (!isAssignedToATM && !linkedAmcId) {
+    if (!activeLocationTask && !isAssignedToATM && !linkedAmcId) {
       throw new ApiError(403, "You are not assigned to this ATM");
     }
     requesterEmployeeId = employee._id;
 
     if (
+      !activeLocationTask &&
       atm.locationConfigured === true &&
       atm.locationRequestWindowOpen !== true
     ) {
@@ -122,8 +180,9 @@ export const submitATMlocationRequest = async ({
 
   const snapshot = officialLocationSnapshot(atm);
   try {
-    const request = await ATMLocationRequest.create({
+    const requestData = {
       atmId: atm._id,
+      locationTaskId: locationTaskId ?? null,
       requestType: snapshot.locationConfigured
         ? "LOCATION_CHANGE"
         : "INITIAL_CONFIGURATION",
@@ -137,7 +196,63 @@ export const submitATMlocationRequest = async ({
       inputSource,
       officialLocationSnapshot: snapshot,
       status: "PENDING",
-    });
+    };
+    let request;
+    if (locationTaskId) {
+      request = await withTransaction(async (session) => {
+        const [createdRequest] = await ATMLocationRequest.create(
+          [requestData],
+          { session },
+        );
+        const updatedTask = await ATMLocationTask.findOneAndUpdate(
+          {
+            ...taskRequestSubmissionFilter({
+              taskId: locationTaskId,
+              atmId: atm._id,
+              employeeId: requesterEmployeeId,
+            }),
+            locationRequestId: null,
+          },
+          {
+            $set: {
+              status: "PENDING_REVIEW",
+              locationRequestId: createdRequest._id,
+              updatedBy: requester._id,
+            },
+          },
+          { new: true, runValidators: true, session },
+        );
+        if (!updatedTask) {
+          throw new ApiError(
+            409,
+            "Location task changed while the proposal was being submitted",
+          );
+        }
+        return createdRequest;
+      });
+    } else {
+      request = await withTransaction(async (session) => {
+        const locked = await ATM.bumpLocationWorkflowRevision(atm._id, session);
+        if (!locked) throw new ApiError(404, "ATM not found");
+
+        const activeLocationTask = await sessionQuery(
+          ATMLocationTask.findOne({ atmId: atm._id, active: true }),
+          session,
+        );
+        if (activeLocationTask) {
+          throw new ApiError(
+            409,
+            "Submit this proposal through the currently assigned location task",
+          );
+        }
+
+        const [createdRequest] = await ATMLocationRequest.create(
+          [requestData],
+          { session },
+        );
+        return createdRequest;
+      });
+    }
     return requestView(request);
   } catch (error) {
     if (isDuplicateKeyError(error)) {
@@ -155,12 +270,41 @@ export const listATMlocationRequests = async ({
   page,
   limit,
   atmId,
+  search,
+  districtId,
+  regionId,
+  employeeId,
   requesterId,
 }) => {
+  let matchingATMIds;
+  if (search || districtId || regionId) {
+    const atmFilter = {
+      isDeleted: false,
+      ...(districtId ? { districtId } : {}),
+      ...(regionId ? { regionId } : {}),
+      ...(search
+        ? {
+            $or: [
+              { atmId: { $regex: escapeRegex(search), $options: "i" } },
+              { locationName: { $regex: escapeRegex(search), $options: "i" } },
+              { address: { $regex: escapeRegex(search), $options: "i" } },
+            ],
+          }
+        : {}),
+    };
+    matchingATMIds = await ATM.find(atmFilter).distinct("_id");
+  }
   const filter = {
     ...(status ? { status } : {}),
-    ...(atmId ? { atmId } : {}),
+    ...(employeeId ? { requesterEmployeeId: employeeId } : {}),
     ...(requesterId ? { requestedBy: requesterId } : {}),
+    ...(atmId && matchingATMIds
+      ? { $and: [{ atmId }, { atmId: { $in: matchingATMIds } }] }
+      : atmId
+        ? { atmId }
+        : matchingATMIds
+          ? { atmId: { $in: matchingATMIds } }
+          : {}),
   };
   const skip = (page - 1) * limit;
   const [requests, total] = await Promise.all([
@@ -170,8 +314,10 @@ export const listATMlocationRequests = async ({
       .limit(limit)
       .populate(
         "atmId",
-        "atmId locationName address locationConfigured locationRequestReopenedAt locationRequestWindowOpen",
+        "atmId locationName address locationConfigured locationRequestReopenedAt locationRequestWindowOpen districtId regionId",
       )
+      .populate("atmId.districtId", "districtName")
+      .populate("atmId.regionId", "name")
       .populate("requestedBy", "firstName lastName userType")
       .populate("requesterEmployeeId", "employeeCode")
       .populate("reviewedBy", "firstName lastName userType"),
@@ -187,8 +333,10 @@ export const getATMlocationRequest = async (requestId) => {
   const request = await ATMLocationRequest.findById(requestId)
     .populate(
       "atmId",
-      "atmId locationName address locationConfigured locationRequestReopenedAt locationRequestWindowOpen",
+      "atmId locationName address locationConfigured locationRequestReopenedAt locationRequestWindowOpen districtId regionId",
     )
+    .populate("atmId.districtId", "districtName")
+    .populate("atmId.regionId", "name")
     .populate("requestedBy", "firstName lastName userType")
     .populate("requesterEmployeeId", "employeeCode")
     .populate("reviewedBy", "firstName lastName userType");
@@ -215,6 +363,36 @@ export const approveATMlocationRequest = async ({
 }) =>
   withTransaction(async (session) => {
     const reviewedAt = new Date();
+    const pendingRequest = await sessionQuery(
+      ATMLocationRequest.findOne({ _id: requestId, status: "PENDING" }),
+      session,
+    );
+    if (!pendingRequest) {
+      throw new ApiError(409, "Location request is no longer pending");
+    }
+    assertReviewerIsNotRequester(pendingRequest, reviewerId);
+    if (!pendingRequest.locationTaskId) {
+      const locked = await ATM.bumpLocationWorkflowRevision(
+        pendingRequest.atmId,
+        session,
+      );
+      if (!locked) {
+        throw new ApiError(409, "ATM is no longer available for location review");
+      }
+      const activeLocationTask = await sessionQuery(
+        ATMLocationTask.findOne({
+          atmId: pendingRequest.atmId,
+          active: true,
+        }),
+        session,
+      );
+      if (activeLocationTask) {
+        throw new ApiError(
+          409,
+          "A location task is active for this ATM; resolve it before approving this request",
+        );
+      }
+    }
     const request = await ATMLocationRequest.findOneAndUpdate(
       { _id: requestId, status: "PENDING" },
       {
@@ -263,6 +441,34 @@ export const approveATMlocationRequest = async ({
       );
     }
 
+    if (request.locationTaskId) {
+      const task = await ATMLocationTask.findOneAndUpdate(
+        {
+          _id: request.locationTaskId,
+          atmId: request.atmId,
+          locationRequestId: request._id,
+          active: true,
+          status: "PENDING_REVIEW",
+        },
+        {
+          $set: {
+            status: "COMPLETED",
+            active: false,
+            completedAt: reviewedAt,
+            completedBy: reviewerId,
+            updatedBy: reviewerId,
+          },
+        },
+        { new: true, runValidators: true, session },
+      );
+      if (!task) {
+        throw new ApiError(
+          409,
+          "Location task changed before this proposal could be approved",
+        );
+      }
+    }
+
     return requestView(request);
   });
 
@@ -271,6 +477,52 @@ export const rejectATMlocationRequest = async ({
   reviewerId,
   reason,
 }) => {
+  const existing = await ATMLocationRequest.findOne({
+    _id: requestId,
+    status: "PENDING",
+  });
+  if (!existing) {
+    throw new ApiError(409, "Location request is no longer pending");
+  }
+  assertReviewerIsNotRequester(existing, reviewerId);
+  if (existing.locationTaskId) {
+    return withTransaction(async (session) => {
+      const reviewedAt = new Date();
+      const request = await ATMLocationRequest.findOneAndUpdate(
+        { _id: requestId, status: "PENDING" },
+        {
+          $set: {
+            status: "REJECTED",
+            reviewedBy: reviewerId,
+            reviewedAt,
+            rejectionReason: reason.trim(),
+          },
+        },
+        { new: true, runValidators: true, session },
+      );
+      if (!request) {
+        throw new ApiError(409, "Location request is no longer pending");
+      }
+      const task = await ATMLocationTask.findOneAndUpdate(
+        {
+          _id: request.locationTaskId,
+          atmId: request.atmId,
+          locationRequestId: request._id,
+          active: true,
+          status: "PENDING_REVIEW",
+        },
+        { $set: { status: "REJECTED", updatedBy: reviewerId } },
+        { new: true, runValidators: true, session },
+      );
+      if (!task) {
+        throw new ApiError(
+          409,
+          "Location task changed before this proposal could be rejected",
+        );
+      }
+      return requestView(request);
+    });
+  }
   const request = await ATMLocationRequest.findOneAndUpdate(
     { _id: requestId, status: "PENDING" },
     {

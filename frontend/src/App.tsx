@@ -31,6 +31,7 @@ import EmployeeJobsPage from "@/pages/employee/EmployeeJobsPage";
 import EmployeeAMCsPage from "@/pages/employee/EmployeeAMCsPage";
 import EmployeeAMCDetailsPage from "@/pages/employee/EmployeeAMCDetailsPage";
 import EmployeeAttendancePage from "@/pages/employee/EmployeeAttendancePage";
+import EmployeeLocationTasksPage from "@/pages/employee/EmployeeLocationTasksPage";
 import EmployeeLanguageProvider from "@/features/employee-portal/EmployeeLanguageProvider";
 import BanksPage from "@/pages/admin/BanksPage";
 import BankDetailPage from "@/pages/admin/BankDetailPage";
@@ -44,6 +45,7 @@ import AdminAttendancePage from "@/pages/admin/AdminAttendancePage";
 import SupervisorsPage from "@/pages/admin/SupervisorsPage";
 import ATMLocationRequestsPage from "@/pages/admin/ATMLocationRequestsPage";
 import ATMLocationRequestDetailsPage from "@/pages/admin/ATMLocationRequestDetailsPage";
+import ATMLocationTasksPage from "@/pages/admin/ATMLocationTasksPage";
 import CustomerPortalLayout from "@/layouts/CustomerPortalLayout";
 import {
   CustomerAMCDetailsPage,
@@ -104,6 +106,10 @@ export default function App() {
             <Route
               path="/admin/location-requests/:requestId"
               element={<ATMLocationRequestDetailsPage />}
+            />
+            <Route
+              path="/admin/location-tasks"
+              element={<ATMLocationTasksPage />}
             />
             <Route path="/admin/jobs" element={<JobsPage />} />
             <Route path="/admin/jobs/:jobId" element={<JobDetailsPage />} />
@@ -166,6 +172,10 @@ export default function App() {
               element={<EmployeeAttendancePage />}
             />
             <Route path="/employee/jobs" element={<EmployeeJobsPage />} />
+            <Route
+              path="/employee/location-tasks"
+              element={<EmployeeLocationTasksPage />}
+            />
             <Route path="/employee/amcs" element={<EmployeeAMCsPage />} />
             <Route
               path="/employee/amcs/:amcId"
