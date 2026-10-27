@@ -118,7 +118,7 @@ export default function AdminLayout() {
       >
         <div className="flex shrink-0 items-start justify-between border-b p-5">
           <div>
-            <h1 className="text-lg font-bold">Sendhur Engineering</h1>
+            <h1 className="text-lg font-bold">Senthur Engineering</h1>
             <p className="text-sm text-gray-500">Admin Panel</p>
           </div>
           <button

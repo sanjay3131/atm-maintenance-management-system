@@ -35,6 +35,10 @@ import {
   getEmployeeJobsStatusChange,
   parseEmployeeJobStatusFilter,
 } from "@/features/jobs/utils/employeeJobs.utils";
+import {
+  formatAcSubType,
+  formatJobWorkType,
+} from "@/features/jobs/utils/jobWorkType.utils";
 
 const ALL_STATUSES = "ALL";
 const PAGE_SIZE = 10;
@@ -356,8 +360,16 @@ export default function EmployeeJobsPage() {
                   </div>
                   <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-slate-500">
                     <span className="max-w-full break-words rounded-full bg-slate-100 px-2 py-1 font-medium leading-5 text-slate-700 [overflow-wrap:anywhere]">
-                      {formatLabel(job.workType, t)}
+                      {employeeDisplayLabel(formatJobWorkType(job.workType), t)}
                     </span>
+                    {job.workType === "ac" && job.acSubType && (
+                      <span>
+                        {employeeDisplayLabel(
+                          formatAcSubType(job.acSubType),
+                          t,
+                        )}
+                      </span>
+                    )}
                     <Badge
                       variant={getPriorityVariant(job.priority)}
                       className="max-w-full whitespace-normal rounded-full px-2 py-1 text-center text-xs font-medium leading-5 [overflow-wrap:anywhere]"

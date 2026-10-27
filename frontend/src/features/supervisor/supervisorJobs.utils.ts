@@ -3,6 +3,10 @@ import type {
   SupervisorJobPhoto,
   SupervisorJobStatus,
 } from "@/services/supervisor.service";
+import {
+  formatAcSubType,
+  formatJobWorkType,
+} from "../jobs/utils/jobWorkType.utils.ts";
 
 export const SUPERVISOR_JOB_STATUSES: SupervisorJobStatus[] = [
   "PENDING",
@@ -34,6 +38,8 @@ export const formatSupervisorJobLabel = (value?: string | null) =>
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(" ")
     : "Unavailable";
+
+export { formatAcSubType, formatJobWorkType };
 
 export const supervisorJobPhotoUrl = (
   photo: Pick<SupervisorJobPhoto, "url" | "thumbnailUrl">,

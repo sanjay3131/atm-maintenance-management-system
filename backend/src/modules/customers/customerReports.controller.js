@@ -16,7 +16,7 @@ import {
 } from "./customerReports.service.js";
 
 const jobExportFields =
-  "jobId jobNumber title workType priority status createdAt completedAt closedAt";
+  "jobId jobNumber title workType acSubType priority status createdAt completedAt closedAt";
 const amcExportFields =
   "amcId month year status visitDate completedAt checklistCompleted createdAt";
 

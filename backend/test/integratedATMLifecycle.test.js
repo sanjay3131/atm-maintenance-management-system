@@ -768,7 +768,7 @@ test("integrated ATM lifecycle runs through authenticated HTTP routes", async (t
       title: "Incomplete lifecycle failure-path test",
       description: "Test-only job for completion guards",
       atmId,
-      workType: "inspection",
+      workType: "service",
       priority: "low",
     });
     assert.equal(createJobResponse.status, 201);

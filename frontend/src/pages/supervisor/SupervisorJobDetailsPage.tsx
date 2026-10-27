@@ -26,6 +26,8 @@ import {
 } from "@/features/supervisor/hooks/useSupervisorJobDetails";
 import {
   chronologicalJobHistory,
+  formatAcSubType,
+  formatJobWorkType,
   formatSupervisorJobLabel,
   isSupervisorJobId,
   supervisorJobPhotoUrl,
@@ -449,8 +451,18 @@ export default function SupervisorJobDetailsPage() {
               <div>
                 <p className="text-xs font-medium text-slate-500">Work type</p>
                 <p className="mt-1 text-sm font-semibold text-slate-800">
-                  {job.workType ? formatSupervisorJobLabel(job.workType) : "Not available"}
+                  {job.workType ? formatJobWorkType(job.workType) : "Not available"}
                 </p>
+                {job.workType === "ac" && (
+                  <>
+                    <p className="mt-3 text-xs font-medium text-slate-500">
+                      AC sub-type
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-800">
+                      {formatAcSubType(job.acSubType)}
+                    </p>
+                  </>
+                )}
               </div>
             </div>
             <div className="flex min-w-0 gap-2">

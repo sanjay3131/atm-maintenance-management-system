@@ -1,4 +1,39 @@
 import { z } from "zod";
+import {
+  AC_SUB_TYPES,
+  JOB_WORK_TYPES,
+  LEGACY_JOB_WORK_TYPES,
+} from "./jobWorkTypes.js";
+
+const jobWorkFields = {
+  workType: z.enum(JOB_WORK_TYPES).optional(),
+  acSubType: z.enum(AC_SUB_TYPES).optional(),
+};
+const updateJobWorkFields = {
+  workType: z.enum([...JOB_WORK_TYPES, ...LEGACY_JOB_WORK_TYPES]).optional(),
+  acSubType: z.enum(AC_SUB_TYPES).optional(),
+};
+
+const validateAcSubType = (job, context, { requireWorkType = false } = {}) => {
+  if (job.workType === "ac" && !job.acSubType) {
+    context.addIssue({
+      code: "custom",
+      path: ["acSubType"],
+      message: "AC sub-type is required for AC work",
+    });
+  }
+  if (
+    job.workType !== "ac" &&
+    job.acSubType !== undefined &&
+    (requireWorkType || job.workType !== undefined)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["acSubType"],
+      message: "AC sub-type is only valid for AC work",
+    });
+  }
+};
 
 export const createJobSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters").max(200),
@@ -12,11 +47,20 @@ export const createJobSchema = z.object({
     .string()
     .regex(/^[0-9a-fA-F]{24}$/)
     .optional(),
-  workType: z
-    .enum(["repair", "maintenance", "installation", "inspection", "emergency"])
-    .optional(),
+  ...jobWorkFields,
   priority: z.enum(["low", "medium", "high", "critical"]).optional(),
-});
+}).superRefine((job, context) =>
+  validateAcSubType(job, context, { requireWorkType: true }),
+);
+
+export const updateJobSchema = z
+  .object({
+    title: z.string().min(3, "Title must be at least 3 characters").max(200).optional(),
+    description: z.string().optional(),
+    ...updateJobWorkFields,
+    priority: z.enum(["low", "medium", "high", "critical"]).optional(),
+  })
+  .superRefine((job, context) => validateAcSubType(job, context));
 
 export const assignJobSchema = z.object({
   employeeId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid Employee ID"),

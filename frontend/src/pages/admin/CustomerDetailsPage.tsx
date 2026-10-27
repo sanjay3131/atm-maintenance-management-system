@@ -39,6 +39,10 @@ import type {
   CustomerUpdateData,
 } from "@/features/customers/services/customer.service";
 import type { Job, JobATM, JobUser } from "@/features/jobs/types/job.types";
+import {
+  formatAcSubType,
+  formatJobWorkType,
+} from "@/features/jobs/utils/jobWorkType.utils";
 
 const JOB_PAGE_SIZE = 5;
 const COMPLAINT_PAGE_SIZE = 5;
@@ -568,7 +572,10 @@ export default function CustomerDetailsPage() {
                           <p className="text-xs text-muted-foreground">
                             ATM: {formatValue(atm?.atmId)}
                             {" · "}
-                            {formatValue(job.workType)}
+                            {formatJobWorkType(job.workType)}
+                            {job.workType === "ac" && job.acSubType
+                              ? ` · ${formatAcSubType(job.acSubType)}`
+                              : ""}
                             {" · "}
                             Assigned:{" "}
                             {formatValue(

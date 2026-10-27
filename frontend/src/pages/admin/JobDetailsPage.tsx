@@ -8,6 +8,7 @@ import {
   Clock3,
   LoaderCircle,
   Pause,
+  Pencil,
   Play,
   X,
   UserRoundPlus,
@@ -24,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import AssignJobDialog from "@/features/jobs/components/AssignJobDialog";
+import EditJobForm from "@/features/jobs/components/EditJobForm";
 import AdminMaterialUsageSection from "@/features/jobs/components/AdminMaterialUsageSection";
 import EmployeeFieldWorkPanel from "@/features/jobs/components/EmployeeFieldWorkPanel";
 import EmployeeMaterialUsageSection from "@/features/jobs/components/EmployeeMaterialUsageSection";
@@ -39,6 +41,7 @@ import {
 } from "@/features/jobs/hooks/useJobLifecycle";
 import { useJobHistory } from "@/features/jobs/hooks/useJobHistory";
 import { useJob } from "@/features/jobs/hooks/useJob";
+import { formatAcSubType, formatJobWorkType } from "@/features/jobs/utils/jobWorkType.utils";
 import {
   canLoadEmployeeMaterialUsage,
   getEmployeeFieldworkProgress,
@@ -273,6 +276,7 @@ export default function JobDetailsPage({
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
+  const [isEditJobDialogOpen, setIsEditJobDialogOpen] = useState(false);
   const [cancellationReason, setCancellationReason] = useState("");
   const [rejectionAction, setRejectionAction] = useState<
     "verify" | "approve" | null
@@ -539,6 +543,16 @@ export default function JobDetailsPage({
         </div>
         {!readOnly && (
           <div className="flex flex-wrap items-center gap-2">
+            {job.status !== "CLOSED" && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsEditJobDialogOpen(true)}
+              >
+                <Pencil />
+                {t("Edit Job")}
+              </Button>
+            )}
             {job.status === "PENDING" ||
             REASSIGNABLE_STATUSES.includes(job.status) ? (
               <Button type="button" onClick={() => setIsAssignDialogOpen(true)}>
@@ -645,6 +659,27 @@ export default function JobDetailsPage({
         )}
       </div>
 
+      {!readOnly && (
+        <Dialog
+          open={isEditJobDialogOpen}
+          onOpenChange={setIsEditJobDialogOpen}
+        >
+          <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+            <DialogTitle>{t("Edit Job")}</DialogTitle>
+            <DialogDescription className="mt-1">
+              Update job details and work type.
+            </DialogDescription>
+            {isEditJobDialogOpen && (
+              <EditJobForm
+                job={job}
+                onCancel={() => setIsEditJobDialogOpen(false)}
+                onUpdated={() => setIsEditJobDialogOpen(false)}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
+
       {readOnly && (
         <Card className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <CardHeader className="space-y-3 p-4 pb-3">
@@ -667,8 +702,13 @@ export default function JobDetailsPage({
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge className="max-w-full whitespace-normal rounded-full bg-slate-100 px-2.5 py-1 text-center text-[11px] leading-4 text-slate-700 [overflow-wrap:anywhere]">
-                {localize(formatLabel(job.workType))}
+                {localize(formatJobWorkType(job.workType))}
               </Badge>
+              {job.workType === "ac" && (
+                <Badge className="max-w-full whitespace-normal rounded-full bg-blue-50 px-2.5 py-1 text-center text-[11px] leading-4 text-blue-700 [overflow-wrap:anywhere]">
+                  {localize(formatAcSubType(job.acSubType))}
+                </Badge>
+              )}
               <Badge
                 variant={
                   job.priority === "critical" || job.priority === "high"
@@ -908,7 +948,13 @@ export default function JobDetailsPage({
                   value={formatValue(job.jobNumber)}
                 />
                 <DetailRow label={t("Title")} value={formatValue(job.title)} />
-                <DetailRow label={t("Work type")} value={localize(formatLabel(job.workType))} />
+                <DetailRow label={t("Work type")} value={localize(formatJobWorkType(job.workType))} />
+                {job.workType === "ac" && (
+                  <DetailRow
+                    label={t("AC sub-type")}
+                    value={localize(formatAcSubType(job.acSubType))}
+                  />
+                )}
                 <DetailRow label={t("Priority")} value={localize(formatLabel(job.priority))} />
                 <DetailRow
                   label={t("Description")}
@@ -1396,7 +1442,13 @@ export default function JobDetailsPage({
                 value={formatValue(job.jobNumber)}
               />
               <DetailRow label={t("Title")} value={formatValue(job.title)} />
-              <DetailRow label={t("Work type")} value={localize(formatLabel(job.workType))} />
+              <DetailRow label={t("Work type")} value={localize(formatJobWorkType(job.workType))} />
+              {job.workType === "ac" && (
+                <DetailRow
+                  label={t("AC sub-type")}
+                  value={localize(formatAcSubType(job.acSubType))}
+                />
+              )}
               <DetailRow label={t("Priority")} value={localize(formatLabel(job.priority))} />
               <DetailRow
                 label={t("Description")}

@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useCreateJob } from "../hooks/useCreateJob";
+import JobWorkTypeFields from "./JobWorkTypeFields";
 import {
   createJobFormSchema,
   type CreateJobFormValues,
@@ -22,8 +23,9 @@ import {
 import type {
   CreateJobData,
   JobPriority,
-  JobWorkType,
+  SelectableJobWorkType,
 } from "../types/job.types";
+import { getAcSubTypeAfterWorkTypeChange } from "../utils/jobWorkType.utils";
 
 interface CreateJobFormProps {
   onCancel: () => void;
@@ -41,14 +43,6 @@ interface ComplaintOption {
   status: string;
   jobId?: string | { _id: string } | null;
 }
-
-const workTypes: JobWorkType[] = [
-  "repair",
-  "maintenance",
-  "installation",
-  "inspection",
-  "emergency",
-];
 
 const priorities: JobPriority[] = ["low", "medium", "high", "critical"];
 
@@ -102,6 +96,8 @@ export default function CreateJobForm({
   >(initialComplaintId ? "pending" : "unavailable");
   const selectedATMId = watch("atmId");
   const selectedComplaintId = watch("complaintId");
+  const selectedWorkType = watch("workType");
+  const selectedAcSubType = watch("acSubType");
   const selectedATM = atms.find((atm) => atm._id === selectedATMId);
   const {
     data: complaints = [],
@@ -217,6 +213,7 @@ export default function CreateJobForm({
       ...(values.description ? { description: values.description } : {}),
       ...(matchingComplaint ? { complaintId: matchingComplaint._id } : {}),
       ...(values.workType ? { workType: values.workType } : {}),
+      ...(values.acSubType ? { acSubType: values.acSubType } : {}),
       ...(values.priority ? { priority: values.priority } : {}),
     };
 
@@ -421,35 +418,31 @@ export default function CreateJobForm({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label className="mb-2 block text-sm font-medium">Work type</label>
-          <Select
-            value={watch("workType") ?? null}
-            onValueChange={(value) =>
-              setValue("workType", (value as JobWorkType | null) ?? undefined, {
+        <div className="space-y-4">
+          <JobWorkTypeFields
+            workType={selectedWorkType}
+            acSubType={selectedAcSubType}
+            workTypeError={errors.workType?.message}
+            acSubTypeError={errors.acSubType?.message}
+            onWorkTypeChange={(value: SelectableJobWorkType | undefined) => {
+              setValue("workType", value, {
                 shouldDirty: true,
                 shouldValidate: true,
+              });
+              setValue(
+                "acSubType",
+                getAcSubTypeAfterWorkTypeChange(value, selectedAcSubType),
+                { shouldDirty: true, shouldValidate: true },
+              );
+            }}
+            onAcSubTypeChange={(value) =>
+              setValue("acSubType", value, {
+              shouldDirty: true,
+              shouldValidate: true,
               })
             }
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select work type" />
-            </SelectTrigger>
-            <SelectContent>
-              {workTypes.map((workType) => (
-                <SelectItem key={workType} value={workType}>
-                  {workType.charAt(0).toUpperCase() + workType.slice(1)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {errors.workType && (
-            <p className="mt-1 text-sm text-destructive">
-              {errors.workType.message}
-            </p>
-          )}
+          />
         </div>
-
         <div>
           <label className="mb-2 block text-sm font-medium">Priority</label>
           <Select

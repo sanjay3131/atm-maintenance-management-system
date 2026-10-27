@@ -9,6 +9,7 @@ import {
 } from "../customers/customerAccess.js";
 import Employee from "../employees/employee.model.js";
 import Job from "./jobs.model.js";
+import { LEGACY_JOB_WORK_TYPES } from "./jobWorkTypes.js";
 import JobHistory from "./jobHistory.model.js";
 import JobPhoto from "../jobPhotos/jobPhotos.model.js";
 import ATM from "../atms/atm.model.js";
@@ -283,6 +284,7 @@ export const createJob = asyncHandler(async (req, res) => {
     complaintId,
     customerId,
     workType,
+    acSubType,
     priority,
   } = req.body;
 
@@ -306,6 +308,7 @@ export const createJob = asyncHandler(async (req, res) => {
     complaintId,
     customerId: atmCustomerId,
     workType: workType || "repair",
+    ...(acSubType ? { acSubType } : {}),
     priority: priority || "medium",
     status: JOB_STATUS.PENDING,
     createdBy: req.user._id,
@@ -1189,7 +1192,7 @@ export const updateJob = asyncHandler(async (req, res) => {
   if (!isAdmin) throw new ApiError(403, "Only admins");
 
   const { id } = req.params;
-  const { title, description, priority, workType } = req.body;
+  const { title, description, priority, workType, acSubType } = req.body;
 
   const job = await Job.findById(id);
   if (!job || job.isDeleted) throw new ApiError(404, "Job not found");
@@ -1199,7 +1202,21 @@ export const updateJob = asyncHandler(async (req, res) => {
   if (title) job.title = title;
   if (description !== undefined) job.description = description;
   if (priority) job.priority = priority;
-  if (workType) job.workType = workType;
+  if (workType !== undefined) {
+    if (
+      LEGACY_JOB_WORK_TYPES.includes(workType) &&
+      workType !== job.workType
+    ) {
+      throw new ApiError(400, "Legacy work types cannot be assigned to jobs");
+    }
+    job.workType = workType;
+    job.acSubType = workType === "ac" ? acSubType : undefined;
+  } else if (acSubType !== undefined) {
+    if (job.workType !== "ac") {
+      throw new ApiError(400, "AC sub-type is only valid for AC work");
+    }
+    job.acSubType = acSubType;
+  }
   job.updatedBy = req.user._id;
   await job.save();
 

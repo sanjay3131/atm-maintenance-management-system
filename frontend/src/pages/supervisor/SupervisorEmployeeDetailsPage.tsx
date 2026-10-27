@@ -22,6 +22,10 @@ import {
 import { SkeletonBlock } from "@/features/dashboard/components/DashboardSkeleton";
 import { useSupervisorEmployeeDetails } from "@/features/supervisor/hooks/useSupervisorEmployeeDetails";
 import {
+  formatAcSubType,
+  formatJobWorkType,
+} from "@/features/jobs/utils/jobWorkType.utils";
+import {
   useSupervisorEmployeeAMC,
   useSupervisorEmployeeAttendance,
   useSupervisorEmployeeJobs,
@@ -252,7 +256,14 @@ function JobList({ jobs }: { jobs: SupervisorEmployeeJob[] }) {
                 {job.title || job.jobNumber || job.jobId || "Maintenance job"}
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                {[job.jobNumber || job.jobId, job.workType, job.priority]
+                {[
+                  job.jobNumber || job.jobId,
+                  job.workType ? formatJobWorkType(job.workType) : undefined,
+                  job.workType === "ac"
+                    ? formatAcSubType(job.acSubType)
+                    : undefined,
+                  job.priority,
+                ]
                   .filter(Boolean)
                   .join(" · ") || "Job details unavailable"}
               </p>

@@ -32,6 +32,11 @@ import type {
   JobStatus,
   JobWorkType,
 } from "@/features/jobs/types/job.types";
+import { JOB_WORK_TYPES } from "@/features/jobs/types/job.types";
+import {
+  formatAcSubType,
+  formatJobWorkType,
+} from "@/features/jobs/utils/jobWorkType.utils";
 
 const ALL = "ALL";
 const PAGE_SIZE = 10;
@@ -78,13 +83,7 @@ const jobStatuses: JobStatus[] = [
 ];
 
 const priorities: JobPriority[] = ["low", "medium", "high", "critical"];
-const workTypes: JobWorkType[] = [
-  "repair",
-  "maintenance",
-  "installation",
-  "inspection",
-  "emergency",
-];
+const workTypes: JobWorkType[] = [...JOB_WORK_TYPES];
 
 function formatLabel(value: string) {
   return value
@@ -445,7 +444,7 @@ export default function JobsPage() {
               <SelectItem value={ALL}>All work types</SelectItem>
               {workTypes.map((jobWorkType) => (
                 <SelectItem key={jobWorkType} value={jobWorkType}>
-                  {formatLabel(jobWorkType)}
+                  {formatJobWorkType(jobWorkType)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -554,7 +553,10 @@ export default function JobsPage() {
                           {getEmployeeName(job)}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3">
-                          {formatLabel(job.workType)}
+                          {formatJobWorkType(job.workType)}
+                          {job.workType === "ac" && job.acSubType
+                            ? ` · ${formatAcSubType(job.acSubType)}`
+                            : ""}
                         </td>
                         <td className="px-4 py-3">
                           <Badge variant={getPriorityVariant(job.priority)}>

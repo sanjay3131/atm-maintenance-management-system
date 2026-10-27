@@ -40,6 +40,11 @@ import type {
   JobStatus,
   JobWorkType,
 } from "@/features/jobs/types/job.types";
+import { JOB_WORK_TYPES } from "@/features/jobs/types/job.types";
+import {
+  formatAcSubType,
+  formatJobWorkType,
+} from "@/features/jobs/utils/jobWorkType.utils";
 import { useATMs } from "@/features/atms/hooks/useATMs";
 import type {
   ATM,
@@ -72,13 +77,6 @@ const JOB_STATUSES: JobStatus[] = [
   "CLOSED",
   "REJECTED",
   "CANCELLED",
-];
-const JOB_WORK_TYPES: JobWorkType[] = [
-  "repair",
-  "maintenance",
-  "installation",
-  "inspection",
-  "emergency",
 ];
 const JOB_PRIORITIES: JobPriority[] = ["low", "medium", "high", "critical"];
 
@@ -1978,7 +1976,7 @@ export default function BankDetailPage() {
                           <SelectItem value={ALL}>All work types</SelectItem>
                           {JOB_WORK_TYPES.map((workType) => (
                             <SelectItem key={workType} value={workType}>
-                              {formatJobLabel(workType)}
+                              {formatJobWorkType(workType)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -2190,7 +2188,10 @@ export default function BankDetailPage() {
                                   {getJobEmployeeName(job)}
                                 </td>
                                 <td className="whitespace-nowrap px-4 py-3">
-                                  {formatJobLabel(job.workType)}
+                                  {formatJobWorkType(job.workType)}
+                                  {job.workType === "ac" && job.acSubType
+                                    ? ` · ${formatAcSubType(job.acSubType)}`
+                                    : ""}
                                 </td>
                                 <td className="px-4 py-3">
                                   <Badge

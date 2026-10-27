@@ -13,12 +13,30 @@ export type JobStatus =
 
 export type JobPriority = "low" | "medium" | "high" | "critical";
 
+export const JOB_WORK_TYPES = [
+  "carpentry",
+  "electrical",
+  "plumbing",
+  "shifting",
+  "service",
+  "installation",
+  "maintenance",
+  "repair",
+  "free_of_cost",
+  "renovation",
+  "dismantling",
+  "event",
+  "ac",
+] as const;
+export const LEGACY_JOB_WORK_TYPES = ["inspection", "emergency"] as const;
+
+export type SelectableJobWorkType = (typeof JOB_WORK_TYPES)[number];
+export const AC_SUB_TYPES = ["amc", "town_call", "installation"] as const;
+export type AcSubType = (typeof AC_SUB_TYPES)[number];
+
 export type JobWorkType =
-  | "repair"
-  | "maintenance"
-  | "installation"
-  | "inspection"
-  | "emergency";
+  | (typeof LEGACY_JOB_WORK_TYPES)[number]
+  | SelectableJobWorkType;
 
 export interface JobATM {
   _id: string;
@@ -164,6 +182,7 @@ export interface Job {
   assignedEmployeeId?: JobUser | string | null;
   assignedBy?: string | JobUser | null;
   workType: JobWorkType;
+  acSubType?: AcSubType;
   priority: JobPriority;
   status: JobStatus;
   recurringMaintenance?: RecurringMaintenanceJobMetadata;
@@ -258,8 +277,17 @@ export interface CreateJobData {
   description?: string;
   complaintId?: string;
   customerId?: string;
-  workType?: JobWorkType;
+  workType?: SelectableJobWorkType;
+  acSubType?: AcSubType;
   priority?: JobPriority;
+}
+
+export interface UpdateJobData {
+  title: string;
+  description?: string;
+  workType: JobWorkType;
+  acSubType?: AcSubType;
+  priority: JobPriority;
 }
 
 export interface AssignJobData {

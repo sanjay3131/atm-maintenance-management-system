@@ -24,6 +24,10 @@ import type {
   CustomerPortalHistory,
 } from "@/features/customers/services/customerPortal.service";
 import type { Job } from "@/features/jobs/types/job.types";
+import {
+  formatAcSubType,
+  formatJobWorkType,
+} from "@/features/jobs/utils/jobWorkType.utils";
 
 function dateLabel(value?: string | null) {
   if (!value) return "Not available";
@@ -287,7 +291,16 @@ export function CustomerJobDetailsPage() {
               <Detail label="Work" value={job.data.title} />
               <Detail label="ATM" value={atmLabel(job.data.atmId)} />
               <Detail label="Status" value={job.data.status} />
-              <Detail label="Work type" value={job.data.workType} />
+              <Detail
+                label="Work type"
+                value={formatJobWorkType(job.data.workType)}
+              />
+              {job.data.workType === "ac" && (
+                <Detail
+                  label="AC sub-type"
+                  value={formatAcSubType(job.data.acSubType)}
+                />
+              )}
               <Detail label="Created" value={dateLabel(job.data.createdAt)} />
               <Detail label="Completed" value={dateLabel(job.data.completedAt)} />
               {job.data.description && <Detail label="Description" value={job.data.description} />}

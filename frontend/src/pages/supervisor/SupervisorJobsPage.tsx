@@ -13,6 +13,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { SkeletonBlock } from "@/features/dashboard/components/DashboardSkeleton";
 import { useSupervisorJobs } from "@/features/supervisor/hooks/useSupervisorJobs";
 import {
+  formatAcSubType,
+  formatJobWorkType,
   formatSupervisorJobLabel,
   isSupervisorJobDateRangeValid,
   SUPERVISOR_JOB_STATUSES,
@@ -107,7 +109,10 @@ function JobCard({ job }: { job: SupervisorEmployeeJob }) {
           </p>
           <p>
             <span className="font-medium text-slate-800">Type: </span>
-            {job.workType ? formatSupervisorJobLabel(job.workType) : "Not available"}
+            {job.workType ? formatJobWorkType(job.workType) : "Not available"}
+            {job.workType === "ac" && job.acSubType
+              ? ` · ${formatAcSubType(job.acSubType)}`
+              : ""}
           </p>
           <p>
             <span className="font-medium text-slate-800">

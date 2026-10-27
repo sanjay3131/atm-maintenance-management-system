@@ -118,6 +118,7 @@ export interface SupervisorEmployeeJob {
   description?: string | null;
   status: SupervisorJobStatus;
   workType?: string | null;
+  acSubType?: string | null;
   priority?: string | null;
   scheduledDate?: string | null;
   dueAt?: string | null;

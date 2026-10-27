@@ -5,6 +5,7 @@ import { validateRequest } from "../../middlewares/validate.middleware.js";
 
 import {
   createJobSchema,
+  updateJobSchema,
   assignJobSchema,
   completeJobSchema,
   reassignJobSchema,
@@ -138,6 +139,7 @@ router.put(
   "/:id",
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin"),
+  validateRequest(updateJobSchema),
   updateJob,
 );
 router.delete(

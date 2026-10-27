@@ -130,7 +130,7 @@ const getScopedJobs = async (reports, query = {}) => {
   }
   const jobs = await Job.find(filter)
     .select(
-      "_id jobId jobNumber title description atmId assignedEmployeeId status workType priority recurringMaintenance createdAt assignedAt acceptedAt startedAt completedAt verifiedAt approvedAt closedAt rejectedAt cancelledAt employeeGpsAtCompletion gpsDistance gpsValidated employeeRemarks beforePhotos afterPhotos",
+      "_id jobId jobNumber title description atmId assignedEmployeeId status workType acSubType priority recurringMaintenance createdAt assignedAt acceptedAt startedAt completedAt verifiedAt approvedAt closedAt rejectedAt cancelledAt employeeGpsAtCompletion gpsDistance gpsValidated employeeRemarks beforePhotos afterPhotos",
     )
     .sort({ createdAt: -1, _id: -1 });
   return jobs;
@@ -152,6 +152,7 @@ const safeJobDto = async (job, employeePair) => {
     description: job.description,
     status: job.status,
     workType: job.workType,
+    acSubType: job.acSubType,
     priority: job.priority,
     scheduledDate: job.recurringMaintenance?.scheduledDate ?? null,
     dueAt: job.recurringMaintenance?.dueAt ?? null,
@@ -556,7 +557,7 @@ export const getSupervisorJobs = asyncHandler(async (req, res) => {
 export const getSupervisorJobById = asyncHandler(async (req, res) => {
   const { jobId } = req.validatedParams;
   const job = await Job.findOne({ _id: jobId, isDeleted: false }).select(
-    "_id jobId jobNumber title description atmId assignedEmployeeId status workType priority recurringMaintenance createdAt assignedAt acceptedAt startedAt completedAt verifiedAt approvedAt closedAt rejectedAt cancelledAt employeeGpsAtCompletion gpsDistance gpsValidated employeeRemarks beforePhotos afterPhotos",
+    "_id jobId jobNumber title description atmId assignedEmployeeId status workType acSubType priority recurringMaintenance createdAt assignedAt acceptedAt startedAt completedAt verifiedAt approvedAt closedAt rejectedAt cancelledAt employeeGpsAtCompletion gpsDistance gpsValidated employeeRemarks beforePhotos afterPhotos",
   );
   if (!job) throw new ApiError(404, "Job not found");
   const employeePair = await requireCurrentSupervisedJob(job, req.user._id);

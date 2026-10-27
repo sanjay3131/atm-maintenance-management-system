@@ -17,6 +17,7 @@ import type {
   JobPerformancePeriod,
   ApproveJobData,
   VerifyJobData,
+  UpdateJobData,
 } from "../types/job.types";
 
 export type JobPhotoType = "before" | "after";
@@ -174,6 +175,15 @@ export const deleteJobMaterialUsage = async (
 
 export const createJob = async (data: CreateJobData): Promise<Job> => {
   const response = await api.post<{ data: Job }>("/jobs/", data);
+
+  return response.data.data;
+};
+
+export const updateJob = async (
+  jobId: string,
+  data: UpdateJobData,
+): Promise<Job> => {
+  const response = await api.put<{ data: Job }>(`/jobs/${jobId}`, data);
 
   return response.data.data;
 };

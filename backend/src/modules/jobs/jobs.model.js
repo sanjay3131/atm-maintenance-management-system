@@ -1,5 +1,10 @@
 import mongoose from "mongoose";
 import { JOB_STATUS } from "../../utils/jobStatus.js";
+import {
+  AC_SUB_TYPES,
+  JOB_WORK_TYPES,
+  LEGACY_JOB_WORK_TYPES,
+} from "./jobWorkTypes.js";
 
 const recurringMaintenanceSchema = new mongoose.Schema(
   {
@@ -100,14 +105,21 @@ const jobSchema = new mongoose.Schema(
     // Work Details
     workType: {
       type: String,
-      enum: [
-        "repair",
-        "maintenance",
-        "installation",
-        "inspection",
-        "emergency",
-      ],
+      enum: [...JOB_WORK_TYPES, ...LEGACY_JOB_WORK_TYPES],
       default: "repair",
+    },
+    acSubType: {
+      type: String,
+      enum: AC_SUB_TYPES,
+      required: function () {
+        return this.workType === "ac";
+      },
+      validate: {
+        validator: function (value) {
+          return !value || this.workType === "ac";
+        },
+        message: "AC sub-type can only be set for AC work",
+      },
     },
     priority: {
       type: String,

@@ -1,0 +1,52 @@
+amc :
+PHOTOS 6 , ZIP /PDF  (done)
+
+
+download :
+ file name :atmid/date (done)
+
+ JOB DETAILS , MATERIALS USED (done )
+ // 
+ 
+oct-24//
+
+ region first then only dist 
+
+
+ job creation need have a new selector branch / atm 
+ job can be either atm or branch jobs (admin can deside)
+
+
+
+ work type - electrical , ac , grouting, shifting, scrap collect ,
+ below that need a text box.
+
+ while selection ac in work type there need to be three options 
+
+
+ amc checklist option are working/notworking
+
+
+ while creating a job there should be option to select admin , admin can do the job by call and add photos from here , enable photo upload only if admin option is selected , every job reassign option should also have option to assign job to admin .
+   
+
+
+
+
+
+   job download option like amc photos download zip/pdm
+
+
+   attendance report download at custome date , weeks , month, year
+
+   attendance should enable after 6hrs of check in , and checkout should trigger after 12 hrs of check in
+
+
+   customer tree should be included in atm page.
+
+   super admin pannel . approve billing , crud billing in job.
+
+   add manpower and cost in job detail page by admin/ sAdmin.
+
+
+

@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import { JOB_STATUS } from "../../utils/jobStatus.js";
 import ApiError from "../../utils/ApiError.js";
+import { AC_SUB_TYPE_LABELS, JOB_WORK_TYPE_LABELS } from "../jobs/jobWorkTypes.js";
 
 export const CUSTOMER_REPORT_JOB_STATUSES = [
   JOB_STATUS.VERIFIED,
@@ -149,6 +150,7 @@ export const createCustomerJobWorkbook = (jobs, filters) =>
       { header: "Job reference", key: "jobReference", width: 24 },
       { header: "Title", key: "title", width: 36 },
       { header: "Work type", key: "workType", width: 20 },
+      { header: "AC sub-type", key: "acSubType", width: 20 },
       { header: "Priority", key: "priority", width: 14 },
       { header: "Status", key: "status", width: 16 },
       { header: "Created", key: "createdAt", width: 16, type: "date" },
@@ -158,7 +160,8 @@ export const createCustomerJobWorkbook = (jobs, filters) =>
     rows: jobs.map((job) => ({
       jobReference: job.jobNumber || job.jobId,
       title: job.title,
-      workType: job.workType,
+      workType: JOB_WORK_TYPE_LABELS[job.workType] ?? job.workType,
+      acSubType: AC_SUB_TYPE_LABELS[job.acSubType] ?? job.acSubType,
       priority: job.priority,
       status: job.status,
       createdAt: job.createdAt,

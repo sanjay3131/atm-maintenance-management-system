@@ -45,6 +45,7 @@ export const toCustomerSafeJob = (job) => {
         : atm,
     status: record.status,
     workType: record.workType,
+    acSubType: record.acSubType,
     priority: record.priority,
     createdAt: record.createdAt,
     assignedAt: record.assignedAt,

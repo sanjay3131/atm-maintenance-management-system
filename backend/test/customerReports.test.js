@@ -58,7 +58,8 @@ const jobs = [
     jobNumber: "R-1001",
     customerId: ids.customerA,
     title: '=HYPERLINK("https://bad.example","click")',
-    workType: "repair",
+    workType: "ac",
+    acSubType: "town_call",
     priority: "high",
     status: "CLOSED",
     createdAt: new Date("2026-01-31T12:00:00.000Z"),
@@ -335,7 +336,8 @@ test("customer report summary and Excel exports enforce historical ownership and
           `'=HYPERLINK("https://bad.example","click")`,
         );
         assert.equal(worksheet.getCell("B5").formula, undefined);
-        assert.equal(worksheet.getCell("C5").value, "repair");
+        assert.equal(worksheet.getCell("C5").value, "AC");
+        assert.equal(worksheet.getCell("D5").value, "Town Call");
         assert.equal(
           JSON.stringify(worksheet.getSheetValues()).includes("internal only"),
           false,
