@@ -1,4 +1,7 @@
 import type { NotificationRecord } from "./notifications.api";
+import type {
+  RealtimeEvent,
+} from "@/realtime/realtime-events";
 
 export interface NotificationSocket {
   connected: boolean;
@@ -20,6 +23,9 @@ interface NotificationSocketEvents {
   disconnect: (reason: string) => void;
   connect_error: (error: { data?: { code?: string } }) => void;
   "notification:new": (notification: NotificationRecord) => void;
+  "domain:job:updated": (event: RealtimeEvent) => void;
+  "domain:atm-location-task:updated": (event: RealtimeEvent) => void;
+  "domain:atm-location-request:updated": (event: RealtimeEvent) => void;
 }
 
 export interface NotificationSnapshot {
@@ -44,6 +50,8 @@ interface NotificationSessionOptions {
   getUnreadCount: () => Promise<number>;
   markRead: (id: string) => Promise<NotificationRecord>;
   markAllRead: () => Promise<void>;
+  onRealtimeEvent?: (event: RealtimeEvent) => void;
+  onReconnect?: () => void;
   onError?: (error: unknown) => void;
 }
 
@@ -79,6 +87,7 @@ export class NotificationSession {
   private refreshInProgress = false;
   private hasConnected = false;
   private catchUpSequence = 0;
+  private realtimeEventIds = new Set<string>();
   private handlers: Array<() => void> = [];
   private readonly options: NotificationSessionOptions;
 
@@ -104,6 +113,15 @@ export class NotificationSession {
       this.listen("disconnect", this.handleDisconnect);
       this.listen("connect_error", this.handleConnectError);
       this.listen("notification:new", this.handleNotification);
+      this.listen("domain:job:updated", this.handleRealtimeEvent);
+      this.listen(
+        "domain:atm-location-task:updated",
+        this.handleRealtimeEvent,
+      );
+      this.listen(
+        "domain:atm-location-request:updated",
+        this.handleRealtimeEvent,
+      );
     } catch (error) {
       this.options.onError?.(error);
     }
@@ -114,6 +132,7 @@ export class NotificationSession {
     if (this.disposed) return;
     this.disposed = true;
     this.catchUpSequence += 1;
+    this.realtimeEventIds.clear();
     if (this.socket) {
       for (const removeListener of this.handlers) removeListener();
       this.handlers = [];
@@ -172,6 +191,7 @@ export class NotificationSession {
     this.refreshAttempted = false;
     this.update({ connected: true, error: null });
     if (this.hasConnected) void this.catchUp();
+    if (this.hasConnected) this.options.onReconnect?.();
     this.hasConnected = true;
   };
 
@@ -207,6 +227,25 @@ export class NotificationSession {
           ? this.snapshot.unreadCount + 1
           : this.snapshot.unreadCount,
     });
+  };
+
+  private handleRealtimeEvent = (event: RealtimeEvent) => {
+    if (
+      !event ||
+      event.eventVersion !== 1 ||
+      typeof event.eventId !== "string" ||
+      typeof event.entityType !== "string" ||
+      typeof event.entityId !== "string"
+    ) {
+      return;
+    }
+    if (this.realtimeEventIds.has(event.eventId)) return;
+    this.realtimeEventIds.add(event.eventId);
+    if (this.realtimeEventIds.size > 500) {
+      const oldest = this.realtimeEventIds.values().next().value;
+      if (oldest) this.realtimeEventIds.delete(oldest);
+    }
+    this.options.onRealtimeEvent?.(event);
   };
 
   private async refreshAndReconnect(stopReconnect = false) {

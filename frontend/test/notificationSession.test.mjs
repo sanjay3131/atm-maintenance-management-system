@@ -63,7 +63,15 @@ const deferred = () => {
 
 const createHarness = (overrides = {}) => {
   const socket = new FakeSocket();
-  const calls = { history: [], count: 0, refresh: 0, markRead: [], markAll: 0 };
+  const calls = {
+    history: [],
+    count: 0,
+    refresh: 0,
+    reconnect: 0,
+    realtime: [],
+    markRead: [],
+    markAll: 0,
+  };
   const session = new NotificationSession({
     getToken: () => "token-1",
     refreshToken: async () => {
@@ -92,6 +100,10 @@ const createHarness = (overrides = {}) => {
     markAllRead: async () => {
       calls.markAll += 1;
     },
+    onRealtimeEvent: (event) => calls.realtime.push(event),
+    onReconnect: () => {
+      calls.reconnect += 1;
+    },
     ...overrides,
   });
   return { session, socket, calls };
@@ -116,9 +128,11 @@ test("starts one socket and removes listeners and connection on cleanup", () => 
   session.start();
   session.start();
   assert.equal(socket.listeners.get("notification:new").size, 1);
+  assert.equal(socket.listeners.get("domain:job:updated").size, 1);
   session.dispose();
   assert.equal(socket.disconnectCalls, 1);
   assert.equal(socket.listeners.get("notification:new").size, 0);
+  assert.equal(socket.listeners.get("domain:job:updated").size, 0);
 });
 
 test("refreshes the access token after server disconnect and reconnects", async () => {
@@ -132,7 +146,28 @@ test("refreshes the access token after server disconnect and reconnects", async 
   assert.deepEqual(socket.auth, { token: "token-2" });
   assert.equal(socket.connectCalls, 2);
   assert.equal(session.getSnapshot().connected, true);
+  assert.equal(calls.reconnect, 1);
   session.dispose();
+});
+
+test("deduplicates domain events and removes them on logout cleanup", () => {
+  const { session, socket, calls } = createHarness();
+  session.start();
+  const payload = {
+    eventVersion: 1,
+    eventId: "same-event",
+    entityType: "job",
+    entityId: "job-1",
+    action: "updated",
+    occurredAt: "2026-10-28T00:00:00.000Z",
+    data: {},
+  };
+  socket.emit("domain:job:updated", payload);
+  socket.emit("domain:job:updated", payload);
+  assert.equal(calls.realtime.length, 1);
+  session.dispose();
+  socket.emit("domain:job:updated", payload);
+  assert.equal(calls.realtime.length, 1);
 });
 
 test("refreshes once and stops retrying after an unauthorized handshake", async () => {

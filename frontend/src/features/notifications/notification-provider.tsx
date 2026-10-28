@@ -13,12 +13,17 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "./notifications.api";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   emptyNotificationSnapshot,
   NotificationSession,
   type NotificationSocket,
 } from "./notification-session";
 import { NotificationContext } from "./notification-context";
+import {
+  invalidateRealtimeDomains,
+  invalidateRealtimeEvent,
+} from "@/realtime/realtime-events";
 
 const EMPTY_SNAPSHOT = emptyNotificationSnapshot();
 const EMPTY_LISTENERS = () => () => {};
@@ -67,6 +72,7 @@ const createSocket = (token: string): NotificationSocket => {
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { user, isLoading, refreshSocketAccessToken } = useAuth();
+  const queryClient = useQueryClient();
   const userId = !isLoading ? user?._id : undefined;
   const session = useMemo(() => {
     if (!userId) return null;
@@ -78,9 +84,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       getUnreadCount: getUnreadNotificationCount,
       markRead: markNotificationRead,
       markAllRead: markAllNotificationsRead,
+      onRealtimeEvent: (event) => {
+        void invalidateRealtimeEvent(queryClient, event);
+      },
+      onReconnect: () => {
+        void invalidateRealtimeDomains(queryClient);
+      },
       onError: (error) => console.warn("Notification connection issue:", error),
     });
-  }, [refreshSocketAccessToken, userId]);
+  }, [queryClient, refreshSocketAccessToken, userId]);
 
   useEffect(() => {
     session?.start();

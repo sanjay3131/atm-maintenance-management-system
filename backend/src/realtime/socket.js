@@ -3,6 +3,9 @@ import { Server } from "socket.io";
 import User from "../modules/users/user.model.js";
 
 export const NOTIFICATION_EVENT = "notification:new";
+export const JOB_EVENT = "domain:job:updated";
+export const LOCATION_TASK_EVENT = "domain:atm-location-task:updated";
+export const LOCATION_REQUEST_EVENT = "domain:atm-location-request:updated";
 
 const MAX_TIMEOUT_MS = 2 ** 31 - 1;
 

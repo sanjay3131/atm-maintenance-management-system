@@ -28,11 +28,25 @@ import {
 } from "../complaints/complaintJobIntegrity.service.js";
 import { myJobPerformanceQuerySchema } from "./jobs.validation.js";
 import { getJobPerformanceForUser } from "./jobPerformance.service.js";
+import {
+  publishDomainEventSafely,
+} from "../../realtime/domain-events.js";
+import { resolveJobRecipients } from "../../realtime/recipient-resolver.js";
 
 // ============================================
 // HELPERS
 // ============================================
 const REQUIRED_PHOTOS_PER_TYPE = 3;
+
+const publishJobUpdated = ({ job, action, previousEmployeeId } = {}) =>
+  publishDomainEventSafely({
+    event: "domain:job:updated",
+    entityType: "job",
+    entityId: job._id,
+    action,
+    resolveRecipients: () =>
+      resolveJobRecipients(job, { previousEmployeeId }),
+  });
 
 const assertCleaningEvidence = async (job) => {
   const [beforeCount, afterCount] = await Promise.all([
@@ -334,6 +348,8 @@ export const createJob = asyncHandler(async (req, res) => {
     // .populate("complaintId", "complaintNumber title")
     .populate("createdBy", "firstName lastName");
 
+  await publishJobUpdated({ job: populatedJob, action: "created" });
+
   return res
     .status(201)
     .json(new ApiResponse(201, populatedJob, "Job created successfully"));
@@ -380,6 +396,8 @@ export const assignJob = asyncHandler(async (req, res) => {
     .populate("assignedEmployeeId", "firstName lastName employeeCode")
     .populate("complaintId", "complaintNumber title");
 
+  await publishJobUpdated({ job: populatedJob, action: "assigned" });
+
   return res
     .status(200)
     .json(new ApiResponse(200, populatedJob, "Job assigned successfully"));
@@ -417,6 +435,7 @@ export const acceptJob = asyncHandler(async (req, res) => {
   const populatedJob = await Job.findById(job._id)
     .populate("atmId", "atmId locationName bank address")
     .populate("complaintId", "complaintNumber title");
+  await publishJobUpdated({ job: populatedJob, action: "accepted" });
   return res
     .status(200)
     .json(new ApiResponse(200, populatedJob, "Job accepted successfully"));
@@ -456,6 +475,7 @@ export const startJob = asyncHandler(async (req, res) => {
   const populatedJob = await Job.findById(job._id)
     .populate("atmId", "atmId locationName bank address")
     .populate("complaintId", "complaintNumber title");
+  await publishJobUpdated({ job: populatedJob, action: "started" });
   return res
     .status(200)
     .json(new ApiResponse(200, populatedJob, "Job started successfully"));
@@ -544,6 +564,8 @@ export const completeJob = asyncHandler(async (req, res) => {
     .populate("assignedEmployeeId", "firstName lastName")
     .populate("complaintId", "complaintNumber title");
 
+  await publishJobUpdated({ job: populatedJob, action: "completed" });
+
   return res
     .status(200)
     .json(
@@ -604,6 +626,10 @@ export const verifyJob = asyncHandler(async (req, res) => {
     .populate("atmId", "atmId locationName bank address")
     .populate("assignedEmployeeId", "firstName lastName")
     .populate("complaintId", "complaintNumber title");
+  await publishJobUpdated({
+    job: populatedJob,
+    action: action === "verify" ? "verified" : "rejected",
+  });
   return res
     .status(200)
     .json(
@@ -667,6 +693,10 @@ export const approveJob = asyncHandler(async (req, res) => {
     .populate("atmId", "atmId locationName bank address")
     .populate("assignedEmployeeId", "firstName lastName")
     .populate("complaintId", "complaintNumber title");
+  await publishJobUpdated({
+    job: populatedJob,
+    action: action === "approve" ? "approved" : "rejected",
+  });
   return res
     .status(200)
     .json(
@@ -703,6 +733,7 @@ export const closeJob = asyncHandler(async (req, res) => {
     performedBy: req.user._id,
     req,
   });
+  await publishJobUpdated({ job, action: "closed" });
   return res
     .status(200)
     .json(new ApiResponse(200, job, "Job closed successfully"));
@@ -718,6 +749,8 @@ export const cancelJob = asyncHandler(async (req, res) => {
     reason: req.body.reason,
     req,
   });
+
+  await publishJobUpdated({ job, action: "cancelled" });
 
   return res
     .status(200)
@@ -801,6 +834,12 @@ export const reassignJob = asyncHandler(async (req, res) => {
     .populate("atmId", "atmId locationName bank address")
     .populate("assignedEmployeeId", "firstName lastName employeeCode")
     .populate("complaintId", "complaintNumber title");
+
+  await publishJobUpdated({
+    job: populatedJob,
+    action: "reassigned",
+    previousEmployeeId: oldEmployeeId,
+  });
 
   return res
     .status(200)
@@ -1225,6 +1264,8 @@ export const updateJob = asyncHandler(async (req, res) => {
     .populate("assignedEmployeeId", "firstName lastName")
     .populate("complaintId", "complaintNumber title");
 
+  await publishJobUpdated({ job: populatedJob, action: "updated" });
+
   return res
     .status(200)
     .json(new ApiResponse(200, populatedJob, "Job updated"));
@@ -1254,6 +1295,7 @@ export const deleteJob = asyncHandler(async (req, res) => {
     details: { deleted: true },
     req,
   });
+  await publishJobUpdated({ job, action: "deleted" });
   return res.status(200).json(new ApiResponse(200, null, "Job deleted"));
 });
 
@@ -1291,5 +1333,6 @@ export const holdJob = asyncHandler(async (req, res) => {
     details: { holdReason: reason },
     req,
   });
+  await publishJobUpdated({ job, action: "held" });
   return res.status(200).json(new ApiResponse(200, job, "Job put on hold"));
 });

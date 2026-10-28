@@ -6,6 +6,8 @@ import Item from "../items/item.model.js";
 import Job from "./jobs.model.js";
 import JobMaterialUsage from "./jobMaterialUsage.model.js";
 import { JOB_STATUS } from "../../utils/jobStatus.js";
+import { publishDomainEventSafely } from "../../realtime/domain-events.js";
+import { resolveJobRecipients } from "../../realtime/recipient-resolver.js";
 
 // Store calculated currency totals rounded to the nearest cent.
 const COST_DECIMAL_PLACES = 2;
@@ -157,6 +159,15 @@ export const createJobMaterialUsage = asyncHandler(async (req, res) => {
   delete response.unitCostSnapshot;
   delete response.lineCostSnapshot;
 
+  const job = await findJob(jobId);
+  await publishDomainEventSafely({
+    event: "domain:job:updated",
+    entityType: "job",
+    entityId: job._id,
+    action: "material-usage-updated",
+    resolveRecipients: () => resolveJobRecipients(job),
+  });
+
   return res
     .status(201)
     .json(new ApiResponse(201, response, "Material usage recorded"));
@@ -253,6 +264,15 @@ export const deleteJobMaterialUsage = asyncHandler(async (req, res) => {
   } finally {
     await session.endSession();
   }
+
+  const job = await findJob(jobId);
+  await publishDomainEventSafely({
+    event: "domain:job:updated",
+    entityType: "job",
+    entityId: job._id,
+    action: "material-usage-updated",
+    resolveRecipients: () => resolveJobRecipients(job),
+  });
 
   return res
     .status(200)

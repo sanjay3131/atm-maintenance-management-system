@@ -10,11 +10,13 @@ const [
   { default: User },
   { default: Notification },
   { createNotification },
+  { publishDomainEvent, publishDomainEventSafely },
 ] = await Promise.all([
   import("../src/realtime/socket.js"),
   import("../src/modules/users/user.model.js"),
   import("../src/modules/notification/notification.model.js"),
   import("../src/modules/notification/notification.service.js"),
+  import("../src/realtime/domain-events.js"),
 ]);
 
 const ALLOWED = "https://app.example.com";
@@ -218,6 +220,51 @@ test("delivers to every connection of the same user", async (t) => {
   await two.waitFor("notification:new");
   one.ws.close();
   two.ws.close();
+});
+
+test("publishes versioned domain events only to server-resolved recipients", async () => {
+  const a = await connect({ token: sign(ids.a) });
+  const b = await connect({ token: sign(ids.b) });
+
+  await publishDomainEvent({
+    event: "domain:job:updated",
+    entityType: "job",
+    entityId: "job-1",
+    action: "reassigned",
+    resolveRecipients: async () => [ids.a],
+    data: { status: "ASSIGNED" },
+  });
+
+  const payload = await a.waitFor("domain:job:updated");
+  assert.equal(payload.eventVersion, 1);
+  assert.equal(payload.entityId, "job-1");
+  assert.equal(payload.action, "reassigned");
+  assert.equal(payload.data.status, "ASSIGNED");
+  assert.equal(payload.data.employeeGpsAtCompletion, undefined);
+  await settle();
+  assert.equal(
+    b.events.some(([event]) => event === "domain:job:updated"),
+    false,
+  );
+  a.ws.close();
+  b.ws.close();
+});
+
+test("domain event resolver failures do not reject a committed mutation response", async () => {
+  const a = await connect({ token: sign(ids.a) });
+  const result = await publishDomainEventSafely({
+    event: "domain:job:updated",
+    entityType: "job",
+    entityId: "job-2",
+    action: "updated",
+    resolveRecipients: async () => {
+      throw new Error("resolver unavailable");
+    },
+  });
+  assert.equal(result, null);
+  await settle();
+  assert.equal(a.events.length, 0);
+  a.ws.close();
 });
 
 test("duplicates are not emitted again", async (t) => {

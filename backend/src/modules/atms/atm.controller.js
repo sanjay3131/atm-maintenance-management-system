@@ -47,6 +47,12 @@ import {
   escapeRegex,
   parsePagination,
 } from "../../utils/geographicQuery.js";
+import { publishDomainEventSafely } from "../../realtime/domain-events.js";
+import {
+  resolveATMRecipients,
+  resolveLocationRequestRecipients,
+  resolveLocationTaskRecipients,
+} from "../../realtime/recipient-resolver.js";
 
 const validateActiveATMGeography = async (districtId, regionId) => {
   const district = await District.findById(districtId);
@@ -645,6 +651,24 @@ export const submitATMLocationRequest = asyncHandler(async (req, res) => {
     ...req.body,
     requester: req.user,
   });
+  await publishDomainEventSafely({
+    event: "domain:atm-location-request:updated",
+    entityType: "atm-location-request",
+    entityId: request._id,
+    action: "submitted",
+    data: { atmId: String(request.atmId) },
+    resolveRecipients: () => resolveLocationRequestRecipients(request),
+  });
+  if (request.locationTaskId) {
+    await publishDomainEventSafely({
+      event: "domain:atm-location-task:updated",
+      entityType: "atm-location-task",
+      entityId: request.locationTaskId,
+      action: "submitted-for-review",
+      data: { atmId: String(request.atmId) },
+      resolveRecipients: () => resolveLocationRequestRecipients(request),
+    });
+  }
   return res
     .status(201)
     .json(new ApiResponse(201, request, "ATM location request submitted"));
@@ -674,6 +698,14 @@ export const approveATMLocationRequest = asyncHandler(async (req, res) => {
     requestId: req.validatedParams.requestId,
     reviewerId: req.user._id,
   });
+  await publishDomainEventSafely({
+    event: "domain:atm-location-request:updated",
+    entityType: "atm-location-request",
+    entityId: request._id,
+    action: "approved",
+    data: { atmId: String(request.atmId) },
+    resolveRecipients: () => resolveLocationRequestRecipients(request),
+  });
   return res
     .status(200)
     .json(new ApiResponse(200, request, "ATM location request approved"));
@@ -685,6 +717,14 @@ export const rejectATMLocationRequest = asyncHandler(async (req, res) => {
     reviewerId: req.user._id,
     reason: req.body.reason,
   });
+  await publishDomainEventSafely({
+    event: "domain:atm-location-request:updated",
+    entityType: "atm-location-request",
+    entityId: request._id,
+    action: "rejected",
+    data: { atmId: String(request.atmId) },
+    resolveRecipients: () => resolveLocationRequestRecipients(request),
+  });
   return res
     .status(200)
     .json(new ApiResponse(200, request, "ATM location request rejected"));
@@ -695,6 +735,17 @@ export const reopenATMLocationRequests = asyncHandler(async (req, res) => {
     atmId: req.validatedParams.id,
     reviewerId: req.user._id,
   });
+  const atm = await ATM.findById(result.atmId).select("assignedEmployeeId");
+  if (atm) {
+    await publishDomainEventSafely({
+      event: "domain:atm-location-request:updated",
+      entityType: "atm-location-request",
+      entityId: result.atmId,
+      action: "reopened",
+      data: { atmId: String(result.atmId) },
+      resolveRecipients: () => resolveATMRecipients(atm),
+    });
+  }
   return res
     .status(200)
     .json(new ApiResponse(200, result, "ATM location requests reopened"));
@@ -705,6 +756,23 @@ export const createATMLocationTasks = asyncHandler(async (req, res) => {
     tasks: req.body.tasks,
     adminId: req.user._id,
   });
+  await Promise.all(
+    tasks.map((task) =>
+      publishDomainEventSafely({
+        event: "domain:atm-location-task:updated",
+        entityType: "atm-location-task",
+        entityId: task._id,
+        action: "assigned",
+        data: {
+          atmId: String(task.atmId),
+          ...(task.locationRequestId
+            ? { locationRequestId: String(task.locationRequestId) }
+            : {}),
+        },
+        resolveRecipients: () => resolveLocationTaskRecipients(task),
+      }),
+    ),
+  );
   return res
     .status(201)
     .json(new ApiResponse(201, { tasks }, "ATM location tasks created"));
@@ -728,6 +796,19 @@ export const startATMLocationTask = asyncHandler(async (req, res) => {
     taskId: req.validatedParams.taskId,
     employeeUserId: req.user._id,
   });
+  await publishDomainEventSafely({
+    event: "domain:atm-location-task:updated",
+    entityType: "atm-location-task",
+    entityId: task._id,
+    action: "started",
+    data: {
+      atmId: String(task.atmId),
+      ...(task.locationRequestId
+        ? { locationRequestId: String(task.locationRequestId) }
+        : {}),
+    },
+    resolveRecipients: () => resolveLocationTaskRecipients(task),
+  });
   return res
     .status(200)
     .json(new ApiResponse(200, task, "ATM location task started"));
@@ -738,6 +819,19 @@ export const holdATMLocationTask = asyncHandler(async (req, res) => {
     taskId: req.validatedParams.taskId,
     employeeUserId: req.user._id,
   });
+  await publishDomainEventSafely({
+    event: "domain:atm-location-task:updated",
+    entityType: "atm-location-task",
+    entityId: task._id,
+    action: "held",
+    data: {
+      atmId: String(task.atmId),
+      ...(task.locationRequestId
+        ? { locationRequestId: String(task.locationRequestId) }
+        : {}),
+    },
+    resolveRecipients: () => resolveLocationTaskRecipients(task),
+  });
   return res
     .status(200)
     .json(new ApiResponse(200, task, "ATM location task put on hold"));
@@ -747,6 +841,19 @@ export const resumeATMLocationTask = asyncHandler(async (req, res) => {
   const task = await resumeLocationTask({
     taskId: req.validatedParams.taskId,
     employeeUserId: req.user._id,
+  });
+  await publishDomainEventSafely({
+    event: "domain:atm-location-task:updated",
+    entityType: "atm-location-task",
+    entityId: task._id,
+    action: "resumed",
+    data: {
+      atmId: String(task.atmId),
+      ...(task.locationRequestId
+        ? { locationRequestId: String(task.locationRequestId) }
+        : {}),
+    },
+    resolveRecipients: () => resolveLocationTaskRecipients(task),
   });
   return res
     .status(200)
@@ -760,6 +867,19 @@ export const reassignATMLocationTask = asyncHandler(async (req, res) => {
     adminId: req.user._id,
     reason: req.body.reason,
   });
+  await publishDomainEventSafely({
+    event: "domain:atm-location-task:updated",
+    entityType: "atm-location-task",
+    entityId: task._id,
+    action: "reassigned",
+    data: {
+      atmId: String(task.atmId),
+      ...(task.locationRequestId
+        ? { locationRequestId: String(task.locationRequestId) }
+        : {}),
+    },
+    resolveRecipients: () => resolveLocationTaskRecipients(task),
+  });
   return res
     .status(200)
     .json(new ApiResponse(200, task, "ATM location task reassigned"));
@@ -772,6 +892,19 @@ export const reopenATMLocationTask = asyncHandler(async (req, res) => {
     adminId: req.user._id,
     reason: req.body.reason,
   });
+  await publishDomainEventSafely({
+    event: "domain:atm-location-task:updated",
+    entityType: "atm-location-task",
+    entityId: task._id,
+    action: "reopened",
+    data: {
+      atmId: String(task.atmId),
+      ...(task.locationRequestId
+        ? { locationRequestId: String(task.locationRequestId) }
+        : {}),
+    },
+    resolveRecipients: () => resolveLocationTaskRecipients(task),
+  });
   return res
     .status(200)
     .json(new ApiResponse(200, task, "Rejected ATM location task reopened"));
@@ -782,6 +915,19 @@ export const cancelATMLocationTask = asyncHandler(async (req, res) => {
     taskId: req.validatedParams.taskId,
     adminId: req.user._id,
     reason: req.body.reason,
+  });
+  await publishDomainEventSafely({
+    event: "domain:atm-location-task:updated",
+    entityType: "atm-location-task",
+    entityId: task._id,
+    action: "cancelled",
+    data: {
+      atmId: String(task.atmId),
+      ...(task.locationRequestId
+        ? { locationRequestId: String(task.locationRequestId) }
+        : {}),
+    },
+    resolveRecipients: () => resolveLocationTaskRecipients(task),
   });
   return res
     .status(200)
