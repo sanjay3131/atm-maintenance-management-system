@@ -1,5 +1,19 @@
 import ApiError from "../../utils/ApiError.js";
 import Customer from "./customer.model.js";
+import { JOB_STATUS } from "../../utils/jobStatus.js";
+
+export const CUSTOMER_VISIBLE_JOB_STATUSES = [
+  JOB_STATUS.VERIFIED,
+  JOB_STATUS.APPROVED,
+  JOB_STATUS.CLOSED,
+];
+
+export const isCustomerVisibleJob = (job) =>
+  Boolean(
+    job &&
+      job.isDeleted === false &&
+      CUSTOMER_VISIBLE_JOB_STATUSES.includes(job.status),
+  );
 
 export const getActiveCustomerForUser = async (user) => {
   if (user?.userType !== "customer" || user.status !== "active") {

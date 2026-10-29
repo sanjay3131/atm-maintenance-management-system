@@ -38,6 +38,7 @@ test("invalidates job detail, list, customer, supervisor, and dashboard families
     ["supervisor-jobs"],
     ["supervisor-job", "job-1"],
     ["supervisor-job-history", "job-1"],
+    ["supervisor-job-photos", "job-1"],
     ["customer-portal", "jobs"],
     ["customer-portal", "job", "job-1"],
     ["customer-portal", "job-history", "job-1"],
@@ -66,12 +67,31 @@ test("invalidates location request and task families without carrying coordinate
     ["atm-location-requests"],
     ["atm-location-request", "request-1"],
     ["atm-location-request", "request-2"],
+    ["atms"],
+    ["atm", "atm-1"],
     ["my-atm-location-requests"],
     ["atm-location-tasks"],
-    ["atms"],
-    ["atm"],
     ["dashboard-stats"],
     ["dashboard-recent-activity"],
+  ]);
+});
+
+test("ATM-scoped request reopening does not invalidate a request detail", async () => {
+  const client = queryClient();
+  await invalidateRealtimeEvent(
+    client,
+    event({
+      entityType: "atm-location",
+      entityId: "atm-1",
+      action: "requests-reopened",
+      data: { atmId: "atm-1" },
+    }),
+  );
+
+  assert.deepEqual(client.calls, [
+    ["atm-location-requests"],
+    ["atms"],
+    ["atm", "atm-1"],
   ]);
 });
 
@@ -81,6 +101,23 @@ test("reconnect recovery invalidates only the implemented realtime domains", asy
 
   assert.equal(client.calls.some(([key]) => key === "users"), false);
   assert.equal(client.calls.some(([key]) => key === "notifications"), false);
-  assert.equal(client.calls.some(([key]) => key === "jobs"), true);
-  assert.equal(client.calls.some(([key]) => key === "atm-location-tasks"), true);
+  for (const queryKey of [
+    ["jobs"],
+    ["job"],
+    ["job-history"],
+    ["supervisor-job"],
+    ["supervisor-job-history"],
+    ["supervisor-job-photos"],
+    ["customer-portal", "job"],
+    ["customer-portal", "job-history"],
+    ["atm-location-request"],
+    ["atm-location-tasks"],
+  ]) {
+    assert.ok(
+      client.calls.some((actual) =>
+        queryKey.every((segment, index) => actual[index] === segment),
+      ),
+      `missing reconnect invalidation for ${queryKey.join("/")}`,
+    );
+  }
 });

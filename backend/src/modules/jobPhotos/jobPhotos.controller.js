@@ -5,6 +5,7 @@ import cloudinary from "../../config/cloudinary.js";
 import JobPhoto from "./jobPhotos.model.js";
 import Job from "../jobs/jobs.model.js";
 import {
+  isCustomerVisibleJob,
   getActiveCustomerForUser,
   sameCustomerId,
   toCustomerSafeJobPhoto,
@@ -12,11 +13,15 @@ import {
 import { deleteSinglePhoto } from "../../config/cloudinaryCleanup.js";
 import mongoose from "mongoose";
 import { requireCurrentSupervisedJob } from "../supervisor/supervisor.scope.js";
+import { publishDomainEventSafely } from "../../realtime/domain-events.js";
+import { resolveJobRecipients } from "../../realtime/recipient-resolver.js";
 
 // ============================================
 // UPLOAD PHOTOS TO CLOUDINARY
 // ============================================
-export const uploadPhotos = asyncHandler(async (req, res) => {
+export const createUploadPhotosHandler = (
+  publishEvent = publishDomainEventSafely,
+) => asyncHandler(async (req, res) => {
   const { jobId } = req.params;
   const { photoType } = req.body; // "before" or "after"
 
@@ -172,6 +177,27 @@ export const uploadPhotos = asyncHandler(async (req, res) => {
     throw error;
   }
 
+  await publishEvent({
+    event: "domain:job:updated",
+    entityType: "job",
+    entityId: job._id,
+    action: "photos-uploaded",
+    resolveRecipients: () => resolveJobRecipients(job),
+  });
+
+  const [totalBefore, totalAfter] = await Promise.all([
+    JobPhoto.countDocuments({
+      jobId,
+      photoType: "before",
+      isExpired: false,
+    }),
+    JobPhoto.countDocuments({
+      jobId,
+      photoType: "after",
+      isExpired: false,
+    }),
+  ]);
+
   return res.status(201).json(
     new ApiResponse(
       201,
@@ -183,21 +209,15 @@ export const uploadPhotos = asyncHandler(async (req, res) => {
           photoType: p.photoType,
           uploadedAt: p.uploadedAt,
         })),
-        totalBefore: await JobPhoto.countDocuments({
-          jobId,
-          photoType: "before",
-          isExpired: false,
-        }),
-        totalAfter: await JobPhoto.countDocuments({
-          jobId,
-          photoType: "after",
-          isExpired: false,
-        }),
+        totalBefore,
+        totalAfter,
       },
       `${savedPhotos.length} ${photoType} photo(s) uploaded successfully`,
     ),
   );
 });
+
+export const uploadPhotos = createUploadPhotosHandler();
 
 // ============================================
 // GET PHOTOS FOR A JOB
@@ -227,7 +247,7 @@ export const getJobPhotos = asyncHandler(async (req, res) => {
       throw new ApiError(404, "Job not found");
     }
 
-    if (!["VERIFIED", "APPROVED", "CLOSED"].includes(job.status)) {
+    if (!isCustomerVisibleJob(job)) {
       throw new ApiError(404, "Job not found");
     }
   } else if (isSupervisor) {
@@ -267,7 +287,9 @@ export const getJobPhotos = asyncHandler(async (req, res) => {
 // ============================================
 // DELETE A SINGLE PHOTO
 // ============================================
-export const deletePhoto = asyncHandler(async (req, res) => {
+export const createDeletePhotoHandler = (
+  publishEvent = publishDomainEventSafely,
+) => asyncHandler(async (req, res) => {
   const { photoId } = req.params;
 
   const photo = await JobPhoto.findById(photoId);
@@ -320,10 +342,20 @@ export const deletePhoto = asyncHandler(async (req, res) => {
   photo.thumbnailUrl = null;
   await photo.save();
 
+  await publishEvent({
+    event: "domain:job:updated",
+    entityType: "job",
+    entityId: job._id,
+    action: "photo-deleted",
+    resolveRecipients: () => resolveJobRecipients(job),
+  });
+
   return res
     .status(200)
     .json(new ApiResponse(200, null, "Photo deleted successfully"));
 });
+
+export const deletePhoto = createDeletePhotoHandler();
 
 // ============================================
 // GET PHOTO STATS (Admin)

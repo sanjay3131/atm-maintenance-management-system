@@ -54,6 +54,73 @@ import {
   resolveLocationTaskRecipients,
 } from "../../realtime/recipient-resolver.js";
 
+export const publishLocationRequestUpdated = async (
+  request,
+  action,
+  {
+    publishEvent = publishDomainEventSafely,
+    linkedTask,
+  } = {},
+) => {
+  await publishEvent({
+    event: "domain:atm-location-request:updated",
+    entityType: "atm-location-request",
+    entityId: request._id,
+    action,
+    data: { atmId: String(request.atmId) },
+    resolveRecipients: () => resolveLocationRequestRecipients(request),
+  });
+
+  if (!request.locationTaskId) return;
+  if (!linkedTask || String(linkedTask._id) !== String(request.locationTaskId)) {
+    console.error(
+      `Realtime task event skipped: committed task result missing for location request ${request._id}`,
+    );
+    return;
+  }
+
+  await publishEvent({
+    event: "domain:atm-location-task:updated",
+    entityType: "atm-location-task",
+    entityId: linkedTask._id,
+    action: action === "approved" ? "completed" : "rejected",
+    data: {
+      atmId: String(linkedTask.atmId),
+      locationRequestId: String(request._id),
+    },
+    resolveRecipients: () => resolveLocationTaskRecipients(linkedTask),
+  });
+};
+
+export const publishATMRequestsReopened = async (
+  atmId,
+  {
+    publishEvent = publishDomainEventSafely,
+    findATM = (id) => ATM.findById(id).select("assignedEmployeeId"),
+  } = {},
+) => {
+  let atm;
+  try {
+    atm = await findATM(atmId);
+  } catch (error) {
+    console.error(
+      `Realtime recipient lookup failed for reopened ATM ${atmId}:`,
+      error.message,
+    );
+    return;
+  }
+  if (!atm) return;
+
+  await publishEvent({
+    event: "domain:atm-location-request:updated",
+    entityType: "atm-location",
+    entityId: atmId,
+    action: "requests-reopened",
+    data: { atmId: String(atmId) },
+    resolveRecipients: () => resolveATMRecipients(atm),
+  });
+};
+
 const validateActiveATMGeography = async (districtId, regionId) => {
   const district = await District.findById(districtId);
   if (!district) {
@@ -694,37 +761,25 @@ export const getATMLocationRequest = asyncHandler(async (req, res) => {
 });
 
 export const approveATMLocationRequest = asyncHandler(async (req, res) => {
-  const request = await approveATMlocationRequest({
+  const { request, linkedTask } = await approveATMlocationRequest({
     requestId: req.validatedParams.requestId,
     reviewerId: req.user._id,
+    includeLinkedTask: true,
   });
-  await publishDomainEventSafely({
-    event: "domain:atm-location-request:updated",
-    entityType: "atm-location-request",
-    entityId: request._id,
-    action: "approved",
-    data: { atmId: String(request.atmId) },
-    resolveRecipients: () => resolveLocationRequestRecipients(request),
-  });
+  await publishLocationRequestUpdated(request, "approved", { linkedTask });
   return res
     .status(200)
     .json(new ApiResponse(200, request, "ATM location request approved"));
 });
 
 export const rejectATMLocationRequest = asyncHandler(async (req, res) => {
-  const request = await rejectATMlocationRequest({
+  const { request, linkedTask } = await rejectATMlocationRequest({
     requestId: req.validatedParams.requestId,
     reviewerId: req.user._id,
     reason: req.body.reason,
+    includeLinkedTask: true,
   });
-  await publishDomainEventSafely({
-    event: "domain:atm-location-request:updated",
-    entityType: "atm-location-request",
-    entityId: request._id,
-    action: "rejected",
-    data: { atmId: String(request.atmId) },
-    resolveRecipients: () => resolveLocationRequestRecipients(request),
-  });
+  await publishLocationRequestUpdated(request, "rejected", { linkedTask });
   return res
     .status(200)
     .json(new ApiResponse(200, request, "ATM location request rejected"));
@@ -735,17 +790,7 @@ export const reopenATMLocationRequests = asyncHandler(async (req, res) => {
     atmId: req.validatedParams.id,
     reviewerId: req.user._id,
   });
-  const atm = await ATM.findById(result.atmId).select("assignedEmployeeId");
-  if (atm) {
-    await publishDomainEventSafely({
-      event: "domain:atm-location-request:updated",
-      entityType: "atm-location-request",
-      entityId: result.atmId,
-      action: "reopened",
-      data: { atmId: String(result.atmId) },
-      resolveRecipients: () => resolveATMRecipients(atm),
-    });
-  }
+  await publishATMRequestsReopened(result.atmId);
   return res
     .status(200)
     .json(new ApiResponse(200, result, "ATM location requests reopened"));

@@ -170,6 +170,40 @@ test("deduplicates domain events and removes them on logout cleanup", () => {
   assert.equal(calls.realtime.length, 1);
 });
 
+test("ignores malformed and unsupported domain events without blocking later events", () => {
+  const { session, socket, calls } = createHarness();
+  session.start();
+  const valid = {
+    eventVersion: 1,
+    eventId: "valid-event",
+    entityType: "job",
+    entityId: "job-1",
+    action: "updated",
+    occurredAt: "2026-10-28T00:00:00.000Z",
+    data: {},
+  };
+
+  assert.doesNotThrow(() => {
+    socket.emit("domain:job:updated", null);
+    socket.emit("domain:job:updated", { ...valid, eventVersion: 2 });
+    socket.emit("domain:job:updated", { ...valid, data: null });
+    socket.emit("domain:job:updated", {
+      ...valid,
+      entityType: "atm-location-task",
+    });
+    socket.emit("domain:job:updated", { ...valid, occurredAt: "invalid" });
+    socket.emit("domain:atm-location-task:updated", {
+      ...valid,
+      entityType: "atm-location-task",
+    });
+  });
+  assert.equal(calls.realtime.length, 0);
+
+  socket.emit("domain:job:updated", valid);
+  assert.equal(calls.realtime.length, 1);
+  session.dispose();
+});
+
 test("refreshes once and stops retrying after an unauthorized handshake", async () => {
   const { session, socket, calls } = createHarness();
   session.start();

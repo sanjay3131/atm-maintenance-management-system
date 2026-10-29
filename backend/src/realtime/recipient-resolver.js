@@ -1,4 +1,5 @@
 import Customer from "../modules/customers/customer.model.js";
+import { isCustomerVisibleJob } from "../modules/customers/customerAccess.js";
 import Employee from "../modules/employees/employee.model.js";
 import User from "../modules/users/user.model.js";
 
@@ -60,14 +61,14 @@ export const resolveJobRecipients = async (
   job,
   { previousEmployeeId } = {},
 ) => {
-  const relationshipIds = await employeeRelationshipUserIds([
-    job.assignedEmployeeId,
-    previousEmployeeId,
+  const [relationshipIds, customerId, adminIds] = await Promise.all([
+    employeeRelationshipUserIds([job.assignedEmployeeId, previousEmployeeId]),
+    isCustomerVisibleJob(job) ? customerUserId(job.customerId) : null,
+    activeAdminIds(),
   ]);
-  const customerId = await customerUserId(job.customerId);
 
   return activeUserIds([
-    ...(await activeAdminIds()),
+    ...adminIds,
     job.createdBy,
     job.updatedBy,
     job.assignedEmployeeId,

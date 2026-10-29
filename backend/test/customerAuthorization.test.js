@@ -167,6 +167,7 @@ function jobRecord(id, ownerId, status = "APPROVED") {
     },
     customerId: ownerId,
     status,
+    isDeleted: false,
     workType: "repair",
     priority: "medium",
     employeeRemarks: "Internal employee remark",

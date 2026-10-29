@@ -2,7 +2,9 @@ import asyncHandler from "../../utils/asyncHandler.js";
 import ApiResponse from "../../utils/ApiResponse.js";
 import ApiError from "../../utils/ApiError.js";
 import {
+  CUSTOMER_VISIBLE_JOB_STATUSES,
   getActiveCustomerForUser,
+  isCustomerVisibleJob,
   sameCustomerId,
   toCustomerSafeHistory,
   toCustomerSafeJob,
@@ -872,16 +874,10 @@ export const getAllJobs = asyncHandler(async (req, res) => {
   const customer = isCustomer
     ? await getActiveCustomerForUser(req.user)
     : null;
-  const customerVisibleStatuses = [
-    JOB_STATUS.VERIFIED,
-    JOB_STATUS.APPROVED,
-    JOB_STATUS.CLOSED,
-  ];
-
   if (
     isCustomer &&
     status !== undefined &&
-    !customerVisibleStatuses.includes(status)
+    !CUSTOMER_VISIBLE_JOB_STATUSES.includes(status)
   ) {
     throw new ApiError(400, "Invalid customer-visible job status");
   }
@@ -964,7 +960,7 @@ export const getAllJobs = asyncHandler(async (req, res) => {
 
   if (isCustomer) {
     query.customerId = customer._id;
-    query.status = status || { $in: customerVisibleStatuses };
+    query.status = status || { $in: CUSTOMER_VISIBLE_JOB_STATUSES };
   }
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -1035,7 +1031,7 @@ export const getJobById = asyncHandler(async (req, res) => {
         _id: id,
         customerId: customer._id,
         status: {
-          $in: [JOB_STATUS.VERIFIED, JOB_STATUS.APPROVED, JOB_STATUS.CLOSED],
+          $in: CUSTOMER_VISIBLE_JOB_STATUSES,
         },
         isDeleted: false,
       })
@@ -1189,9 +1185,7 @@ export const getJobHistory = asyncHandler(async (req, res) => {
     const customer = await getActiveCustomerForUser(req.user);
     if (
       !sameCustomerId(job.customerId, customer._id) ||
-      ![JOB_STATUS.VERIFIED, JOB_STATUS.APPROVED, JOB_STATUS.CLOSED].includes(
-        job.status,
-      )
+      !isCustomerVisibleJob(job)
     ) {
       throw new ApiError(404, "Job history not found");
     }

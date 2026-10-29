@@ -153,6 +153,7 @@ const makeSession = (state) => ({
       );
     try {
       await operation(this);
+      state.committedTransactions += 1;
     } catch (error) {
       Object.assign(state.atm, atmBefore);
       state.requests.clear();
@@ -198,6 +199,7 @@ async function withHarness(
     tasks: new Map(tasks.map((task) => [String(task._id), task])),
     failATMWrite,
     failTaskUpdate,
+    committedTransactions: 0,
     transactionTail: Promise.resolve(),
     nextRequestId: 200,
   };
@@ -764,6 +766,164 @@ test("task becomes completed only after linked request approval and rejected pro
   );
 });
 
+test("linked task and request events publish only after approval commits", async () => {
+  const { publishLocationRequestUpdated } = await import(
+    "../src/modules/atms/atm.controller.js"
+  );
+  const locationTaskId = "64b000000000000000000122";
+  const task = {
+    _id: locationTaskId,
+    atmId,
+    assignedEmployeeId: employeeRecordId,
+    status: "PENDING_REVIEW",
+    active: true,
+    locationRequestId: requestId,
+  };
+  await withHarness(
+    {
+      requests: [makeRequest({ locationTaskId })],
+      tasks: [{ ...task }],
+    },
+    async (state) => {
+      const events = [];
+      const { request, linkedTask } = await approveATMlocationRequest({
+        requestId,
+        reviewerId: adminId,
+        includeLinkedTask: true,
+      });
+      await publishLocationRequestUpdated(request, "approved", {
+        linkedTask,
+        publishEvent: async (event) => {
+          assert.equal(state.committedTransactions, 1);
+          assert.equal(state.tasks.get(locationTaskId).status, "COMPLETED");
+          events.push(event);
+        },
+      });
+
+      assert.deepEqual(
+        events.map(({ entityType, entityId, action }) => ({
+          entityType,
+          entityId: String(entityId),
+          action,
+        })),
+        [
+          {
+            entityType: "atm-location-request",
+            entityId: requestId,
+            action: "approved",
+          },
+          {
+            entityType: "atm-location-task",
+            entityId: locationTaskId,
+            action: "completed",
+          },
+        ],
+      );
+      assert.deepEqual(events[0].data, { atmId });
+      assert.deepEqual(events[1].data, {
+        atmId,
+        locationRequestId: requestId,
+      });
+      assert.doesNotMatch(JSON.stringify(events), /proposedLatitude|coordinates|accuracy/i);
+    },
+  );
+});
+
+test("linked task and request events publish only after rejection commits", async () => {
+  const { publishLocationRequestUpdated } = await import(
+    "../src/modules/atms/atm.controller.js"
+  );
+  const locationTaskId = "64b000000000000000000122";
+  await withHarness(
+    {
+      requests: [makeRequest({ locationTaskId })],
+      tasks: [
+        {
+          _id: locationTaskId,
+          atmId,
+          assignedEmployeeId: employeeRecordId,
+          status: "PENDING_REVIEW",
+          active: true,
+          locationRequestId: requestId,
+        },
+      ],
+    },
+    async (state) => {
+      const events = [];
+      const { request, linkedTask } = await rejectATMlocationRequest({
+        requestId,
+        reviewerId: adminId,
+        reason: "Recheck the location",
+        includeLinkedTask: true,
+      });
+      await publishLocationRequestUpdated(request, "rejected", {
+        linkedTask,
+        publishEvent: async (event) => {
+          assert.equal(state.committedTransactions, 1);
+          assert.equal(state.tasks.get(locationTaskId).status, "REJECTED");
+          events.push(event);
+        },
+      });
+
+      assert.deepEqual(
+        events.map(({ entityType, entityId, action }) => [
+          entityType,
+          String(entityId),
+          action,
+        ]),
+        [
+          ["atm-location-request", requestId, "rejected"],
+          ["atm-location-task", locationTaskId, "rejected"],
+        ],
+      );
+      assert.doesNotMatch(JSON.stringify(events), /proposedLatitude|coordinates|accuracy/i);
+    },
+  );
+});
+
+test("failed linked task transition does not publish request or task events", async () => {
+  const { publishLocationRequestUpdated } = await import(
+    "../src/modules/atms/atm.controller.js"
+  );
+  const locationTaskId = "64b000000000000000000122";
+  const task = {
+    _id: locationTaskId,
+    atmId,
+    assignedEmployeeId: employeeRecordId,
+    status: "PENDING_REVIEW",
+    active: true,
+    locationRequestId: requestId,
+  };
+  const events = [];
+  await withHarness(
+    {
+      requests: [makeRequest({ locationTaskId })],
+      tasks: [task],
+      failTaskUpdate: true,
+    },
+    async (state) => {
+      await assert.rejects(
+        async () => {
+          const { request, linkedTask } = await approveATMlocationRequest({
+            requestId,
+            reviewerId: adminId,
+            includeLinkedTask: true,
+          });
+          await publishLocationRequestUpdated(request, "approved", {
+            linkedTask,
+            publishEvent: async (event) => events.push(event),
+          });
+        },
+        { statusCode: 409 },
+      );
+      assert.equal(state.requests.get(requestId).status, "PENDING");
+      assert.equal(state.tasks.get(locationTaskId).status, "PENDING_REVIEW");
+      assert.equal(state.committedTransactions, 0);
+      assert.deepEqual(events, []);
+    },
+  );
+});
+
 test("rejecting a linked correction preserves official ATM coordinates and rejects repeated stale decisions", async () => {
   const locationTaskId = "64b000000000000000000123";
   const coordinates = [77.1, 12.1];
@@ -964,6 +1124,9 @@ test("approved location requests close employee submissions until Admin reopens"
 });
 
 test("Admin reopen is authenticated, requires approved history, and records an auditable open event", async () => {
+  const { publishATMRequestsReopened } = await import(
+    "../src/modules/atms/atm.controller.js"
+  );
   await withHarness(
     {
       atm: makeATM({
@@ -986,6 +1149,19 @@ test("Admin reopen is authenticated, requires approved history, and records an a
         state.atm.locationRequestReopenHistory[0].openedBy,
         adminId,
       );
+      const events = [];
+      await publishATMRequestsReopened(reopened.atmId, {
+        findATM: async (id) => ({
+          _id: id,
+          assignedEmployeeId: [employeeRecordId],
+        }),
+        publishEvent: async (event) => events.push(event),
+      });
+      assert.equal(events.length, 1);
+      assert.equal(events[0].entityType, "atm-location");
+      assert.equal(String(events[0].entityId), atmId);
+      assert.equal(events[0].action, "requests-reopened");
+      assert.deepEqual(events[0].data, { atmId });
       await assert.rejects(
         reopenATMlocationRequests({ atmId, reviewerId: adminId }),
         { statusCode: 409 },

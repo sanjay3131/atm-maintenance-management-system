@@ -1,7 +1,10 @@
 import type { NotificationRecord } from "./notifications.api";
-import type {
-  RealtimeEvent,
-} from "@/realtime/realtime-events";
+import {
+  isRealtimeEvent,
+  REALTIME_EVENTS,
+  type RealtimeEventName,
+  type RealtimeEvent,
+} from "../../realtime/realtime-events.ts";
 
 export interface NotificationSocket {
   connected: boolean;
@@ -113,14 +116,24 @@ export class NotificationSession {
       this.listen("disconnect", this.handleDisconnect);
       this.listen("connect_error", this.handleConnectError);
       this.listen("notification:new", this.handleNotification);
-      this.listen("domain:job:updated", this.handleRealtimeEvent);
-      this.listen(
-        "domain:atm-location-task:updated",
-        this.handleRealtimeEvent,
+      this.listen(REALTIME_EVENTS.JOB_UPDATED, (event) =>
+        this.handleRealtimeEvent(event, REALTIME_EVENTS.JOB_UPDATED),
       );
       this.listen(
-        "domain:atm-location-request:updated",
-        this.handleRealtimeEvent,
+        REALTIME_EVENTS.LOCATION_TASK_UPDATED,
+        (event) =>
+          this.handleRealtimeEvent(
+            event,
+            REALTIME_EVENTS.LOCATION_TASK_UPDATED,
+          ),
+      );
+      this.listen(
+        REALTIME_EVENTS.LOCATION_REQUEST_UPDATED,
+        (event) =>
+          this.handleRealtimeEvent(
+            event,
+            REALTIME_EVENTS.LOCATION_REQUEST_UPDATED,
+          ),
       );
     } catch (error) {
       this.options.onError?.(error);
@@ -229,16 +242,11 @@ export class NotificationSession {
     });
   };
 
-  private handleRealtimeEvent = (event: RealtimeEvent) => {
-    if (
-      !event ||
-      event.eventVersion !== 1 ||
-      typeof event.eventId !== "string" ||
-      typeof event.entityType !== "string" ||
-      typeof event.entityId !== "string"
-    ) {
-      return;
-    }
+  private handleRealtimeEvent = (
+    event: unknown,
+    expectedEvent: RealtimeEventName,
+  ) => {
+    if (!isRealtimeEvent(event, expectedEvent)) return;
     if (this.realtimeEventIds.has(event.eventId)) return;
     this.realtimeEventIds.add(event.eventId);
     if (this.realtimeEventIds.size > 500) {

@@ -12,6 +12,8 @@ import {
   getBusinessDayEnd,
   getBusinessDayStart,
 } from "./recurringMaintenance.utils.js";
+import { publishDomainEventSafely } from "../../realtime/domain-events.js";
+import { resolveJobRecipients } from "../../realtime/recipient-resolver.js";
 
 const NON_DUE_JOB_STATUSES = [
   JOB_STATUS.COMPLETED,
@@ -20,6 +22,29 @@ const NON_DUE_JOB_STATUSES = [
   JOB_STATUS.CLOSED,
   JOB_STATUS.CANCELLED,
 ];
+const REALTIME_PUBLISH_CONCURRENCY = 10;
+
+const publishGeneratedJobEvents = async (jobs, publishEvent) => {
+  for (
+    let index = 0;
+    index < jobs.length;
+    index += REALTIME_PUBLISH_CONCURRENCY
+  ) {
+    await Promise.all(
+      jobs
+        .slice(index, index + REALTIME_PUBLISH_CONCURRENCY)
+        .map((job) =>
+          publishEvent({
+            event: "domain:job:updated",
+            entityType: "job",
+            entityId: job._id,
+            action: "recurring-generated",
+            resolveRecipients: () => resolveJobRecipients(job),
+          }),
+        ),
+    );
+  }
+};
 
 const getTypeDetails = (maintenanceType) => {
   if (maintenanceType === "DAILY_CLEANING") {
@@ -201,8 +226,10 @@ const addJobHistory = async (job, createdBy, atm, maintenanceType) => {
 export const generateRecurringJobs = async ({
   createdBy,
   now = new Date(),
+  publishEvent = publishDomainEventSafely,
 } = {}) => {
   const result = createResult();
+  const generatedJobs = [];
   const businessDate = getBusinessDateParts(now);
   const dayStart = getBusinessDayStart(businessDate.dateKey);
   const dayEnd = getBusinessDayEnd(businessDate.dateKey);
@@ -354,6 +381,13 @@ export const generateRecurringJobs = async ({
           error: `Job created but history could not be recorded: ${error.message}`,
         });
       }
+      generatedJobs.push(job);
+      if (generatedJobs.length === REALTIME_PUBLISH_CONCURRENCY) {
+        await publishGeneratedJobEvents(
+          generatedJobs.splice(0),
+          publishEvent,
+        );
+      }
     } catch (error) {
       result.errors.push({
         planId: plan._id.toString(),
@@ -361,6 +395,10 @@ export const generateRecurringJobs = async ({
         error: error.message,
       });
     }
+  }
+
+  if (generatedJobs.length) {
+    await publishGeneratedJobEvents(generatedJobs, publishEvent);
   }
 
   const [due, overdue] = await Promise.all([

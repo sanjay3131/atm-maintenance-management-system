@@ -65,6 +65,22 @@ const requestView = (request) => ({
   updatedAt: request.updatedAt,
 });
 
+const locationTaskEventView = (task) => ({
+  _id: task._id,
+  atmId: task.atmId,
+  assignedEmployeeId: task.assignedEmployeeId,
+  createdBy: task.createdBy,
+  updatedBy: task.updatedBy,
+  assignmentHistory: task.assignmentHistory,
+});
+
+const requestMutationResult = (request, linkedTask, includeLinkedTask) => {
+  const requestResult = requestView(request);
+  return includeLinkedTask
+    ? { request: requestResult, linkedTask }
+    : requestResult;
+};
+
 const isDuplicateKeyError = (error) => error?.code === 11000;
 
 const assertReviewerIsNotRequester = (request, reviewerId) => {
@@ -360,9 +376,11 @@ const buildLocationSnapshotFilter = (snapshot) => {
 export const approveATMlocationRequest = async ({
   requestId,
   reviewerId,
-}) =>
-  withTransaction(async (session) => {
+  includeLinkedTask = false,
+}) => {
+  const result = await withTransaction(async (session) => {
     const reviewedAt = new Date();
+    let linkedTask = null;
     const pendingRequest = await sessionQuery(
       ATMLocationRequest.findOne({ _id: requestId, status: "PENDING" }),
       session,
@@ -467,15 +485,19 @@ export const approveATMlocationRequest = async ({
           "Location task changed before this proposal could be approved",
         );
       }
+      linkedTask = locationTaskEventView(task);
     }
 
-    return requestView(request);
+    return requestMutationResult(request, linkedTask, true);
   });
+  return includeLinkedTask ? result : result.request;
+};
 
 export const rejectATMlocationRequest = async ({
   requestId,
   reviewerId,
   reason,
+  includeLinkedTask = false,
 }) => {
   const existing = await ATMLocationRequest.findOne({
     _id: requestId,
@@ -486,7 +508,7 @@ export const rejectATMlocationRequest = async ({
   }
   assertReviewerIsNotRequester(existing, reviewerId);
   if (existing.locationTaskId) {
-    return withTransaction(async (session) => {
+    const result = await withTransaction(async (session) => {
       const reviewedAt = new Date();
       const request = await ATMLocationRequest.findOneAndUpdate(
         { _id: requestId, status: "PENDING" },
@@ -520,8 +542,13 @@ export const rejectATMlocationRequest = async ({
           "Location task changed before this proposal could be rejected",
         );
       }
-      return requestView(request);
+      return requestMutationResult(
+        request,
+        locationTaskEventView(task),
+        true,
+      );
     });
+    return includeLinkedTask ? result : result.request;
   }
   const request = await ATMLocationRequest.findOneAndUpdate(
     { _id: requestId, status: "PENDING" },
@@ -538,7 +565,7 @@ export const rejectATMlocationRequest = async ({
   if (!request) {
     throw new ApiError(409, "Location request is no longer pending");
   }
-  return requestView(request);
+  return requestMutationResult(request, null, includeLinkedTask);
 };
 
 export const reopenATMlocationRequests = async ({ atmId, reviewerId }) => {

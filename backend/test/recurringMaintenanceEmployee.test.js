@@ -237,6 +237,8 @@ async function withGeneratorMocks({
   employee = validEmployee(),
   jobCreate = async (data) => ({ _id: "generated-job", ...data }),
   jobExists = async () => false,
+  publishEvent = async () => {},
+  onHistoryPersisted = async () => {},
 } = {}, callback) {
   const createdJobs = [];
   const history = [];
@@ -262,12 +264,14 @@ async function withGeneratorMocks({
       }],
       [JobHistory, "create", async (entries) => {
         history.push(...entries);
+        await onHistoryPersisted(entries);
       }],
     ],
     async () => {
       const result = await generateRecurringJobs({
         createdBy: adminId,
         now: new Date("2026-10-08T06:00:00.000Z"),
+        publishEvent,
       });
       return result;
     },
@@ -281,6 +285,58 @@ test("generator assigns selected Employee's linked User ID despite multiple ATM 
     assert.equal(result.skippedMultipleAssignments, 0);
     assert.equal(createdJobs[0].assignedEmployeeId, userId);
   });
+});
+
+test("generator publishes only after each recurring Job is persisted", async () => {
+  let persisted = false;
+  let historyPersisted = false;
+  const events = [];
+  await withGeneratorMocks(
+    {
+      jobCreate: async (data) => {
+        persisted = true;
+        return { _id: "persisted-job", ...data };
+      },
+      onHistoryPersisted: () => {
+        historyPersisted = true;
+      },
+      publishEvent: async (event) => {
+        assert.equal(persisted, true);
+        assert.equal(historyPersisted, true);
+        events.push(event);
+      },
+    },
+    async ({ result }) => {
+      assert.equal(result.created, 1);
+      assert.equal(events.length, 1);
+      assert.equal(events[0].event, "domain:job:updated");
+      assert.equal(events[0].entityType, "job");
+      assert.equal(events[0].entityId, "persisted-job");
+      assert.equal(events[0].action, "recurring-generated");
+      assert.equal(typeof events[0].resolveRecipients, "function");
+      assert.equal("data" in events[0], false);
+    },
+  );
+});
+
+test("generator does not publish an event for a duplicate or failed creation", async () => {
+  const events = [];
+  await withGeneratorMocks(
+    {
+      jobCreate: async () => {
+        const error = new Error("Duplicate occurrence");
+        error.code = 11000;
+        throw error;
+      },
+      jobExists: async () => ({ _id: "existing-job", status: "ASSIGNED" }),
+      publishEvent: async (event) => events.push(event),
+    },
+    async ({ result }) => {
+      assert.equal(result.created, 0);
+      assert.equal(result.alreadyExists, 1);
+      assert.deepEqual(events, []);
+    },
+  );
 });
 
 test("generator skips legacy plan with no selected Employee", async () => {

@@ -11,6 +11,7 @@ import AMC from "../amc/amc.model.js";
 import { sanitizeUser } from "../../utils/sanitizeUser.js";
 import { hashPassword } from "../auth/auth.utils.js";
 import {
+  CUSTOMER_VISIBLE_JOB_STATUSES,
   getActiveCustomerForUser,
   sameCustomerId,
   toCustomerSafeAMC,
@@ -732,14 +733,13 @@ export const getCustomerPortalAMCs = asyncHandler(async (req, res) => {
 export const getCustomerJobs = asyncHandler(async (req, res) => {
   const customer = await getActiveCustomerForUser(req.user);
   const { status, page = 1, limit = 10, atmId } = req.query;
-  const customerVisibleStatuses = ["VERIFIED", "APPROVED", "CLOSED"];
-  if (status && !customerVisibleStatuses.includes(status)) {
+  if (status && !CUSTOMER_VISIBLE_JOB_STATUSES.includes(status)) {
     throw new ApiError(400, "Invalid customer-visible job status");
   }
 
   const query = {
     customerId: customer._id,
-    status: status || { $in: customerVisibleStatuses },
+    status: status || { $in: CUSTOMER_VISIBLE_JOB_STATUSES },
     isDeleted: false,
   };
   if (atmId) {
