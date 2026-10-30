@@ -675,7 +675,12 @@ export default function EmployeePerformance({
                 : "No employee performance data available."}
             </p>
           ) : (
-            <div className="min-w-0 overflow-x-auto rounded-lg border">
+            <div
+              role="region"
+              aria-label="Employee performance table; scroll horizontally to view all columns"
+              tabIndex={0}
+              className="min-w-0 overflow-x-auto overscroll-x-contain rounded-lg border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
               <table className="w-full min-w-[640px] text-sm">
                 <caption className="sr-only">
                   {viewedEmployee
@@ -727,7 +732,7 @@ export default function EmployeePerformance({
                         activeSelectedEmployeeDocumentId
                           ? "bg-primary/10"
                           : "hover:bg-muted/50"
-                      }`}
+                      } focus-visible:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring`}
                     >
                       <td className="p-3">
                         <div className="flex min-w-0 items-center gap-3">
@@ -775,7 +780,7 @@ export default function EmployeePerformance({
                               {employee.completionRate.toFixed(1)}%
                             </span>
                             <span
-                              className="block h-1.5 w-full overflow-hidden rounded-full bg-red-500"
+                              className="block h-1.5 w-full overflow-hidden rounded-full bg-muted"
                               role="progressbar"
                               aria-label={`${employee.name} completion rate`}
                               aria-valuemin={0}
@@ -786,7 +791,7 @@ export default function EmployeePerformance({
                               )}
                             >
                               <span
-                                className="block h-full rounded-full bg-green-500 "
+                                className="block h-full rounded-full bg-emerald-600 dark:bg-emerald-400"
                                 style={{
                                   width: `${Math.max(0, Math.min(employee.completionRate, 100))}%`,
                                 }}
@@ -917,16 +922,16 @@ export default function EmployeePerformance({
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                           {JOB_STATUSES.map((status) => (
                             <Card
-                              className="hover:bg-linear-to-tr from-white to-blue-400 transition-all duration-300 "
+                              className="border-border bg-card"
                               key={status}
                             >
-                              <CardHeader className="pb-2 ">
-                                <CardTitle className="  text-muted-foreground text-md font-semibold ">
+                              <CardHeader className="p-3 pb-2">
+                                <CardTitle className="text-sm font-medium text-muted-foreground">
                                   {formatStatus(status)}
                                 </CardTitle>
                               </CardHeader>
-                              <CardContent>
-                                <p className="text-xl font-semibold">
+                              <CardContent className="p-3 pt-0">
+                                <p className="text-xl font-semibold tabular-nums">
                                   {detailsQuery.data.currentAssignedJobs
                                     .byStatus[status] ?? 0}
                                 </p>

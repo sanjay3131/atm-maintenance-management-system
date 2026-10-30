@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   CategoryScale,
   Chart as ChartJS,
@@ -22,9 +23,48 @@ ChartJS.register(
   Legend,
 );
 
+interface ChartColors {
+  created: string;
+  completed: string;
+  foreground: string;
+  mutedForeground: string;
+  border: string;
+  card: string;
+}
+
+function readChartColors(): ChartColors {
+  const styles = getComputedStyle(document.documentElement);
+  const isDark =
+    document.documentElement.classList.contains("dark") ||
+    document.body.classList.contains("dark");
+
+  return {
+    created: isDark ? "#60a5fa" : "#1d4ed8",
+    completed: isDark ? "#2dd4bf" : "#0f766e",
+    foreground: styles.getPropertyValue("--foreground").trim(),
+    mutedForeground: styles.getPropertyValue("--muted-foreground").trim(),
+    border: styles.getPropertyValue("--border").trim(),
+    card: styles.getPropertyValue("--card").trim(),
+  };
+}
+
 export default function JobTrendsChart() {
   const { data, isLoading } = useJobTrends();
   const reducedMotion = useReducedMotion();
+  const [colors, setColors] = useState(readChartColors);
+
+  useEffect(() => {
+    const updateColors = () => setColors(readChartColors());
+    const observer = new MutationObserver(updateColors);
+    const observedElements = [document.documentElement, document.body];
+    observedElements.forEach((element) =>
+      observer.observe(element, {
+        attributes: true,
+        attributeFilter: ["class", "style"],
+      }),
+    );
+    return () => observer.disconnect();
+  }, []);
 
   if (isLoading && !data) {
     return (
@@ -75,7 +115,16 @@ export default function JobTrendsChart() {
               No job trend data available for this period.
             </p>
           ) : (
-            <div className="relative h-64 min-h-0 w-full min-w-0 sm:h-72">
+            <div
+              role="img"
+              aria-label={`Jobs created versus completed this week: ${data.trends
+                .map(
+                  (item) =>
+                    `${item.label}: ${item.created} created, ${item.completed} completed`,
+                )
+                .join("; ")}.`}
+              className="relative h-64 min-h-0 w-full min-w-0 sm:h-72"
+            >
               <Line
                 data={{
                   labels: data.trends.map((item) => item.label),
@@ -83,22 +132,23 @@ export default function JobTrendsChart() {
                     {
                       label: "Created",
                       data: data.trends.map((item) => item.created),
-                      borderColor: "#2563eb",
-                      backgroundColor: "rgba(37, 99, 235, 0.12)",
-                      pointBackgroundColor: "#2563eb",
-                      pointBorderColor: "#ffffff",
+                      borderColor: colors.created,
+                      pointBackgroundColor: colors.created,
+                      pointBorderColor: colors.card,
                       pointHoverRadius: 5,
+                      pointStyle: "circle",
                       borderWidth: 2,
                       tension: 0.3,
                     },
                     {
                       label: "Completed",
                       data: data.trends.map((item) => item.completed),
-                      borderColor: "#059669",
-                      backgroundColor: "rgba(5, 150, 105, 0.12)",
-                      pointBackgroundColor: "#059669",
-                      pointBorderColor: "#ffffff",
+                      borderColor: colors.completed,
+                      pointBackgroundColor: colors.completed,
+                      pointBorderColor: colors.card,
                       pointHoverRadius: 5,
+                      pointStyle: "rectRot",
+                      borderDash: [5, 4],
                       borderWidth: 2,
                       tension: 0.3,
                     },
@@ -108,21 +158,34 @@ export default function JobTrendsChart() {
                   responsive: true,
                   maintainAspectRatio: false,
                   interaction: { mode: "index", intersect: false },
+                  animation: reducedMotion ? false : undefined,
                   plugins: {
                     legend: {
                       position: "top",
                       align: "start",
-                      labels: { usePointStyle: true, boxWidth: 8, padding: 16 },
+                      labels: {
+                        color: colors.foreground,
+                        usePointStyle: true,
+                        boxWidth: 8,
+                        padding: 16,
+                      },
                     },
                   },
                   scales: {
                     x: {
-                      grid: { display: false },
-                      ticks: { maxRotation: 0, autoSkip: true },
+                      grid: { display: false, color: colors.border },
+                      border: { color: colors.border },
+                      ticks: {
+                        color: colors.mutedForeground,
+                        maxRotation: 0,
+                        autoSkip: true,
+                      },
                     },
                     y: {
                       beginAtZero: true,
-                      ticks: { precision: 0 },
+                      grid: { color: colors.border },
+                      border: { color: colors.border },
+                      ticks: { color: colors.mutedForeground, precision: 0 },
                     },
                   },
                 }}

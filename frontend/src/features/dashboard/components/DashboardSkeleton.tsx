@@ -9,7 +9,7 @@ export function SkeletonBlock({ className = "" }: { className?: string }) {
   return (
     <div
       aria-hidden="true"
-      className={`animate-pulse rounded-md bg-muted ${className}`}
+      className={`animate-pulse rounded-md bg-muted motion-reduce:animate-none ${className}`}
     />
   );
 }
@@ -69,34 +69,38 @@ export function DashboardLoadingSkeleton() {
       aria-label="Loading dashboard"
     >
       <div className="space-y-2">
+        <SkeletonBlock className="h-4 w-36" />
         <SkeletonBlock className="h-8 w-44" />
         <SkeletonBlock className="h-4 w-72 max-w-full" />
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {Array.from({ length: 4 }, (_, index) => (
-          <Card key={index} className="min-w-0 p-5">
-            <SkeletonBlock className="h-4 w-2/3" />
-            <SkeletonBlock className="mt-5 h-9 w-1/2" />
+          <Card key={index} className="min-w-0 p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3">
+              <SkeletonBlock className="h-4 w-2/3" />
+              <SkeletonBlock className="size-9 shrink-0 rounded-lg" />
+            </div>
+            <SkeletonBlock className="mt-4 h-9 w-1/2" />
             <SkeletonBlock className="mt-2 h-4 w-3/4" />
           </Card>
         ))}
       </div>
       <div className="grid min-w-0 items-start gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="grid min-w-0 gap-4 sm:grid-cols-2 md:col-span-2 lg:col-span-4">
+        <div className="grid min-w-0 gap-4 md:grid-cols-2 md:col-span-2 lg:col-span-4">
           <DashboardCardSkeleton title="Job Status" />
           <DashboardCardSkeleton title="Complaints" />
         </div>
         <DashboardCardSkeleton
           title="Job Trends"
           kind="chart"
-          className="md:col-span-1 lg:col-span-4"
+          className="md:col-span-2 lg:col-span-4"
         />
         <DashboardCardSkeleton
           title="Employee Performance"
           kind="table"
-          className="md:col-span-1 lg:col-span-4"
+          className="md:col-span-2 lg:col-span-4"
         />
-        <div className="grid min-w-0 gap-4 sm:grid-cols-2 md:col-span-2 lg:col-span-2">
+        <div className="grid min-w-0 gap-4 sm:grid-cols-2 md:col-span-2 lg:col-span-2 lg:grid-cols-1">
           <DashboardCardSkeleton title="District Summary" kind="table" />
           <DashboardCardSkeleton title="Bank Summary" kind="table" />
         </div>

@@ -19,7 +19,7 @@ export default function OperationsSummary() {
 
   return (
     <div className="grid min-w-0 items-start gap-4 sm:grid-cols-2 lg:grid-cols-1">
-      <Card className="h-fit min-w-0 shadow-sm overflow-hidden ">
+      <Card className="h-fit min-w-0 overflow-hidden shadow-sm">
         <CardHeader className="p-4 sm:p-5">
           <CardTitle className="text-base">District Summary</CardTitle>
           <p className="text-sm text-muted-foreground">
@@ -38,8 +38,17 @@ export default function OperationsSummary() {
               No district data available.
             </p>
           ) : districtQuery.data ? (
-            <div className="min-w-0 overflow-x-hidden rounded-lg border ">
+            <div
+              role="region"
+              aria-label="District ATM summary table"
+              tabIndex={0}
+              className="min-w-0 overflow-x-auto overscroll-x-contain rounded-lg border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
               <table className="w-full min-w-125 text-sm">
+                <caption className="sr-only">
+                  ATM totals, active ATMs, and ATMs under maintenance by
+                  district.
+                </caption>
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="p-3 font-medium">District</th>
@@ -97,8 +106,16 @@ export default function OperationsSummary() {
               No bank data available.
             </p>
           ) : bankQuery.data ? (
-            <div className="min-w-0 overflow-x-hidden rounded-lg border">
+            <div
+              role="region"
+              aria-label="Bank ATM summary table"
+              tabIndex={0}
+              className="min-w-0 overflow-x-auto overscroll-x-contain rounded-lg border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
               <table className="w-full min-w-125 text-sm">
+                <caption className="sr-only">
+                  ATM totals, active ATMs, and ATMs under maintenance by bank.
+                </caption>
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="p-3 font-medium">Bank</th>

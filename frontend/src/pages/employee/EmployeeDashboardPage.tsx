@@ -1,15 +1,8 @@
 import { useMemo, useState } from "react";
 import { isAxiosError } from "axios";
 import {
-  Activity,
-  BriefcaseBusiness,
-  CheckCircle2,
   ClipboardList,
-  Clock3,
-  FileCheck2,
   CalendarClock,
-  UserRound,
-  type LucideIcon,
 } from "lucide-react";
 import {
   BarElement,
@@ -21,18 +14,13 @@ import {
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
 import { useNavigate } from "react-router-dom";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SkeletonBlock } from "@/features/dashboard/components/DashboardSkeleton";
 import { useMyAMC } from "@/features/amc/hooks/useMyAMC";
 import { useMyEmployeeProfile } from "@/features/employees/hooks/useMyEmployeeProfile";
 import { useMyJobPerformance } from "@/features/jobs/hooks/useMyJobPerformance";
 import type { AMCStatus } from "@/services/amc.service";
-import type {
-  JobPerformancePeriod,
-  JobStatus,
-} from "@/features/jobs/types/job.types";
+import type { JobPerformancePeriod } from "@/features/jobs/types/job.types";
 import {
   employeeErrorMessage,
   employeeJobStatusLabel,
@@ -40,7 +28,10 @@ import {
   useEmployeeLanguage,
   type EmployeeTranslationKey,
 } from "@/features/employee-portal/i18n";
-import { getEmployeeJobsStatusHref } from "@/features/jobs/utils/employeeJobs.utils";
+import {
+  EMPLOYEE_JOB_STATUSES,
+  getEmployeeJobsStatusHref,
+} from "@/features/jobs/utils/employeeJobs.utils";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
@@ -137,11 +128,11 @@ function EmployeeDashboardPage() {
   const performanceQuery = useMyJobPerformance(period);
   const amcQuery = useMyAMC(amcMonth, amcYear);
   const statusCounts = performanceQuery.data?.currentAssignedJobs.byStatus;
-  const completedAssignedCount =
-    (statusCounts?.COMPLETED ?? 0) +
-    (statusCounts?.VERIFIED ?? 0) +
-    (statusCounts?.APPROVED ?? 0) +
-    (statusCounts?.CLOSED ?? 0);
+  const totalAssignedCount = Math.max(
+    0,
+    (performanceQuery.data?.currentAssignedJobs.total ?? 0) -
+      (statusCounts?.CANCELLED ?? 0),
+  );
   const eligibleAssignedCount =
     performanceQuery.data?.eligibleAssignedJobCount ?? 0;
   const completedEligibleCount = performanceQuery.data?.completedJobCount ?? 0;
@@ -187,6 +178,15 @@ function EmployeeDashboardPage() {
     }),
     [activityDays, chartDateFormatter, t],
   );
+  const employeeTheme = document.querySelector(".employee-portal-shell");
+  const chartTheme = getComputedStyle(
+    employeeTheme ?? document.documentElement,
+  );
+  const chartForeground = chartTheme.getPropertyValue("--foreground").trim();
+  const chartMutedForeground = chartTheme
+    .getPropertyValue("--muted-foreground")
+    .trim();
+  const chartBorder = chartTheme.getPropertyValue("--border").trim();
   const hasWeeklyActivity = (activityDays ?? []).some(
     ({ assigned, completed }) => assigned > 0 || completed > 0,
   );
@@ -195,51 +195,6 @@ function EmployeeDashboardPage() {
   const employeeName = [profile?.user?.firstName, profile?.user?.lastName]
     .filter(Boolean)
     .join(" ");
-  const summaryCards: Array<{
-    label: EmployeeTranslationKey;
-    count: number;
-    status?: JobStatus;
-    Icon: LucideIcon;
-    tone: string;
-    iconTone: string;
-  }> = [
-    {
-      label: "Total currently assigned",
-      count: Math.max(
-        0,
-        (performanceQuery.data?.currentAssignedJobs.total ?? 0) -
-          (statusCounts?.CANCELLED ?? 0),
-      ),
-      Icon: BriefcaseBusiness,
-      tone: "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300",
-      iconTone: "bg-blue-100 dark:bg-blue-900/70",
-    },
-    {
-      label: "Pending jobs",
-      status: "PENDING",
-      count: statusCounts?.PENDING ?? 0,
-      Icon: Clock3,
-      tone: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300",
-      iconTone: "bg-amber-100 dark:bg-amber-900/70",
-    },
-    {
-      label: "In-progress jobs",
-      status: "IN_PROGRESS",
-      count: statusCounts?.IN_PROGRESS ?? 0,
-      Icon: Activity,
-      tone: "border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-300",
-      iconTone: "bg-violet-100 dark:bg-violet-900/70",
-    },
-    {
-      label: "Completed jobs",
-      status: "COMPLETED",
-      count: completedAssignedCount,
-      Icon: CheckCircle2,
-      tone: "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300",
-      iconTone: "bg-emerald-100 dark:bg-emerald-900/70",
-    },
-  ];
-
   return (
     <main
       className={`min-w-0 ${employeeLanguageClasses(
@@ -248,18 +203,19 @@ function EmployeeDashboardPage() {
         "space-y-5",
       )}`}
     >
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <UserRound className="size-6 text-primary" aria-hidden="true" />
+      <header className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="min-w-0">
             <h1
-              className={`min-w-0 break-words text-2xl font-bold tracking-tight sm:text-3xl ${employeeLanguageClasses(language, "", "leading-9")}`}
+              className={`min-w-0 break-words text-xl font-semibold tracking-tight sm:text-2xl ${employeeLanguageClasses(language, "", "leading-7")}`}
             >
-              {t("Employee Dashboard")}
+              {employeeName
+                ? t("Welcome, {name}", { name: employeeName })
+                : t("Employee portal")}
             </h1>
           </div>
           {profileQuery.isLoading ? (
-            <p className="mt-2 text-sm text-muted-foreground" role="status">
+            <p className="mt-1 text-sm text-muted-foreground" role="status">
               {t("Loading your profile...")}
             </p>
           ) : profileQuery.isError ? (
@@ -278,63 +234,60 @@ function EmployeeDashboardPage() {
               />
             </div>
           ) : profile ? (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              {employeeName && (
-                <p className="text-sm text-muted-foreground">
-                  {t("Welcome, {name}", { name: employeeName })}
-                </p>
-              )}
+            <div className="mt-1 flex flex-wrap items-center gap-2">
               {profile.employeeCode && (
-                <Badge variant="outline">
+                <p className="break-words text-sm text-muted-foreground">
                   {t("Employee code: {code}", { code: profile.employeeCode })}
-                </Badge>
+                </p>
               )}
             </div>
           ) : null}
         </div>
-        <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
+        <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex">
           <Button
             type="button"
-            variant="outline"
-            className={`min-h-12 w-full whitespace-normal leading-5 sm:w-auto ${employeeLanguageClasses(language, "", "h-auto py-3")}`}
-            onClick={() => navigate("/employee/attendance")}
+            className={`min-h-11 w-full whitespace-normal px-2 leading-5 sm:w-auto sm:px-4 ${employeeLanguageClasses(language, "", "h-auto py-2")}`}
+            onClick={() => navigate("/employee/jobs")}
           >
-            <CalendarClock aria-hidden="true" />
-            {t("My Attendance")}
+            <ClipboardList aria-hidden="true" className="hidden sm:inline" />
+            {t("My Jobs")}
           </Button>
           <Button
             type="button"
-            className={`min-h-12 w-full whitespace-normal leading-5 sm:w-auto ${employeeLanguageClasses(language, "", "h-auto py-3")}`}
-            onClick={() => navigate("/employee/jobs")}
+            variant="outline"
+            className={`min-h-11 w-full whitespace-normal px-2 leading-5 sm:w-auto sm:px-4 ${employeeLanguageClasses(language, "", "h-auto py-2")}`}
+            onClick={() => navigate("/employee/attendance")}
           >
-            <ClipboardList aria-hidden="true" />
-            {t("My Jobs")}
+            <CalendarClock aria-hidden="true" className="hidden sm:inline" />
+            {t("My Attendance")}
           </Button>
         </div>
       </header>
 
       <section aria-labelledby="assigned-jobs-heading">
-        <div className="mb-3 flex min-w-0 items-start gap-2">
-          <BriefcaseBusiness
-            className="size-5 text-primary"
-            aria-hidden="true"
-          />
+        <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
           <h2
             id="assigned-jobs-heading"
-            className="min-w-0 warp-break text-lg font-semibold leading-6"
+            className="min-w-0 break-words text-base font-semibold leading-6"
           >
-            {t("Currently Assigned Jobs")}11
+            {t("Currently Assigned Jobs")}
           </h2>
         </div>
 
         {performanceQuery.isLoading ? (
-          <div
-            className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4"
-            role="status"
-          >
-            {Array.from({ length: 4 }, (_, index) => (
-              <SkeletonBlock key={index} className="h-28 rounded-xl" />
-            ))}
+          <div className="rounded-lg border bg-card px-4" role="status">
+            <SkeletonBlock className="my-4 h-10 w-full" />
+            <div className="grid grid-cols-2 gap-x-5 border-t py-2 xl:grid-cols-3">
+              {Array.from(
+                { length: EMPLOYEE_JOB_STATUSES.length },
+                (_, index) => (
+                  <SkeletonBlock
+                    key={index}
+                    className="my-1 h-9 w-full"
+                  />
+                ),
+              )}
+            </div>
             <span className="sr-only">{t("Loading assigned jobs...")}</span>
           </div>
         ) : performanceQuery.isError ? (
@@ -351,52 +304,73 @@ function EmployeeDashboardPage() {
             t={t}
           />
         ) : performanceQuery.data ? (
-          <div
-            className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4"
-            aria-label={t("Currently assigned jobs by status")}
-          >
-            {summaryCards.map(
-              ({ label, count, status, Icon, tone, iconTone }) => (
-                <button
-                  key={label}
-                  type="button"
-                  aria-label={
-                    status
-                      ? t("View jobs with status: {status}", {
-                          status: employeeJobStatusLabel(status, t),
-                        })
-                      : t("View all assigned jobs")
-                  }
-                  onClick={() => navigate(getEmployeeJobsStatusHref(status))}
-                  className="group min-w-0 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
-                >
-                  <Card
-                    className={`h-full min-h-28 min-w-0 border shadow-sm transition-shadow group-hover:shadow-md ${tone}`}
+          <div className="overflow-hidden rounded-lg border bg-card">
+            <button
+              type="button"
+              aria-label={t("View all assigned jobs")}
+              onClick={() => navigate(getEmployeeJobsStatusHref())}
+              className="group flex min-h-16 w-full min-w-0 items-center justify-between gap-4 px-4 py-3 text-left transition-colors motion-reduce:transition-none hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+            >
+              <span className="min-w-0 break-words text-sm font-medium leading-5">
+                {t("Total currently assigned")}
+              </span>
+              <span className="shrink-0 text-2xl font-semibold tabular-nums tracking-tight">
+                {totalAssignedCount.toLocaleString(numberLocale)}
+              </span>
+            </button>
+
+            <div className="grid grid-cols-2 gap-x-5 border-t px-4 py-1 xl:grid-cols-3">
+              {EMPLOYEE_JOB_STATUSES.map((status) => {
+                const statusLabel = employeeJobStatusLabel(status, t);
+                const statusVariant =
+                  status === "REJECTED" || status === "CANCELLED"
+                    ? "destructive"
+                    : status === "PENDING" || status === "ON_HOLD"
+                      ? "secondary"
+                      : status === "CLOSED"
+                        ? "outline"
+                        : "default";
+                const statusDot =
+                  statusVariant === "destructive"
+                    ? "bg-destructive"
+                    : statusVariant === "secondary"
+                      ? "bg-amber-500 dark:bg-amber-400"
+                      : statusVariant === "outline"
+                        ? "bg-muted-foreground/50"
+                        : "bg-primary";
+
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    aria-label={t("View jobs with status: {status}", {
+                      status: statusLabel,
+                    })}
+                    onClick={() =>
+                      navigate(getEmployeeJobsStatusHref(status))
+                    }
+                    className="flex min-h-11 min-w-0 items-center justify-between gap-2 border-b border-border/70 py-2 text-left transition-colors motion-reduce:transition-none hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                   >
-                    <CardContent
-                      className={`flex h-full items-start justify-between gap-2 p-3 sm:items-center sm:gap-3 sm:p-5 ${employeeLanguageClasses(language, "", "sm:p-4")}`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="break-words text-sm font-medium leading-5 text-slate-600 dark:text-slate-300 [overflow-wrap:anywhere]">
-                          {t(label)}
-                        </p>
-                        <p className="mt-2 text-3xl font-bold tabular-nums">
-                          {count.toLocaleString(numberLocale)}
-                        </p>
-                      </div>
+                    <span className="flex min-w-0 flex-1 items-start gap-2">
                       <span
-                        className={`grid size-9 shrink-0 place-items-center rounded-xl sm:size-11 ${iconTone}`}
-                      >
-                        <Icon className="size-5" aria-hidden="true" />
+                        aria-hidden="true"
+                        className={`mt-1.5 size-2 shrink-0 rounded-full ${statusDot}`}
+                      />
+                      <span className="min-w-0 break-words text-sm leading-5">
+                        {statusLabel}
                       </span>
-                    </CardContent>
-                  </Card>
-                </button>
-              ),
-            )}
+                    </span>
+                    <span className="min-w-5 shrink-0 text-right text-sm font-semibold tabular-nums">
+                      {statusCounts?.[status]?.toLocaleString(numberLocale) ??
+                        "—"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         ) : (
-          <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
+          <p className="rounded-lg border border-dashed px-4 py-5 text-sm text-muted-foreground">
             {t("Assigned-job information is not available.")}
           </p>
         )}
@@ -404,25 +378,20 @@ function EmployeeDashboardPage() {
 
       <section
         aria-labelledby="completion-progress-heading"
-        className="grid min-w-0 gap-4 lg:grid-cols-5"
+        className="grid min-w-0 gap-5 border-b pb-5 xl:grid-cols-5"
       >
-        <Card className="min-w-0 shadow-sm lg:col-span-2">
-          <CardHeader className="p-4 pb-2 sm:p-5 sm:pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CheckCircle2
-                className="size-5 text-emerald-600 dark:text-emerald-400"
-                aria-hidden="true"
-              />
-              <span id="completion-progress-heading">
-                {t("Completion progress")}
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 pt-2 sm:p-5 sm:pt-2">
+        <div className="min-w-0 xl:col-span-2">
+          <h2
+            id="completion-progress-heading"
+            className="text-base font-semibold"
+          >
+            {t("Completion progress")}
+          </h2>
+          <div className="mt-3">
             {performanceQuery.isLoading ? (
               <div className="space-y-3" role="status">
                 <SkeletonBlock className="h-8 w-24" />
-                <SkeletonBlock className="h-3 w-full rounded-full" />
+                <SkeletonBlock className="h-2.5 w-full rounded-full" />
                 <SkeletonBlock className="h-4 w-3/4" />
                 <span className="sr-only">
                   {t("Loading job performance...")}
@@ -434,24 +403,21 @@ function EmployeeDashboardPage() {
               </p>
             ) : performanceQuery.data ? (
               <>
-                <div className="flex flex-wrap items-end justify-between gap-2">
-                  <p className="text-4xl font-bold tabular-nums text-blue-700 dark:text-blue-300">
-                    {t("{percent}% completed", {
-                      percent:
-                        displayedCompletionPercent.toLocaleString(numberLocale),
-                    })}
-                  </p>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    {t("{completed} of {eligible} eligible jobs completed", {
-                      completed:
-                        completedEligibleCount.toLocaleString(numberLocale),
-                      eligible:
-                        eligibleAssignedCount.toLocaleString(numberLocale),
-                    })}
-                  </p>
-                </div>
+                <p className="text-3xl font-semibold tabular-nums tracking-tight">
+                  {t("{percent}% completed", {
+                    percent:
+                      displayedCompletionPercent.toLocaleString(numberLocale),
+                  })}
+                </p>
+                <p className="mt-1 break-words text-sm text-muted-foreground">
+                  {t("{completed} of {eligible} eligible jobs completed", {
+                    completed:
+                      completedEligibleCount.toLocaleString(numberLocale),
+                    eligible: eligibleAssignedCount.toLocaleString(numberLocale),
+                  })}
+                </p>
                 <div
-                  className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
+                  className="mt-4 h-2.5 overflow-hidden rounded-full bg-muted"
                   role="progressbar"
                   aria-label={t("Completion progress")}
                   aria-valuemin={0}
@@ -459,12 +425,12 @@ function EmployeeDashboardPage() {
                   aria-valuenow={displayedCompletionPercent}
                 >
                   <div
-                    className="h-full rounded-full bg-linear-to-r from-blue-600 to-teal-500 transition-[width] duration-500 motion-reduce:transition-none"
+                    className="h-full rounded-full bg-primary transition-[width] duration-500 motion-reduce:transition-none"
                     style={{ width: `${displayedCompletionPercent}%` }}
                   />
                 </div>
                 {eligibleAssignedCount === 0 && (
-                  <p className="mt-3 text-sm text-muted-foreground">
+                  <p className="mt-2 text-sm text-muted-foreground">
                     {t("No eligible assigned jobs yet.")}
                   </p>
                 )}
@@ -474,34 +440,32 @@ function EmployeeDashboardPage() {
                 {t("Performance information is not available.")}
               </p>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card className="min-w-0 shadow-sm lg:col-span-3">
-          <CardHeader className="p-4 pb-2 sm:p-5 sm:pb-2">
-            <CardTitle className="text-base">
-              {t("Assigned vs completed")}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {t("Last seven days in Asia/Kolkata")}
-            </p>
-          </CardHeader>
-          <CardContent className="min-w-0 p-4 pt-2 sm:p-5 sm:pt-2">
+        <div className="min-w-0 border-t pt-4 xl:col-span-3 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
+          <h3 className="text-base font-semibold">
+            {t("Assigned vs completed")}
+          </h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t("Last seven days in Asia/Kolkata")}
+          </p>
+          <div className="mt-2 min-w-0">
             {performanceQuery.isLoading ? (
-              <SkeletonBlock className="h-56 w-full rounded-xl" />
+              <SkeletonBlock className="h-52 w-full" />
             ) : performanceQuery.isError ? (
-              <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
+              <p className="py-4 text-sm text-muted-foreground">
                 {t("Performance information is not available.")}
               </p>
             ) : performanceQuery.data ? (
               <>
                 {!hasWeeklyActivity && (
-                  <p className="mb-3 rounded-lg border border-dashed border-teal-200 bg-teal-50/70 p-3 text-sm text-teal-900 dark:border-teal-900 dark:bg-teal-950/30 dark:text-teal-200">
+                  <p className="mb-2 text-sm text-muted-foreground">
                     {t("No job activity in the last seven days.")}
                   </p>
                 )}
                 <div
-                  className="relative h-52 min-h-0 w-full min-w-0 sm:h-60"
+                  className="relative h-52 min-h-0 w-full min-w-0 sm:h-56"
                   role="img"
                   aria-label={t(
                     "Assigned and completed jobs for the last seven days",
@@ -518,9 +482,11 @@ function EmployeeDashboardPage() {
                         legend: {
                           position: "bottom",
                           labels: {
+                            color: chartForeground,
                             usePointStyle: true,
                             boxWidth: 8,
-                            padding: 14,
+                            padding: 8,
+                            font: { size: 12 },
                           },
                         },
                         tooltip: {
@@ -543,16 +509,25 @@ function EmployeeDashboardPage() {
                       scales: {
                         x: {
                           grid: { display: false },
+                          border: { display: false },
                           ticks: {
-                            autoSkip: false,
+                            color: chartMutedForeground,
+                            autoSkip: true,
+                            maxTicksLimit: 4,
                             maxRotation: 0,
                             minRotation: 0,
-                            font: { size: 10 },
+                            font: { size: 12 },
                           },
                         },
                         y: {
                           beginAtZero: true,
-                          ticks: { precision: 0, stepSize: 1 },
+                          grid: { color: chartBorder, drawTicks: false },
+                          border: { display: false },
+                          ticks: {
+                            color: chartMutedForeground,
+                            precision: 0,
+                            stepSize: 1,
+                          },
                         },
                       },
                     }}
@@ -568,33 +543,30 @@ function EmployeeDashboardPage() {
                 </ul>
               </>
             ) : (
-              <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
+              <p className="py-4 text-sm text-muted-foreground">
                 {t("Performance information is not available.")}
               </p>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </section>
 
       <section aria-labelledby="performance-heading">
-        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <Activity className="size-5 text-primary" aria-hidden="true" />
-              <h2 id="performance-heading" className="text-lg font-semibold">
-                {t("Job Performance")}
-              </h2>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h2 id="performance-heading" className="text-base font-semibold">
+              {t("Job Performance")}
+            </h2>
+            <p className="mt-1 break-words text-sm text-muted-foreground">
               {t(
                 "Completion submissions are events; rework may count more than once.",
               )}
             </p>
           </div>
-          <div className="w-full sm:w-48">
+          <div className="w-full sm:w-44 sm:shrink-0">
             <label
               htmlFor="performance-period"
-              className="mb-1 block text-sm font-medium"
+              className="mb-1 block text-xs font-medium text-muted-foreground"
             >
               {t("Performance period")}
             </label>
@@ -604,7 +576,7 @@ function EmployeeDashboardPage() {
               onChange={(event) =>
                 setPeriod(event.target.value as JobPerformancePeriod)
               }
-              className="h-12 w-full rounded-md border border-input bg-background px-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               {PERIODS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -635,41 +607,35 @@ function EmployeeDashboardPage() {
             t={t}
           />
         ) : performanceQuery.data ? (
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                  <Activity className="size-4" aria-hidden="true" />
+          <div className="grid gap-4 rounded-lg border bg-card p-4 sm:grid-cols-2 sm:gap-0 sm:p-0">
+            <div className="min-w-0 border-b pb-4 sm:border-b-0 sm:py-4 sm:pr-5">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">
                   {t("Completion events")}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold">
+                </p>
+                <p className="mt-2 text-3xl font-semibold tabular-nums tracking-tight">
                   {performanceQuery.data.completion.completedEventCount}
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <p className="mt-1 break-words text-sm text-muted-foreground">
                   {performanceQuery.data.completion.range.fromDate} –{" "}
                   {performanceQuery.data.completion.range.toDate} (
                   {performanceQuery.data.completion.range.timezone})
                 </p>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                  <Clock3 className="size-4" aria-hidden="true" />
+            <div className="min-w-0 sm:border-l sm:border-border/70 sm:py-4 sm:pl-5">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">
                   {t("Average current-attempt duration")}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold">
+                </p>
+                <p className="mt-2 break-words text-3xl font-semibold tabular-nums tracking-tight">
                   {formatDuration(
                     performanceQuery.data.averageCurrentAttemptCompletionHours,
                     language,
                   )}
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <p className="mt-1 break-words text-sm text-muted-foreground">
                   {t(
                     "Based on {count} currently assigned completed job(s) with valid timestamps.",
                     {
@@ -678,47 +644,31 @@ function EmployeeDashboardPage() {
                     },
                   )}
                 </p>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
         ) : (
-          <p className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
+          <p className="rounded-lg border border-dashed px-4 py-5 text-sm text-muted-foreground">
             {t("Performance information is not available.")}
           </p>
         )}
       </section>
 
       <section aria-labelledby="amc-progress-heading">
-        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-center">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <FileCheck2
-                  className="size-5 text-primary"
-                  aria-hidden="true"
-                />
-                <h2 id="amc-progress-heading" className="text-lg font-semibold">
-                  {t("AMC Progress")}
-                </h2>
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {t("Monthly AMC records assigned to you.")}
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-auto min-h-11 w-fit max-w-full whitespace-normal text-left leading-5"
-              onClick={() => navigate("/employee/amcs")}
-            >
-              {t("View AMC visits")}
-            </Button>
+        <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <h2 id="amc-progress-heading" className="text-base font-semibold">
+              {t("AMC Progress")}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t("Monthly AMC records assigned to you.")}
+            </p>
           </div>
-          <div className="grid w-full grid-cols-2 gap-3 sm:w-auto">
+          <div className="grid w-full grid-cols-2 gap-2 lg:flex lg:w-auto lg:items-end lg:gap-3">
             <div>
               <label
                 htmlFor="amc-month"
-                className="mb-1 block text-sm font-medium"
+                className="mb-1 block text-xs font-medium text-muted-foreground"
               >
                 {t("Month")}
               </label>
@@ -726,7 +676,7 @@ function EmployeeDashboardPage() {
                 id="amc-month"
                 value={amcMonth}
                 onChange={(event) => setAmcMonth(Number(event.target.value))}
-                className="h-12 w-full rounded-md border border-input bg-background px-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 lg:w-32"
               >
                 {Array.from({ length: 12 }, (_, index) => {
                   const month = index + 1;
@@ -746,7 +696,7 @@ function EmployeeDashboardPage() {
             <div>
               <label
                 htmlFor="amc-year"
-                className="mb-1 block text-sm font-medium"
+                className="mb-1 block text-xs font-medium text-muted-foreground"
               >
                 {t("Year")}
               </label>
@@ -754,7 +704,7 @@ function EmployeeDashboardPage() {
                 id="amc-year"
                 value={amcYear}
                 onChange={(event) => setAmcYear(Number(event.target.value))}
-                className="h-12 w-full rounded-md border border-input bg-background px-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 lg:w-24"
               >
                 {Array.from({ length: 6 }, (_, index) => {
                   const year = now.getFullYear() - index;
@@ -766,12 +716,20 @@ function EmployeeDashboardPage() {
                 })}
               </select>
             </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="col-span-2 h-auto min-h-11 w-full min-w-0 whitespace-normal leading-5 lg:col-span-1 lg:w-40"
+              onClick={() => navigate("/employee/amcs")}
+            >
+              {t("View AMC visits")}
+            </Button>
           </div>
         </div>
 
         {amcQuery.isLoading ? (
           <div
-            className="rounded-lg border p-5 text-sm text-muted-foreground"
+            className="rounded-lg border p-4 text-sm text-muted-foreground"
             role="status"
           >
             {t("Loading AMC progress...")}
@@ -791,7 +749,7 @@ function EmployeeDashboardPage() {
           />
         ) : amcQuery.data ? (
           amcQuery.data.pagination.total === 0 ? (
-            <div className="rounded-lg border border-dashed p-6 text-center">
+            <div className="rounded-lg border border-dashed p-4 text-center">
               <p className="font-medium">
                 {t("No AMC records for this period.")}
               </p>
@@ -811,31 +769,13 @@ function EmployeeDashboardPage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {AMC_STATUSES.map(({ value, label }) => (
-                  <Card key={value}>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">
-                        {t(label)}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-2xl font-semibold">
-                        {amcQuery.data.statusCounts[value] ?? 0}
-                      </p>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
+            <div className="rounded-lg border bg-card p-4">
+              <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">
                     {t("Monthly completion")}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-3xl font-bold">
+                  </p>
+                  <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight">
                     {(
                       ((amcQuery.data.statusCounts.COMPLETED ?? 0) /
                         amcQuery.data.pagination.total) *
@@ -845,17 +785,32 @@ function EmployeeDashboardPage() {
                     })}
                     %
                   </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {t(
-                      "{completed} completed of {total} assigned AMC record(s)",
-                      {
-                        completed: amcQuery.data.statusCounts.COMPLETED ?? 0,
-                        total: amcQuery.data.pagination.total,
-                      },
-                    )}
-                  </p>
-                </CardContent>
-              </Card>
+                </div>
+                <p className="max-w-sm break-words text-sm text-muted-foreground">
+                  {t(
+                    "{completed} completed of {total} assigned AMC record(s)",
+                    {
+                      completed: amcQuery.data.statusCounts.COMPLETED ?? 0,
+                      total: amcQuery.data.pagination.total,
+                    },
+                  )}
+                </p>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-x-5 border-t pt-2 sm:grid-cols-4">
+                {AMC_STATUSES.map(({ value, label }) => (
+                  <div
+                    key={value}
+                    className="flex min-h-14 items-center justify-between gap-2 border-b border-border/70 py-2 sm:border-b-0"
+                  >
+                    <span className="min-w-0 break-words text-sm text-muted-foreground">
+                      {t(label)}
+                    </span>
+                    <span className="shrink-0 font-semibold tabular-nums">
+                      {amcQuery.data.statusCounts[value] ?? 0}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )
         ) : (

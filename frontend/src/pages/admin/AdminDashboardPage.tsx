@@ -78,24 +78,12 @@ const sectionVariants = {
 };
 
 const metricStyles = {
-  blue: {
-    icon: "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
-    accent: "border-l-blue-500",
-    value: "text-blue-800 dark:text-blue-200",
+  neutral: {
+    icon: "bg-muted text-muted-foreground",
+    value: "text-foreground",
   },
-  cyan: {
-    icon: "bg-cyan-50 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300",
-    accent: "border-l-cyan-500",
-    value: "text-cyan-800 dark:text-cyan-200",
-  },
-  violet: {
-    icon: "bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
-    accent: "border-l-violet-500",
-    value: "text-violet-800 dark:text-violet-200",
-  },
-  amber: {
+  attention: {
     icon: "bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-    accent: "border-l-amber-500",
     value: "text-amber-800 dark:text-amber-200",
   },
 };
@@ -106,22 +94,18 @@ function DashboardMetric({
   description,
   icon: Icon,
   color,
-  reducedMotion,
 }: {
   title: string;
   value: number;
   description: string;
   icon: typeof BriefcaseBusiness;
   color: keyof typeof metricStyles;
-  reducedMotion: boolean | null;
 }) {
   const styles = metricStyles[color];
   return (
     <motion.div
       variants={metricVariants}
-      whileHover={reducedMotion ? undefined : { y: -2 }}
-      transition={{ duration: 0.16 }}
-      className={`min-w-0 rounded-xl border border-l-4 ${styles.accent} bg-card p-4 shadow-sm transition-shadow hover:shadow-md sm:p-5`}
+      className="min-w-0 rounded-xl border bg-card p-4 shadow-sm sm:p-5"
     >
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-medium text-muted-foreground">{title}</p>
@@ -129,7 +113,9 @@ function DashboardMetric({
           <Icon aria-hidden="true" className="size-5" />
         </span>
       </div>
-      <p className={`mt-4 text-3xl font-bold tracking-tight ${styles.value}`}>
+      <p
+        className={`mt-4 text-3xl font-semibold tracking-tight tabular-nums ${styles.value}`}
+      >
         {value.toLocaleString()}
       </p>
       <p className="mt-1 break-words text-sm text-muted-foreground">
@@ -166,12 +152,15 @@ function RecentActivitySkeleton() {
       aria-label="Loading recent activity"
     >
       {Array.from({ length: 4 }, (_, index) => (
-        <div key={index} className="flex items-center justify-between gap-4">
+        <div key={index} className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1 space-y-2">
             <SkeletonBlock className="h-4 w-2/3" />
             <SkeletonBlock className="h-3 w-1/2" />
           </div>
-          <SkeletonBlock className="h-8 w-16 shrink-0" />
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <SkeletonBlock className="h-5 w-20" />
+            <SkeletonBlock className="h-5 w-14" />
+          </div>
         </div>
       ))}
     </div>
@@ -345,28 +334,28 @@ export default function AdminDashboardPage() {
       value: data.jobs.total,
       description: `${data.jobs.pending.toLocaleString()} pending`,
       icon: BriefcaseBusiness,
-      color: "blue",
+      color: "neutral",
     },
     {
       title: "Total ATMs",
       value: data.atms.total,
       description: `${data.atms.active.toLocaleString()} active`,
       icon: Monitor,
-      color: "cyan",
+      color: "neutral",
     },
     {
       title: "Employees",
       value: data.employees.total,
       description: `${data.employees.workingToday.toLocaleString()} working today`,
       icon: Users,
-      color: "violet",
+      color: "neutral",
     },
     {
       title: "Open Complaints",
       value: data.complaints.open,
       description: `${data.complaints.criticalOpen.toLocaleString()} critical`,
       icon: AlertTriangle,
-      color: "amber",
+      color: "attention",
     },
   ] as const;
 
@@ -378,10 +367,10 @@ export default function AdminDashboardPage() {
       className="min-w-0 space-y-6 p-4 sm:p-6 lg:p-8"
     >
       <header>
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+        <p className="text-sm font-medium text-muted-foreground">
           Operations overview
         </p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
           Dashboard
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -394,7 +383,7 @@ export default function AdminDashboardPage() {
         variants={metricContainerVariants}
         initial={reducedMotion ? false : "hidden"}
         animate="visible"
-        className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4"
+        className="grid min-w-0 grid-cols-2 gap-3 lg:grid-cols-4"
       >
         {cards.map((card) => (
           <DashboardMetric
@@ -404,7 +393,6 @@ export default function AdminDashboardPage() {
             description={card.description}
             icon={card.icon}
             color={card.color}
-            reducedMotion={reducedMotion}
           />
         ))}
       </motion.section>
@@ -419,7 +407,6 @@ export default function AdminDashboardPage() {
           variants={sectionVariants}
           initial={reducedMotion ? false : "hidden"}
           animate="visible"
-          whileHover={reducedMotion ? undefined : { y: -1 }}
           className="min-w-0 lg:col-span-2"
         >
           <Card className="min-w-0 border-t-2 border-t-amber-400 shadow-sm">
@@ -460,7 +447,6 @@ export default function AdminDashboardPage() {
           variants={sectionVariants}
           initial={reducedMotion ? false : "hidden"}
           animate="visible"
-          whileHover={reducedMotion ? undefined : { y: -1 }}
           className="min-w-0 lg:col-span-2"
         >
           <Card className="min-w-0 border-t-2 border-t-rose-400 shadow-sm">
@@ -496,7 +482,7 @@ export default function AdminDashboardPage() {
           variants={sectionVariants}
           initial={reducedMotion ? false : "hidden"}
           animate="visible"
-          className="min-w-0 md:col-span-1 lg:col-span-4"
+          className="min-w-0 md:col-span-2 lg:col-span-4"
         >
           <JobTrendsChart />
         </motion.div>
@@ -505,7 +491,7 @@ export default function AdminDashboardPage() {
           variants={sectionVariants}
           initial={reducedMotion ? false : "hidden"}
           animate="visible"
-          className="min-w-0 md:col-span-1 lg:col-span-4"
+          className="min-w-0 md:col-span-2 lg:col-span-4"
         >
           <EmployeePerformance />
         </motion.div>
@@ -548,13 +534,13 @@ export default function AdminDashboardPage() {
                   {activityData.activities.map((activity) => (
                     <div
                       key={`${activity.type}-${activity.id}`}
-                      className="flex min-w-0 items-center justify-between gap-3 py-3 sm:gap-4 sm:py-4"
+                      className="flex min-w-0 items-start justify-between gap-3 py-3 sm:gap-4 sm:py-4"
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">
+                        <p className="break-words text-sm font-medium">
                           {activity.title}
                         </p>
-                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                        <p className="mt-1 whitespace-normal break-words text-xs text-muted-foreground">
                           {activity.atmName}
                           {activity.employeeName
                             ? ` · ${activity.employeeName}`
@@ -568,9 +554,12 @@ export default function AdminDashboardPage() {
                         >
                           {activity.status.replaceAll("_", " ")}
                         </Badge>
-                        <span className="text-xs text-muted-foreground">
+                        <Badge
+                          variant="outline"
+                          className="border-border bg-muted/60 text-foreground"
+                        >
                           {activity.priority}
-                        </span>
+                        </Badge>
                       </div>
                     </div>
                   ))}
