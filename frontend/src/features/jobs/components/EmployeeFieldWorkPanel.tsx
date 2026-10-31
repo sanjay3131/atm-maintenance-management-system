@@ -765,13 +765,13 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
   };
 
   return (
-    <Card className="min-w-0 overflow-hidden rounded-xl border-blue-100 shadow-sm dark:border-blue-950">
+    <Card className="min-w-0 overflow-hidden border-0 shadow-none">
       <CardHeader className={`min-w-0 ${employeeLanguageClasses(language, "p-4 pb-3 sm:p-5", "p-3 pb-2 sm:p-4")}`}>
         <CardTitle>{t("Field Work")}</CardTitle>
       </CardHeader>
       <CardContent className={`min-w-0 ${employeeLanguageClasses(language, "space-y-4 p-4 pt-0 sm:p-5 sm:pt-0", "space-y-3 p-3 pt-0 sm:p-4 sm:pt-0")}`}>
         <section
-          className="min-w-0 space-y-3 rounded-lg bg-teal-50/60 p-3 dark:bg-teal-950/20"
+          className="min-w-0 space-y-3 rounded-lg border border-border bg-accent/20 p-3 sm:p-4"
           aria-labelledby="job-gps-heading"
         >
           <div>
@@ -820,7 +820,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
           )}
           {gps && (
             <div
-              className="min-w-0 break-words rounded-md border bg-muted/30 p-3 text-sm"
+              className="min-w-0 break-words rounded-md bg-background/70 p-3 text-sm"
               role="status"
             >
               <p className="break-words leading-6 [overflow-wrap:anywhere]">{t("Location acquired · accuracy ±{accuracy} m", { accuracy: Math.round(gps.accuracy) })}</p>
@@ -828,7 +828,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                 <p
                   className={
                     withinRadius
-                      ? "mt-1 font-medium text-emerald-700"
+                      ? "mt-1 font-medium text-emerald-700 dark:text-emerald-300"
                       : "mt-1 font-medium text-destructive"
                   }
                 >
@@ -872,7 +872,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
           )}
         </section>
 
-        <section className="min-w-0 space-y-4 border-t border-slate-200 pt-4 dark:border-slate-800">
+        <section className="min-w-0 space-y-4 border-t border-border pt-4">
           <div>
             <h2 className="text-sm font-semibold">{t("Cleaning photos")}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -896,7 +896,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
             return (
               <section
                 key={type}
-                className="min-w-0 space-y-3 rounded-lg border p-3 sm:p-4"
+                className="min-w-0 space-y-3 rounded-lg border border-border bg-muted/20 p-3 sm:p-4"
                 aria-labelledby={`${type}-photos-heading`}
               >
                 <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-2">
@@ -953,7 +953,11 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                     <Button
                       type="button"
                       variant="outline"
-                      className="min-h-11 w-full sm:w-auto"
+                      className={employeeLanguageClasses(
+                        language,
+                        "min-h-11 w-full sm:w-auto",
+                        "min-h-11 h-auto min-w-0 w-full whitespace-normal [overflow-wrap:anywhere] px-2 py-2 leading-5 sm:w-auto",
+                      )}
                       disabled={!canSelectMore || isUploading}
                       onClick={() => cameraInputRefs.current[type]?.click()}
                     >
@@ -963,7 +967,11 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                     <Button
                       type="button"
                       variant="outline"
-                      className="min-h-11 w-full sm:w-auto"
+                      className={employeeLanguageClasses(
+                        language,
+                        "min-h-11 w-full sm:w-auto",
+                        "min-h-11 h-auto min-w-0 w-full whitespace-normal [overflow-wrap:anywhere] px-2 py-2 leading-5 sm:w-auto",
+                      )}
                       disabled={!canSelectMore || isUploading}
                       onClick={() => pickerInputRefs.current[type]?.click()}
                     >
@@ -996,7 +1004,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                   </p>
                 )}
                 {status === "uploaded" && (
-                  <p className="flex items-center gap-2 text-sm font-medium text-emerald-700">
+                  <p className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
                     <Check className="size-4 shrink-0" aria-hidden="true" />
                     {t("{type} photos uploaded successfully.", { type: pickerLabel })}
                   </p>
@@ -1048,6 +1056,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
           <JobPhotoGallery
             beforePhotos={job.beforePhotos}
             afterPhotos={job.afterPhotos}
+            compact
           />
 
           <AnimatePresence>
@@ -1057,7 +1066,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={reducedMotion ? undefined : { opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="relative overflow-hidden rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-900"
+                className="relative overflow-hidden rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100"
                 role="status"
                 aria-live="polite"
               >
@@ -1091,7 +1100,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
           </AnimatePresence>
         </section>
 
-        <div className="flex min-w-0 flex-col gap-3 border-t pt-5 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="flex min-w-0 flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:flex-wrap sm:items-center">
           {evidenceComplete && (
             <motion.div
               initial={reducedMotion ? false : { opacity: 0, y: 6 }}

@@ -159,13 +159,13 @@ export default function EmployeeMaterialUsageSection({
   return (
     <>
       {canRecord && (
-        <Card className="min-w-0 overflow-hidden">
-          <CardHeader className={employeeLanguageClasses(language, "p-4 sm:p-6", "p-3 sm:p-4")}>
+        <Card className="min-w-0 overflow-hidden border-0 shadow-none">
+          <CardHeader className={employeeLanguageClasses(language, "p-4 pb-3 sm:p-5 sm:pb-3", "p-3 pb-2 sm:p-4 sm:pb-2")}>
             <CardTitle>{t("Record materials used")}</CardTitle>
           </CardHeader>
-          <CardContent className={employeeLanguageClasses(language, "min-w-0 space-y-5 p-4 pt-0 sm:p-6 sm:pt-0", "min-w-0 space-y-4 p-3 pt-0 sm:p-4 sm:pt-0")}>
+          <CardContent className={employeeLanguageClasses(language, "min-w-0 space-y-4 p-4 pt-0 sm:p-5 sm:pt-0", "min-w-0 space-y-3 p-3 pt-0 sm:p-4 sm:pt-0")}>
             <form
-              className={`grid min-w-0 gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(8rem,0.4fr)_auto] sm:items-end sm:p-4 ${employeeLanguageClasses(language, "", "sm:grid-cols-1")}`}
+              className={`grid min-w-0 gap-3 rounded-lg bg-muted/30 p-3 sm:p-4 2xl:grid-cols-[minmax(0,1fr)_minmax(8rem,0.4fr)_auto] 2xl:items-end ${employeeLanguageClasses(language, "", "2xl:grid-cols-1")}`}
               onSubmit={recordMaterial}
             >
               <div className="min-w-0 space-y-2">
@@ -212,10 +212,19 @@ export default function EmployeeMaterialUsageSection({
                   >
                     <SelectTrigger
                       id={`material-item-${job._id}`}
-                      className="min-h-11 w-full"
+                      className={employeeLanguageClasses(
+                        language,
+                        "min-h-11 w-full",
+                        "min-h-11 h-auto min-w-0 w-full whitespace-normal data-[size=default]:h-auto",
+                      )}
                       aria-label={t("Active Item")}
                     >
                       <SelectValue
+                        className={employeeLanguageClasses(
+                          language,
+                          "",
+                          "min-w-0 whitespace-normal [overflow-wrap:anywhere] line-clamp-none",
+                        )}
                         placeholder={
                           (itemsQuery.data?.length ?? 0) > 0
                             ? t("Select an Item")
@@ -323,19 +332,19 @@ export default function EmployeeMaterialUsageSection({
         </div>
       )}
       {showUsage && (
-        <Card className="min-w-0 overflow-hidden">
+        <Card className="min-w-0 overflow-hidden border-0 shadow-none">
           <CardHeader className={employeeLanguageClasses(language, "p-4 sm:p-6", "p-3 sm:p-4")}>
             <CardTitle>{t("Materials Used")}</CardTitle>
           </CardHeader>
           <CardContent className={employeeLanguageClasses(language, "min-w-0 p-4 pt-0 sm:p-6 sm:pt-0", "min-w-0 p-3 pt-0 sm:p-4 sm:pt-0")}>
             <section aria-label={t("Recorded materials")} aria-live="polite">
-              <ul className="divide-y rounded-md border">
+              <ul className="divide-y border-y border-border">
                 {usageEntries.map((entry) => {
                   const recordedAt = formatRecordedAt(entry.createdAt, language);
                   return (
                     <li
                       key={entry._id}
-                      className={`flex min-w-0 flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between ${employeeLanguageClasses(language, "", "sm:items-start")}`}
+                      className={`flex min-w-0 flex-col gap-2 py-3 first:pt-2 last:pb-2 sm:flex-row sm:items-center sm:justify-between ${employeeLanguageClasses(language, "", "sm:items-start")}`}
                     >
                       <p className="min-w-0 break-words text-sm font-medium">
                         {entry.itemNameSnapshot}
@@ -352,6 +361,7 @@ export default function EmployeeMaterialUsageSection({
                             type="button"
                             variant="ghost"
                             size="icon"
+                            className="size-11 shrink-0"
                             aria-label={t("Remove {item} usage", { item: entry.itemNameSnapshot })}
                             onClick={() =>
                               setUsageToRemove({

@@ -35,6 +35,7 @@ function PhotoSection({
   reducedMotion,
   t,
   language,
+  compact,
 }: {
   title: string;
   photoType: PhotoSide;
@@ -43,6 +44,7 @@ function PhotoSection({
   reducedMotion: boolean | null;
   t: ReturnType<typeof useEmployeeLanguage>["t"];
   language: "ta" | "en";
+  compact: boolean;
 }) {
   const availablePhotos = (photos ?? []).flatMap((photo, index) =>
     photo && photo.photoType === photoType && getPhotoUrl(photo)
@@ -51,25 +53,31 @@ function PhotoSection({
   );
 
   return (
-    <Card className="min-w-0">
-      <CardHeader className="flex flex-row items-center justify-between gap-2 p-4 sm:p-6">
+    <Card className={`min-w-0 ${compact ? "border-0 bg-transparent py-0 shadow-none" : ""}`}>
+      <CardHeader
+        className={
+          compact
+            ? "flex flex-row items-center justify-between gap-2 p-0 pb-3"
+            : "flex flex-row items-center justify-between gap-2 p-4 sm:p-6"
+        }
+      >
         <CardTitle className="text-base">{title}</CardTitle>
         <span className="shrink-0 text-sm text-muted-foreground">
           {t("{count} / 3 required", { count: availablePhotos.length })}
         </span>
       </CardHeader>
-      <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+      <CardContent className={compact ? "p-0" : "p-4 pt-0 sm:p-6 sm:pt-0"}>
         {availablePhotos.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("No photos uploaded.")}</p>
         ) : (
-          <div className="grid grid-cols-2 gap-2 min-[400px]:gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-2 min-[400px]:gap-3 2xl:grid-cols-3">
             {availablePhotos.map(({ photo, index }) => (
               <motion.figure
                 key={photo._id}
                 initial={reducedMotion ? false : { opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.18 }}
-                className="min-w-0 overflow-hidden rounded-md border"
+                className="min-w-0 overflow-hidden rounded-md border border-border"
               >
                 <button
                   type="button"
@@ -100,9 +108,11 @@ function PhotoSection({
 export default function JobPhotoGallery({
   beforePhotos = EMPTY_PHOTOS,
   afterPhotos = EMPTY_PHOTOS,
+  compact = false,
 }: {
   beforePhotos?: Array<JobPhoto | null>;
   afterPhotos?: Array<JobPhoto | null>;
+  compact?: boolean;
 }) {
   const { t, language } = useEmployeeLanguage();
   const reducedMotion = useReducedMotion();
@@ -201,7 +211,7 @@ export default function JobPhotoGallery({
 
   return (
     <section
-      className="grid min-w-0 gap-4 lg:grid-cols-2"
+      className="grid min-w-0 gap-4 2xl:grid-cols-2"
       aria-label={t("Job photos")}
     >
       <PhotoSection
@@ -212,6 +222,7 @@ export default function JobPhotoGallery({
         reducedMotion={reducedMotion}
         t={t}
         language={language}
+        compact={compact}
       />
       <PhotoSection
         title={t("After photos")}
@@ -221,6 +232,7 @@ export default function JobPhotoGallery({
         reducedMotion={reducedMotion}
         t={t}
         language={language}
+        compact={compact}
       />
 
       <Dialog

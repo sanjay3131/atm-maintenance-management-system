@@ -186,8 +186,10 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
 
   return (
     <div className="flex flex-col gap-1 border-b py-3 last:border-b-0 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="break-words text-sm font-medium sm:max-w-[65%] sm:text-right">
+      <dt className="min-w-0 break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
+        {label}
+      </dt>
+      <dd className="min-w-0 break-words text-sm font-medium [overflow-wrap:anywhere] sm:max-w-[65%] sm:text-right">
         {value === NOT_AVAILABLE ? t("Not available") : value}
       </dd>
     </div>
@@ -210,24 +212,45 @@ function EmployeeDisclosure({
   return (
     <details
       id={id}
-      className="group min-w-0 rounded-xl border border-slate-200 bg-white px-3 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+      className="group min-w-0 rounded-xl border border-border bg-card px-3"
     >
-      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 py-2 text-sm font-semibold marker:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 py-2 text-sm font-semibold marker:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span>{title}</span>
         <ChevronDown
           className="size-4 shrink-0 text-slate-500 transition-transform group-open:rotate-180"
           aria-hidden="true"
         />
       </summary>
-      <div className="border-t border-slate-100 pb-3 pt-3 dark:border-slate-800">
+      <div className="min-w-0 border-t border-border pb-3 pt-3">
         {children}
       </div>
     </details>
   );
 }
 
-function DetailsSkeleton() {
+function DetailsSkeleton({ readOnly }: { readOnly: boolean }) {
   const { t } = useEmployeeLanguage();
+
+  if (readOnly) {
+    return (
+      <div
+        className="mx-auto w-full max-w-6xl space-y-4 px-3 pb-32 pt-3 sm:px-5 lg:px-8"
+        role="status"
+      >
+        <div className="h-64 animate-pulse rounded-2xl border bg-muted/40 sm:h-56" />
+        <div className="h-24 animate-pulse rounded-xl border bg-muted/40" />
+        <div className="grid gap-3 lg:grid-cols-2">
+          {Array.from({ length: 6 }, (_, index) => (
+            <div
+              key={index}
+              className="h-12 animate-pulse rounded-xl border bg-muted/40"
+            />
+          ))}
+        </div>
+        <p className="sr-only">{t("Loading job details...")}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 p-6" role="status">
@@ -302,7 +325,7 @@ export default function JobDetailsPage({
     getRawATMId(job),
     !readOnly,
   );
-  if (isLoading) return <DetailsSkeleton />;
+  if (isLoading) return <DetailsSkeleton readOnly={readOnly} />;
 
   if (isError || !job) {
     const isNotFound = isAxiosError(error) && error.response?.status === 404;
@@ -311,12 +334,18 @@ export default function JobDetailsPage({
       : undefined;
 
     return (
-      <div className="p-6">
+      <div
+        className={
+          readOnly
+            ? "mx-auto w-full max-w-6xl space-y-4 px-3 pb-8 pt-3 sm:px-5 lg:px-8"
+            : "p-6"
+        }
+      >
         <Button variant="ghost" onClick={() => navigate(backPath)}>
           <ArrowLeft />
           {t("Back to Jobs")}
         </Button>
-        <div className="mt-6 max-w-2xl rounded-lg border border-destructive/30 bg-destructive/5 p-6">
+        <div className="max-w-2xl rounded-lg border border-destructive/30 bg-destructive/5 p-4 sm:p-6">
           <h1 className="font-semibold text-destructive">
             {t(isNotFound ? "Job not found" : "Job details unavailable")}
           </h1>
@@ -513,7 +542,7 @@ export default function JobDetailsPage({
     <div
       className={
         readOnly
-          ? `mx-auto min-w-0 max-w-[430px] pb-28 pt-3 ${employeeLanguageClasses(language, "space-y-4 bg-slate-100 px-3 dark:bg-background sm:px-4", "space-y-3 bg-slate-50 px-2 dark:bg-background sm:px-3")}`
+            ? `mx-auto w-full min-w-0 max-w-6xl pb-32 pt-3 ${employeeLanguageClasses(language, "space-y-4 px-3 sm:px-5 lg:px-8", "space-y-3 px-3 sm:px-5 lg:px-8")}`
           : "space-y-6 p-6"
       }
     >
@@ -681,31 +710,31 @@ export default function JobDetailsPage({
       )}
 
       {readOnly && (
-        <Card className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <CardHeader className="space-y-3 p-4 pb-3">
-            <div className="flex items-start justify-between gap-3">
+        <Card className="min-w-0 overflow-hidden rounded-2xl border-border bg-card shadow-sm">
+          <CardHeader className="space-y-4 p-4 pb-3 sm:p-6 sm:pb-4">
+            <div className="grid min-w-0 gap-2 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:items-start">
               <div className="min-w-0">
-                <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">
+                <p className="break-words text-xs font-medium tracking-wide text-muted-foreground [overflow-wrap:anywhere]">
                   {t("Job ID")}: {formatValue(job.jobId)}
                   {job.jobNumber && job.jobNumber !== job.jobId && ` · ${job.jobNumber}`}
                 </p>
-                <CardTitle className="mt-1 break-words text-lg font-bold leading-6 text-slate-900">
+                <CardTitle className="mt-1 break-words text-xl font-semibold leading-6 tracking-tight text-card-foreground [overflow-wrap:anywhere]">
                   {job.title}
                 </CardTitle>
               </div>
               <Badge
                 variant={getStatusVariant(job.status)}
-                className="max-w-full shrink-0 whitespace-normal rounded-full px-2.5 py-1 text-center text-[11px] font-semibold leading-4 [overflow-wrap:anywhere]"
+                className="max-w-full whitespace-normal rounded-full px-2.5 py-1 text-center text-xs font-semibold leading-4 [overflow-wrap:anywhere] min-[420px]:justify-self-end"
               >
                 {employeeJobStatusLabel(job.status, t)}
               </Badge>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Badge className="max-w-full whitespace-normal rounded-full bg-slate-100 px-2.5 py-1 text-center text-[11px] leading-4 text-slate-700 [overflow-wrap:anywhere]">
+              <Badge className="max-w-full whitespace-normal rounded-full bg-muted px-2.5 py-1 text-center text-xs leading-4 text-muted-foreground [overflow-wrap:anywhere]">
                 {localize(formatJobWorkType(job.workType))}
               </Badge>
               {job.workType === "ac" && (
-                <Badge className="max-w-full whitespace-normal rounded-full bg-blue-50 px-2.5 py-1 text-center text-[11px] leading-4 text-blue-700 [overflow-wrap:anywhere]">
+                <Badge className="max-w-full whitespace-normal rounded-full bg-primary/10 px-2.5 py-1 text-center text-xs leading-4 text-primary [overflow-wrap:anywhere]">
                   {localize(formatAcSubType(job.acSubType))}
                 </Badge>
               )}
@@ -723,27 +752,27 @@ export default function JobDetailsPage({
               </Badge>
             </div>
           </CardHeader>
-          <CardContent className="space-y-3 p-4 pt-0">
-            <div className="rounded-xl bg-slate-50 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+          <CardContent className="grid min-w-0 gap-3 p-4 pt-0 sm:p-6 sm:pt-0 xl:grid-cols-2">
+            <div className="min-w-0 rounded-xl bg-muted/50 p-3 sm:p-4">
+              <p className="text-xs font-semibold tracking-wide text-muted-foreground">
                 {t("ATM")}
               </p>
-              <p className="mt-1 min-w-0 break-words text-sm font-semibold leading-6 text-slate-800 [overflow-wrap:anywhere]">
+              <p className="mt-1 min-w-0 break-words text-sm font-semibold leading-6 text-card-foreground [overflow-wrap:anywhere]">
                 {formatValue(atm?.atmId)}
                 {atm?.locationName && ` · ${atm.locationName}`}
               </p>
               {atm?.address && (
-                <p className="mt-1 min-w-0 break-words text-xs leading-5 text-slate-600 [overflow-wrap:anywhere]">
+                <p className="mt-1 min-w-0 break-words text-sm leading-5 text-muted-foreground [overflow-wrap:anywhere]">
                   {atm.address}
                 </p>
               )}
             </div>
             {job.description && (
-              <section className="rounded-xl border border-slate-200 bg-white p-3">
-                <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+              <section className="min-w-0 rounded-xl border border-border p-3 sm:p-4">
+                <h2 className="text-xs font-semibold tracking-wide text-muted-foreground">
                   {t("Description")}
                 </h2>
-                <p className="mt-2 min-w-0 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700 [overflow-wrap:anywhere]">
+                <p className="mt-2 min-w-0 whitespace-pre-wrap break-words text-sm leading-6 text-card-foreground [overflow-wrap:anywhere]">
                   {job.description}
                 </p>
               </section>
@@ -753,7 +782,7 @@ export default function JobDetailsPage({
       )}
 
       {readOnly && employeeScreen === "accepted" && job.acceptedAt && (
-        <div className="flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2.5 text-sm text-teal-900">
+        <div className="flex items-center gap-2 rounded-xl border border-border bg-accent/50 px-3 py-2.5 text-sm text-accent-foreground">
           <Check className="size-4 shrink-0" aria-hidden="true" />
           <span>
             {t("Accepted on")}: {formatDate(job.acceptedAt, language)}
@@ -762,18 +791,18 @@ export default function JobDetailsPage({
       )}
 
       {readOnly && employeeScreen === "in-progress" && (
-        <Card className="overflow-hidden rounded-2xl border-blue-100 bg-white shadow-sm dark:border-blue-950">
-          <CardContent className="space-y-3 p-4">
+        <Card className="overflow-hidden rounded-xl border-border bg-card shadow-none">
+          <CardContent className="space-y-3 p-4 sm:p-5">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+              <h2 className="text-sm font-semibold text-card-foreground">
                 {t("Fieldwork progress")}
               </h2>
-              <span className="text-xs font-semibold tabular-nums text-slate-600 dark:text-slate-300">
+              <span className="text-xs font-semibold tabular-nums text-muted-foreground">
                 {fieldworkProgress.uploaded}/{fieldworkProgress.required}
               </span>
             </div>
             <div
-              className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"
+              className="h-2 overflow-hidden rounded-full bg-muted"
               role="progressbar"
               aria-label={t("Fieldwork progress")}
               aria-valuemin={0}
@@ -798,7 +827,7 @@ export default function JobDetailsPage({
               ].map(({ label, count }) => (
                 <div
                   key={label}
-                  className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900"
+                  className="rounded-lg bg-muted/50 px-3 py-2"
                 >
                   <p className="text-xs text-muted-foreground">{label}</p>
                   <p className="mt-0.5 text-sm font-semibold tabular-nums">
@@ -812,13 +841,13 @@ export default function JobDetailsPage({
       )}
 
       {readOnly && isCompleted && (
-        <Card className="overflow-hidden rounded-2xl border-teal-200 bg-white shadow-sm dark:border-teal-950">
+        <Card className="overflow-hidden rounded-xl border-border bg-card shadow-none">
           <CardContent className="flex items-start gap-3 p-4">
-            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300">
+            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-accent text-accent-foreground">
               <Check className="size-4" aria-hidden="true" />
             </span>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+              <p className="text-sm font-semibold text-card-foreground">
                 {employeeJobStatusLabel(job.status, t)}
               </p>
               <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -831,8 +860,8 @@ export default function JobDetailsPage({
       )}
 
       {readOnly && employeeScreen !== "other" && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
-          <div className="mx-auto max-w-[430px]">
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] shadow-[0_-4px_16px_rgba(15,23,42,0.06)] backdrop-blur">
+          <div className="mx-auto w-full max-w-2xl">
             {employeeScreen === "assigned" && (
               <Button
                 type="button"
@@ -884,7 +913,7 @@ export default function JobDetailsPage({
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-auto min-h-12 w-full min-w-0 whitespace-normal rounded-xl border-teal-700 px-2 py-2 text-center leading-5 text-teal-800"
+                  className="h-auto min-h-12 w-full min-w-0 whitespace-normal rounded-xl border-border px-2 py-2 text-center leading-5"
                   disabled={lifecycleMutationPending}
                   onClick={() =>
                     runLifecycleAction(holdMutation, t("Job put on hold."))
@@ -903,7 +932,7 @@ export default function JobDetailsPage({
               <Button
                 type="button"
                 variant="outline"
-                className="min-h-12 w-full rounded-xl border-blue-200 text-blue-800"
+                className="min-h-12 w-full rounded-xl"
                 onClick={() => navigate(backPath)}
               >
                 <ArrowLeft aria-hidden="true" />
@@ -934,7 +963,7 @@ export default function JobDetailsPage({
         )
       )}
 
-      {readOnly && <div className="grid gap-3 lg:grid-cols-2">
+      {readOnly && <div className="grid min-w-0 gap-3 lg:grid-cols-2">
         {!readOnly && (
           <Card>
             <CardHeader>
@@ -1257,6 +1286,7 @@ export default function JobDetailsPage({
             <JobPhotoGallery
               beforePhotos={job.beforePhotos}
               afterPhotos={job.afterPhotos}
+              compact={readOnly}
             />
           </EmployeeDisclosure>
         )}
