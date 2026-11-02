@@ -36,6 +36,7 @@ function PhotoSection({
   t,
   language,
   compact,
+  showCounts,
 }: {
   title: string;
   photoType: PhotoSide;
@@ -45,6 +46,7 @@ function PhotoSection({
   t: ReturnType<typeof useEmployeeLanguage>["t"];
   language: "ta" | "en";
   compact: boolean;
+  showCounts: boolean;
 }) {
   const availablePhotos = (photos ?? []).flatMap((photo, index) =>
     photo && photo.photoType === photoType && getPhotoUrl(photo)
@@ -62,9 +64,11 @@ function PhotoSection({
         }
       >
         <CardTitle className="text-base">{title}</CardTitle>
-        <span className="shrink-0 text-sm text-muted-foreground">
-          {t("{count} / 3 required", { count: availablePhotos.length })}
-        </span>
+        {showCounts && (
+          <span className="shrink-0 text-sm text-muted-foreground">
+            {t("{count} / 3 required", { count: availablePhotos.length })}
+          </span>
+        )}
       </CardHeader>
       <CardContent className={compact ? "p-0" : "p-4 pt-0 sm:p-6 sm:pt-0"}>
         {availablePhotos.length === 0 ? (
@@ -109,10 +113,12 @@ export default function JobPhotoGallery({
   beforePhotos = EMPTY_PHOTOS,
   afterPhotos = EMPTY_PHOTOS,
   compact = false,
+  showCounts = true,
 }: {
   beforePhotos?: Array<JobPhoto | null>;
   afterPhotos?: Array<JobPhoto | null>;
   compact?: boolean;
+  showCounts?: boolean;
 }) {
   const { t, language } = useEmployeeLanguage();
   const reducedMotion = useReducedMotion();
@@ -223,6 +229,7 @@ export default function JobPhotoGallery({
         t={t}
         language={language}
         compact={compact}
+        showCounts={showCounts}
       />
       <PhotoSection
         title={t("After photos")}
@@ -233,6 +240,7 @@ export default function JobPhotoGallery({
         t={t}
         language={language}
         compact={compact}
+        showCounts={showCounts}
       />
 
       <Dialog

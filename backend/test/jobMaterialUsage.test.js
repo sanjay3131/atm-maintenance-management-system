@@ -29,6 +29,7 @@ const employeeId = "64b000000000000000000084";
 const adminId = "64b000000000000000000085";
 const otherUserId = "64b000000000000000000086";
 const atmId = "64b000000000000000000087";
+const usageId = "64b000000000000000000088";
 
 const makeJob = (updates = {}) => ({
   _id: jobId,
@@ -143,12 +144,12 @@ async function withCreateMocks(
     assert.deepEqual(
       filter,
       isAdmin
-        ? { _id: jobId, status: job.status, isDeleted: false }
+        ? { _id: jobId, status: job.status, isDeleted: { $ne: true } }
         : {
             _id: jobId,
             assignedEmployeeId: userId,
             status: "IN_PROGRESS",
-            isDeleted: false,
+            isDeleted: { $ne: true },
           },
     );
     assert.deepEqual(update, { $inc: { materialUsageRevision: 1 } });
@@ -393,6 +394,39 @@ test("assigned employee can record material usage using server-derived immutable
     assert.equal(session.ended, true);
     assert.equal(job.materialUsageRevision, 1);
   });
+});
+
+test("legacy active Jobs with missing or null isDeleted support material mutations", async () => {
+  for (const isDeleted of [undefined, null]) {
+    const job = makeJob();
+    if (isDeleted === null) job.isDeleted = null;
+    else delete job.isDeleted;
+
+    await withCreateMocks({ job }, async ({ createdUsage }) => {
+      await invoke(
+        createJobMaterialUsage,
+        request({ _id: userId, userType: "employee" }),
+      );
+      assert.ok(createdUsage());
+    });
+
+    await withDeleteMocks(
+      {
+        job,
+        usageEntries: [{ _id: usageId, jobId }],
+      },
+      async () => {
+        const result = await invoke(
+          deleteJobMaterialUsage,
+          {
+            ...request({ _id: userId, userType: "employee" }),
+            params: { id: jobId, usageId },
+          },
+        );
+        assert.equal(result.status, 200);
+      },
+    );
+  }
 });
 
 test("Admin and SuperAdmin can add material at every Job status", async (t) => {

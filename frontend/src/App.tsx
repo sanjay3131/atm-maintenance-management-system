@@ -28,6 +28,7 @@ import EditATMPage from "@/pages/admin/EditATMPage";
 import JobDetailsPage from "@/pages/admin/JobDetailsPage";
 import RecurringMaintenancePage from "@/pages/admin/RecurringMaintenancePage";
 import EmployeeJobsPage from "@/pages/employee/EmployeeJobsPage";
+import EmployeeJobDetailsView from "@/pages/employee/EmployeeJobDetailsView";
 import EmployeeAMCsPage from "@/pages/employee/EmployeeAMCsPage";
 import EmployeeAMCDetailsPage from "@/pages/employee/EmployeeAMCDetailsPage";
 import EmployeeAttendancePage from "@/pages/employee/EmployeeAttendancePage";
@@ -183,7 +184,7 @@ export default function App() {
             />
             <Route
               path="/employee/jobs/:jobId"
-              element={<JobDetailsPage readOnly backPath="/employee/jobs" />}
+              element={<EmployeeJobDetailsView />}
             />
           </Route>
         </Route>

@@ -87,14 +87,14 @@ export const createJobMaterialUsage = asyncHandler(async (req, res) => {
         jobFilter = {
           _id: jobId,
           status: statusAtRequest,
-          isDeleted: false,
+          isDeleted: { $ne: true },
         };
       } else {
         jobFilter = {
           _id: jobId,
           assignedEmployeeId: req.user._id,
           status: JOB_STATUS.IN_PROGRESS,
-          isDeleted: false,
+          isDeleted: { $ne: true },
         };
       }
 
@@ -220,12 +220,12 @@ export const deleteJobMaterialUsage = asyncHandler(async (req, res) => {
   try {
     await session.withTransaction(async () => {
       const jobFilter = isAdmin
-        ? { _id: jobId, isDeleted: false }
+        ? { _id: jobId, isDeleted: { $ne: true } }
         : {
             _id: jobId,
             assignedEmployeeId: req.user._id,
             status: JOB_STATUS.IN_PROGRESS,
-            isDeleted: false,
+            isDeleted: { $ne: true },
           };
       const jobUpdate = await Job.updateOne(
         jobFilter,

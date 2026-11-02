@@ -84,6 +84,11 @@ const jobSchema = new mongoose.Schema(
       default: 0,
       select: false,
     },
+    materialUsageRefreshEpoch: {
+      type: Number,
+      default: 0,
+      select: false,
+    },
     assignedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

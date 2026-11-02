@@ -319,9 +319,11 @@ export default function EmployeeLayout() {
                 <PanelLeftOpen aria-hidden="true" className="size-5" />
               </button>
             )}
-            <h2 className={`min-w-0 text-base font-semibold sm:text-lg ${employeeLanguageClasses(language, "truncate", "break-words leading-5")}`}>
-              {t(pageTitle)}
-            </h2>
+            {location.pathname !== "/employee/location-tasks" && (
+              <h2 className={`min-w-0 text-base font-semibold sm:text-lg ${employeeLanguageClasses(language, "truncate", "break-words leading-5")}`}>
+                {t(pageTitle)}
+              </h2>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <span className="hidden rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700 dark:bg-teal-950/60 dark:text-teal-300 sm:inline-flex">

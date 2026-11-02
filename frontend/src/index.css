@@ -2,6 +2,39 @@
 @import "tw-animate-css";
 @import "@fontsource-variable/geist";
 
+@media print {
+  body {
+    background: white !important;
+  }
+
+  .job-cost-report-print {
+    color: #111827;
+  }
+
+  .job-cost-report-print [data-slot="card"] {
+    break-inside: avoid;
+    border-color: #d1d5db;
+    box-shadow: none;
+  }
+
+  .job-cost-report-print table {
+    page-break-inside: auto;
+  }
+
+  .job-cost-report-print tr {
+    break-inside: avoid;
+    break-after: auto;
+  }
+
+  .job-cost-report-print thead {
+    display: table-header-group;
+  }
+
+  .job-cost-report-print h2 {
+    margin-top: 0;
+  }
+}
+
 .amc-confetti-overlay {
   position: fixed;
   inset: 0;
@@ -189,7 +222,11 @@
   --sidebar-accent-foreground: #1d4ed8;
   --sidebar-border: #dbe3ed;
   --sidebar-ring: #2563eb;
-  font-family: "Geist Variable", "Noto Sans Tamil", system-ui, sans-serif;
+  font-family: "Geist Variable", system-ui, sans-serif;
+}
+
+.employee-portal-shell[lang="ta"] {
+  font-family: "Noto Sans Tamil Variable", "Geist Variable", system-ui, sans-serif;
 }
 
 .dark .employee-portal-shell {

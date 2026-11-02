@@ -65,7 +65,7 @@ test("changing or clearing the employee job status filter resets pagination", ()
 test("employee job detail screens follow authoritative job status", () => {
   assert.equal(getEmployeeJobDetailsScreen("ASSIGNED"), "assigned");
   assert.equal(getEmployeeJobDetailsScreen("ACCEPTED"), "accepted");
-  assert.equal(getEmployeeJobDetailsScreen("ON_HOLD"), "accepted");
+  assert.equal(getEmployeeJobDetailsScreen("ON_HOLD"), "on-hold");
   assert.equal(getEmployeeJobDetailsScreen("IN_PROGRESS"), "in-progress");
   assert.equal(getEmployeeJobDetailsScreen("COMPLETED"), "completed");
   assert.equal(getEmployeeJobDetailsScreen("VERIFIED"), "completed");

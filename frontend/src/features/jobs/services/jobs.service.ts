@@ -221,8 +221,14 @@ export const startJob = async (jobId: string): Promise<Job> => {
   return response.data.data;
 };
 
-export const holdJob = async (jobId: string): Promise<Job> => {
-  const response = await api.put<{ data: Job }>(`/jobs/${jobId}/hold`, {});
+export const holdJob = async (
+  jobId: string,
+  reason?: string,
+): Promise<Job> => {
+  const response = await api.put<{ data: Job }>(
+    `/jobs/${jobId}/hold`,
+    reason ? { reason } : {},
+  );
 
   return response.data.data;
 };

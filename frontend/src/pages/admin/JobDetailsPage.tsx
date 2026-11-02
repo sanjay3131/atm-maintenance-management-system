@@ -27,6 +27,7 @@ import {
 import AssignJobDialog from "@/features/jobs/components/AssignJobDialog";
 import EditJobForm from "@/features/jobs/components/EditJobForm";
 import AdminMaterialUsageSection from "@/features/jobs/components/AdminMaterialUsageSection";
+import JobCostReportSection from "@/features/job-cost-reports/components/JobCostReportSection";
 import EmployeeFieldWorkPanel from "@/features/jobs/components/EmployeeFieldWorkPanel";
 import EmployeeMaterialUsageSection from "@/features/jobs/components/EmployeeMaterialUsageSection";
 import JobPhotoGallery from "@/features/jobs/components/JobPhotoGallery";
@@ -1459,6 +1460,7 @@ export default function JobDetailsPage({
       {!readOnly && (
         <>
           <AdminMaterialUsageSection job={job} />
+          <JobCostReportSection jobId={job._id} />
           <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>

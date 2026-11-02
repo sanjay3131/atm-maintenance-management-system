@@ -1,33 +1,28 @@
 import { isAxiosError } from "axios";
 import { MapPin, Navigation } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   useHoldATMLocationTask,
   useResumeATMLocationTask,
   useStartATMLocationTask,
   atmLocationTaskQueryKeys,
 } from "@/features/atms/hooks/useATMLocationTasks";
-import {
-  useSubmitATMLocationRequest,
-} from "@/features/atms/hooks/useATMLocationRequests";
+import { useSubmitATMLocationRequest } from "@/features/atms/hooks/useATMLocationRequests";
 import {
   canSubmitATMLocationTask,
   canHoldATMLocationTask,
   canResumeATMLocationTask,
   createATMLocationTaskRequestPayload,
   EMPLOYEE_LOCATION_TASK_STATUSES,
+  getEmployeeLocationTaskGroups,
   getEmployeeLocationTaskTabCounts,
   getEmployeeLocationTaskTabTasks,
+  sortEmployeeLocationTasksForEmployee,
   tryAcquireATMLocationTaskSubmissionLock,
   type EmployeeLocationTaskTab,
 } from "@/features/atms/atmLocationTask.utils";
@@ -50,14 +45,25 @@ import {
 const PAGE_SIZE = 20;
 const API_PAGE_SIZE = 100;
 const inputClass =
-  "min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100";
+  "min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
+
+const taskStatusClasses: Record<ATMLocationTaskStatus, string> = {
+  ASSIGNED: "border-border bg-muted text-muted-foreground",
+  IN_PROGRESS: "border-primary/30 bg-primary/10 text-primary",
+  ON_HOLD:
+    "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200",
+  PENDING_REVIEW:
+    "border-teal-300 bg-teal-50 text-teal-900 dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-200",
+  REJECTED: "border-destructive/30 bg-destructive/10 text-destructive",
+  COMPLETED:
+    "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200",
+  CANCELLED: "border-border bg-muted text-muted-foreground",
+};
 
 const getTaskRequest = (
   task: ATMLocationTask,
 ): ATMLocationTaskRequest | null =>
-  typeof task.locationRequestId === "object"
-    ? task.locationRequestId
-    : null;
+  typeof task.locationRequestId === "object" ? task.locationRequestId : null;
 
 function formatDate(value: string, locale: string) {
   const date = new Date(value);
@@ -76,12 +82,13 @@ function getTaskErrorMessage(
   fallback:
     | "The request could not be completed."
     | "Location proposal submission failed."
-    | "Location task action failed." =
-    "Location proposal submission failed.",
+    | "Location task action failed." = "Location proposal submission failed.",
 ) {
   if (isAxiosError<{ message?: string }>(error)) {
     if ([403, 409].includes(error.response?.status ?? 0)) {
-      return t("The task is no longer available or assigned to you. Refresh the task list.");
+      return t(
+        "The task is no longer available or assigned to you. Refresh the task list.",
+      );
     }
     return employeeErrorMessage(
       error.response?.data?.message || fallback,
@@ -91,12 +98,7 @@ function getTaskErrorMessage(
     );
   }
   return error instanceof Error
-    ? employeeErrorMessage(
-        error.message,
-        fallback,
-        language,
-        t,
-      )
+    ? employeeErrorMessage(error.message, fallback, language, t)
     : t(fallback);
 }
 
@@ -134,7 +136,7 @@ function LocationTaskCard({
   task: ATMLocationTask;
   isRefreshing: boolean;
   workflowExpanded: boolean;
-  onContinue: (taskId: string) => void;
+  onContinue: (taskId: string | null) => void;
   onTaskStarted: (taskId: string) => void;
   onTaskResumed: (taskId: string) => void;
 }) {
@@ -154,6 +156,8 @@ function LocationTaskCard({
   const [submitted, setSubmitted] = useState(false);
   const atm = typeof task.atmId === "string" ? null : task.atmId;
   const request = getTaskRequest(task);
+  const displayStatus =
+    submitted || request?.status === "PENDING" ? "PENDING_REVIEW" : task.status;
   const canSubmit =
     canSubmitATMLocationTask(task) &&
     !submitted &&
@@ -226,7 +230,8 @@ function LocationTaskCard({
       !canResumeATMLocationTask(task) ||
       resumeMutation.isPending ||
       isRefreshing
-    ) return;
+    )
+      return;
     setError("");
     try {
       await resumeMutation.mutateAsync(task._id);
@@ -274,7 +279,9 @@ function LocationTaskCard({
         setIsLocating(false);
         if (!isAcceptableATMLocationRequestAccuracy(position.coords.accuracy)) {
           setError(
-            t("GPS accuracy is above the 50 metre limit. Capture again or enter coordinates manually."),
+            t(
+              "GPS accuracy is above the 50 metre limit. Capture again or enter coordinates manually.",
+            ),
           );
         }
       },
@@ -282,10 +289,16 @@ function LocationTaskCard({
         setIsLocating(false);
         setError(
           locationError.code === 1
-            ? t("GPS permission was denied. Allow location access and try again.")
+            ? t(
+                "GPS permission was denied. Allow location access and try again.",
+              )
             : locationError.code === 2
-              ? t("Your current location is unavailable. Check device location settings and retry.")
-              : t("GPS capture timed out. Move to an area with a clear signal and retry."),
+              ? t(
+                  "Your current location is unavailable. Check device location settings and retry.",
+                )
+              : t(
+                  "GPS capture timed out. Move to an area with a clear signal and retry.",
+                ),
         );
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
@@ -298,10 +311,7 @@ function LocationTaskCard({
     setError("");
   };
 
-  const updateCoordinate = (
-    setter: (value: string) => void,
-    value: string,
-  ) => {
+  const updateCoordinate = (setter: (value: string) => void, value: string) => {
     setter(value);
     setInputSource("MANUAL");
     setAccuracy(null);
@@ -330,7 +340,8 @@ function LocationTaskCard({
       setError(
         message === "GPS accuracy must be a finite value from 0 to 50 metres."
           ? t("GPS accuracy must be a finite value from 0 to 50 metres.")
-          : message === "Coordinates must be within valid latitude and longitude ranges."
+          : message ===
+              "Coordinates must be within valid latitude and longitude ranges."
             ? t("Coordinates must be valid finite numbers.")
             : t("Location proposal submission failed."),
       );
@@ -343,7 +354,8 @@ function LocationTaskCard({
       setSubmitted(true);
       setError("");
       toast.success(t("Location proposal submitted for admin review."));
-      const atmId = typeof task.atmId === "string" ? task.atmId : task.atmId._id;
+      const atmId =
+        typeof task.atmId === "string" ? task.atmId : task.atmId._id;
       const refreshResults = await Promise.allSettled([
         queryClient.invalidateQueries({
           queryKey: atmLocationTaskQueryKeys.all,
@@ -354,7 +366,9 @@ function LocationTaskCard({
       ]);
       if (refreshResults.some((result) => result.status === "rejected")) {
         setError(
-          t("Proposal submitted, but task status could not be refreshed. Refresh the task list."),
+          t(
+            "Proposal submitted, but task status could not be refreshed. Refresh the task list.",
+          ),
         );
       }
     } catch (submitError) {
@@ -367,54 +381,70 @@ function LocationTaskCard({
   };
 
   return (
-    <Card className="min-w-0 overflow-hidden rounded-2xl border-slate-200 shadow-sm dark:border-slate-800">
+    <Card
+      id={`location-task-${task._id}`}
+      className="min-w-0 overflow-hidden rounded-lg border-border bg-card shadow-none scroll-mt-20"
+    >
       <CardHeader className="gap-3 p-4 sm:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-              <MapPin className="size-5 shrink-0 text-blue-600" aria-hidden="true" />
-              <span className="break-all">{atm?.atmId ?? t("ATM unavailable")}</span>
+        <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <CardTitle className="flex min-w-0 items-center gap-2 text-base font-semibold leading-6 sm:text-lg">
+              <MapPin
+                className="size-4 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <span className="break-words [overflow-wrap:anywhere]">
+                {atm?.atmId ?? t("ATM unavailable")}
+              </span>
             </CardTitle>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+            <p className="mt-1 text-sm font-medium text-foreground break-words">
               {atm?.locationName ?? t("ATM unavailable")}
             </p>
             {atm?.address && (
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{atm.address}</p>
+              <p className="mt-1 text-sm text-muted-foreground break-words [overflow-wrap:anywhere]">
+                {atm.address}
+              </p>
             )}
             {(atm?.districtId?.districtName || atm?.regionId?.name) && (
-              <p className="mt-1 break-words text-xs text-slate-500 dark:text-slate-400">
+              <p className="mt-1 break-words text-sm text-muted-foreground">
                 {[atm.districtId?.districtName, atm.regionId?.name]
                   .filter(Boolean)
                   .join(" · ")}
               </p>
             )}
             {atm?.bankId?.bankName && (
-              <p className="mt-1 break-words text-xs text-slate-500 dark:text-slate-400">
+              <p className="mt-1 break-words text-sm text-muted-foreground">
                 {atm.bankId.bankName}
               </p>
             )}
           </div>
-          <Badge className="max-w-full whitespace-normal break-words text-center" variant={task.status === "REJECTED" ? "destructive" : "outline"}>
-            {employeeJobStatusLabel(task.status, t)}
+          <Badge
+            variant="outline"
+            className={`max-w-full whitespace-normal break-words text-center leading-5 ${taskStatusClasses[displayStatus]}`}
+          >
+            {employeeJobStatusLabel(displayStatus, t)}
           </Badge>
         </div>
-        <div className="flex flex-wrap gap-2 text-xs">
-          <Badge variant="secondary">{taskTypeLabel}</Badge>
-          <span className="self-center text-slate-500 dark:text-slate-400">
-            {t("Assigned date")}: {formatDate(assignmentDate, language === "ta" ? "ta-IN" : "en-IN")}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+          <span className="font-medium text-foreground">{taskTypeLabel}</span>
+          <span className="text-muted-foreground">
+            {t("Assigned date")}:{" "}
+            {formatDate(assignmentDate, language === "ta" ? "ta-IN" : "en-IN")}
           </span>
         </div>
         {task.correctionReason && (
-          <p className="break-words text-sm text-slate-700 dark:text-slate-300">
-            <span className="font-medium">{t("Correction reason")}:</span>{" "}
+          <p className="break-words text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">
+              {t("Correction reason")}:
+            </span>{" "}
             {task.correctionReason}
           </p>
         )}
       </CardHeader>
-      <CardContent className="space-y-4 px-4 pb-5 sm:px-5">
+      <CardContent className="space-y-4 px-4 pb-4 sm:px-5">
         {task.status === "ASSIGNED" && (
           <div className="space-y-3">
-            <p className="text-sm text-slate-600 dark:text-slate-300">
+            <p className="text-sm text-muted-foreground">
               {t("Submit a proposal only after visiting this ATM.")}
             </p>
             <Button
@@ -423,30 +453,34 @@ function LocationTaskCard({
               onClick={() => void startTask()}
               disabled={startMutation.isPending || !task.active}
             >
-              {startMutation.isPending ? t("Starting task...") : t("Start task")}
+              {startMutation.isPending
+                ? t("Starting task...")
+                : t("Start task")}
             </Button>
           </div>
         )}
 
-        {task.status === "IN_PROGRESS" && !hasLinkedRequest && (
-          <section className="space-y-4 border-t border-slate-200 pt-4 dark:border-slate-800">
+        {task.status === "IN_PROGRESS" && !hasLinkedRequest && !submitted && (
+          <section className="space-y-4 border-t border-border pt-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
                 <h3 className="font-semibold">{t("Location proposal")}</h3>
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                <p className="mt-1 text-sm text-muted-foreground">
                   {t("Submit a proposal only after visiting this ATM.")}
                 </p>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11 whitespace-normal"
-                aria-expanded={workflowExpanded}
-                aria-controls={`location-proposal-workflow-${task._id}`}
-                onClick={() => onContinue(task._id)}
-              >
-                {t("Continue task")}
-              </Button>
+              {!workflowExpanded && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11 whitespace-normal"
+                  aria-expanded={false}
+                  aria-controls={`location-proposal-workflow-${task._id}`}
+                  onClick={() => onContinue(task._id)}
+                >
+                  {t("Continue task")}
+                </Button>
+              )}
             </div>
             {workflowExpanded && (
               <div
@@ -455,8 +489,18 @@ function LocationTaskCard({
               >
                 <Button
                   type="button"
+                  variant="ghost"
+                  className="min-h-11 whitespace-normal px-2"
+                  aria-expanded={true}
+                  aria-controls={`location-proposal-workflow-${task._id}`}
+                  onClick={() => onContinue(null)}
+                >
+                  {t("Collapse workflow")}
+                </Button>
+                <Button
+                  type="button"
                   variant="outline"
-                  className="min-h-11 max-w-full whitespace-normal"
+                  className="min-h-11 max-w-full whitespace-normal sm:w-auto"
                   onClick={() => void holdTask()}
                   disabled={
                     !canHold ||
@@ -473,9 +517,13 @@ function LocationTaskCard({
                   <Button
                     type="button"
                     variant="outline"
-                    className="min-h-11"
+                    className="min-h-11 w-full justify-start whitespace-normal text-left sm:w-auto"
                     onClick={captureGPS}
-                    disabled={isLocating || submitMutation.isPending || holdMutation.isPending}
+                    disabled={
+                      isLocating ||
+                      submitMutation.isPending ||
+                      holdMutation.isPending
+                    }
                   >
                     <Navigation aria-hidden="true" />
                     {isLocating ? t("Capturing GPS...") : t("Use current GPS")}
@@ -483,16 +531,23 @@ function LocationTaskCard({
                   <Button
                     type="button"
                     variant={inputSource === "MANUAL" ? "secondary" : "outline"}
-                    className="min-h-11"
+                    className="min-h-11 w-full justify-start whitespace-normal text-left sm:w-auto"
                     onClick={useManualCoordinates}
-                    disabled={isLocating || submitMutation.isPending || holdMutation.isPending}
+                    disabled={
+                      isLocating ||
+                      submitMutation.isPending ||
+                      holdMutation.isPending
+                    }
                   >
                     {t("Enter coordinates manually")}
                   </Button>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label htmlFor={`task-latitude-${task._id}`} className="mb-1.5 block text-sm font-medium">
+                    <label
+                      htmlFor={`task-latitude-${task._id}`}
+                      className="mb-2 block text-sm font-medium"
+                    >
                       {t("Latitude")}
                     </label>
                     <input
@@ -505,12 +560,17 @@ function LocationTaskCard({
                       autoComplete="off"
                       className={inputClass}
                       value={latitude}
-                      onChange={(event) => updateCoordinate(setLatitude, event.target.value)}
+                      onChange={(event) =>
+                        updateCoordinate(setLatitude, event.target.value)
+                      }
                       disabled={isLocating || submitMutation.isPending}
                     />
                   </div>
                   <div>
-                    <label htmlFor={`task-longitude-${task._id}`} className="mb-1.5 block text-sm font-medium">
+                    <label
+                      htmlFor={`task-longitude-${task._id}`}
+                      className="mb-2 block text-sm font-medium"
+                    >
                       {t("Longitude")}
                     </label>
                     <input
@@ -523,23 +583,32 @@ function LocationTaskCard({
                       autoComplete="off"
                       className={inputClass}
                       value={longitude}
-                      onChange={(event) => updateCoordinate(setLongitude, event.target.value)}
+                      onChange={(event) =>
+                        updateCoordinate(setLongitude, event.target.value)
+                      }
                       disabled={isLocating || submitMutation.isPending}
                     />
                   </div>
                 </div>
                 {inputSource === "GPS" && accuracy !== null && (
-                  <p className="text-sm text-slate-600 dark:text-slate-300" role="status">
-                    {t("GPS accuracy: {accuracy} m", { accuracy: Math.round(accuracy) })}
+                  <p className="text-sm text-muted-foreground" role="status">
+                    {t("GPS accuracy: {accuracy} m", {
+                      accuracy: Math.round(accuracy),
+                    })}
                   </p>
                 )}
                 {inputSource === "MANUAL" && (
-                  <p className="text-sm text-slate-600 dark:text-slate-300">
-                    {t("Manual coordinates will be submitted as manual, without GPS accuracy.")}
+                  <p className="text-sm text-muted-foreground">
+                    {t(
+                      "Manual coordinates will be submitted as manual, without GPS accuracy.",
+                    )}
                   </p>
                 )}
                 {error && (
-                  <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
+                  <p
+                    role="alert"
+                    className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+                  >
                     {error}
                   </p>
                 )}
@@ -567,13 +636,20 @@ function LocationTaskCard({
         )}
 
         {task.status === "ON_HOLD" && (
-          <section className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              {t("Held date")}: {task.heldAt ? formatDate(task.heldAt, language === "ta" ? "ta-IN" : "en-IN") : "—"}
+          <section className="space-y-3 border-t border-border pt-4">
+            <p className="text-sm text-muted-foreground">
+              {t("Held date")}:{" "}
+              {task.heldAt
+                ? formatDate(task.heldAt, language === "ta" ? "ta-IN" : "en-IN")
+                : "—"}
             </p>
             {task.resumedAt && (
               <p className="text-sm text-slate-600 dark:text-slate-300">
-                {t("Resumed date")}: {formatDate(task.resumedAt, language === "ta" ? "ta-IN" : "en-IN")}
+                {t("Resumed date")}:{" "}
+                {formatDate(
+                  task.resumedAt,
+                  language === "ta" ? "ta-IN" : "en-IN",
+                )}
               </p>
             )}
             <Button
@@ -586,25 +662,39 @@ function LocationTaskCard({
                 isRefreshing
               }
             >
-              {resumeMutation.isPending ? t("Resuming task...") : t("Resume task")}
+              {resumeMutation.isPending
+                ? t("Resuming task...")
+                : t("Resume task")}
             </Button>
           </section>
         )}
 
         {task.status === "COMPLETED" && task.completedAt && (
-          <p className="text-sm text-slate-600 dark:text-slate-300">
-            {t("Completed date")}: {formatDate(task.completedAt, language === "ta" ? "ta-IN" : "en-IN")}
+          <p className="text-sm text-muted-foreground">
+            {t("Completed date")}:{" "}
+            {formatDate(
+              task.completedAt,
+              language === "ta" ? "ta-IN" : "en-IN",
+            )}
           </p>
         )}
 
         {(task.status === "PENDING_REVIEW" ||
           request?.status === "PENDING" ||
           submitted) && (
-          <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-            {t("This task is awaiting admin review. Do not submit another proposal.")}
+          <p
+            role="status"
+            className="rounded-md border-s-2 border-amber-500 bg-amber-50/70 p-3 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-200"
+          >
+            {t(
+              "This task is awaiting admin review. Do not submit another proposal.",
+            )}
             {request?.submittedAt && (
               <span className="mt-1 block">
-                {formatDate(request.submittedAt, language === "ta" ? "ta-IN" : "en-IN")}
+                {formatDate(
+                  request.submittedAt,
+                  language === "ta" ? "ta-IN" : "en-IN",
+                )}
               </span>
             )}
             {request && (
@@ -623,14 +713,26 @@ function LocationTaskCard({
             )}
           </p>
         )}
-        {task.status === "IN_PROGRESS" && hasLinkedRequest && request?.status !== "PENDING" && (
-          <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-            {t("This task is awaiting admin review. Do not submit another proposal.")}
-          </p>
-        )}
+        {task.status === "IN_PROGRESS" &&
+          hasLinkedRequest &&
+          request?.status !== "PENDING" && (
+            <p
+              role="status"
+              className="rounded-md border-s-2 border-amber-500 bg-amber-50/70 p-3 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-200"
+            >
+              {t(
+                "This task is awaiting admin review. Do not submit another proposal.",
+              )}
+            </p>
+          )}
         {task.status === "REJECTED" && (
-          <p role="status" className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">
-            {t("This task was rejected. Contact an admin to reopen or reassign it before submitting again.")}
+          <p
+            role="status"
+            className="rounded-md border-s-2 border-destructive bg-destructive/5 p-3 text-sm text-destructive"
+          >
+            {t(
+              "This task was rejected. Contact an admin to reopen or reassign it before submitting again.",
+            )}
             {request?.rejectionReason && (
               <span className="mt-1 block">{request.rejectionReason}</span>
             )}
@@ -639,14 +741,16 @@ function LocationTaskCard({
         {task.status !== "ASSIGNED" &&
           task.status !== "IN_PROGRESS" &&
           task.status !== "PENDING_REVIEW" &&
-            task.status !== "REJECTED" &&
-            task.status !== "ON_HOLD" && (
-            <p className="text-sm text-slate-600 dark:text-slate-300">
+          task.status !== "REJECTED" &&
+          task.status !== "ON_HOLD" && (
+            <p className="text-sm text-muted-foreground">
               {employeeJobStatusLabel(task.status, t)}
             </p>
           )}
         {error && task.status !== "IN_PROGRESS" && (
-          <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{error}</p>
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
         )}
       </CardContent>
     </Card>
@@ -659,6 +763,7 @@ export default function EmployeeLocationTasksPage() {
   const [selectedTab, setSelectedTab] =
     useState<EmployeeLocationTaskTab>("ASSIGNED");
   const [workflowTaskId, setWorkflowTaskId] = useState<string | null>(null);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const statusQueries = useQueries({
     queries: EMPLOYEE_LOCATION_TASK_STATUSES.map((status) => ({
       queryKey: atmLocationTaskQueryKeys.list({
@@ -671,13 +776,30 @@ export default function EmployeeLocationTasksPage() {
   });
   const tasks = statusQueries.flatMap((query) => query.data?.tasks ?? []);
   const counts = getEmployeeLocationTaskTabCounts(tasks);
-  const selectedTasks = getEmployeeLocationTaskTabTasks(tasks, selectedTab);
+  const inProgressStatusGroups = getEmployeeLocationTaskGroups(tasks).filter(
+    ({ status }) =>
+      status === "IN_PROGRESS" ||
+      status === "ON_HOLD" ||
+      status === "PENDING_REVIEW" ||
+      status === "REJECTED",
+  );
+  const tabTasks = getEmployeeLocationTaskTabTasks(tasks, selectedTab);
+  const selectedTasks =
+    selectedTab === "IN_PROGRESS"
+      ? sortEmployeeLocationTasksForEmployee(tabTasks)
+      : tabTasks;
   const totalPages = Math.ceil(selectedTasks.length / PAGE_SIZE);
-  const visibleTasks = selectedTasks.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const visibleTasks = selectedTasks.slice(
+    (page - 1) * PAGE_SIZE,
+    page * PAGE_SIZE,
+  );
   const isLoading = statusQueries.some((query) => query.isLoading);
   const isError = statusQueries.some((query) => query.isError);
   const isFetching = statusQueries.some((query) => query.isFetching);
-  const totalTasks = Object.values(counts).reduce((total, count) => total + count, 0);
+  const totalTasks = Object.values(counts).reduce(
+    (total, count) => total + count,
+    0,
+  );
   const retry = () => {
     void Promise.all(statusQueries.map((query) => query.refetch()));
   };
@@ -691,6 +813,12 @@ export default function EmployeeLocationTasksPage() {
     setPage(1);
     setWorkflowTaskId(taskId);
   };
+  useEffect(() => {
+    if (selectedTab !== "IN_PROGRESS" || !workflowTaskId) return;
+    document
+      .getElementById(`location-task-${workflowTaskId}`)
+      ?.scrollIntoView({ block: "start" });
+  }, [selectedTab, workflowTaskId]);
   const tabs: Array<{
     status: EmployeeLocationTaskTab;
     label: "Assigned" | "In progress" | "Completed";
@@ -699,27 +827,71 @@ export default function EmployeeLocationTasksPage() {
     { status: "IN_PROGRESS", label: "In progress" },
     { status: "COMPLETED", label: "Completed" },
   ];
+  const handleTabKeyDown = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    currentIndex: number,
+  ) => {
+    let nextIndex: number;
+    switch (event.key) {
+      case "ArrowRight":
+        nextIndex = (currentIndex + 1) % tabs.length;
+        break;
+      case "ArrowLeft":
+        nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+        break;
+      case "Home":
+        nextIndex = 0;
+        break;
+      case "End":
+        nextIndex = tabs.length - 1;
+        break;
+      default:
+        return;
+    }
+
+    event.preventDefault();
+    selectTab(tabs[nextIndex].status);
+    tabRefs.current[nextIndex]?.focus();
+  };
 
   return (
-    <main className="min-w-0 space-y-5">
+    <main className="min-w-0 space-y-6 pb-[env(safe-area-inset-bottom)]">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight">{t("My Location Tasks")}</h1>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-          {t("Assigned ATM location collection and correction tasks will appear here.")}
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          {t("My Location Tasks")}
+        </h1>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+          {t(
+            "Assigned ATM location collection and correction tasks will appear here.",
+          )}
         </p>
       </header>
 
       {isLoading ? (
-        <p role="status" className="rounded-2xl border bg-white p-6 text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">
-          {t("Loading location tasks...")}
-        </p>
+        <div
+          role="status"
+          className="space-y-4 rounded-lg border border-border bg-card p-4"
+        >
+          <p className="text-sm text-muted-foreground">
+            {t("Loading location tasks...")}
+          </p>
+          <div aria-hidden="true" className="space-y-3">
+            <div className="h-4 w-2/5 rounded bg-muted" />
+            <div className="h-3 w-3/4 rounded bg-muted" />
+          </div>
+        </div>
       ) : isError ? (
-        <div role="alert" className="rounded-2xl border border-rose-300 bg-rose-50 p-5 dark:border-rose-900 dark:bg-rose-950/30">
-          <p className="font-medium text-rose-900 dark:text-rose-200">{t("Could not load location tasks.")}</p>
+        <div
+          role="alert"
+          className="space-y-3 rounded-lg border border-border bg-card p-4"
+        >
+          <p className="font-medium text-destructive">
+            {t("Could not load location tasks.")}
+          </p>
           <Button
             type="button"
             variant="outline"
-            className="mt-3 min-h-11"
+            className="min-h-11"
             onClick={retry}
             disabled={isFetching}
           >
@@ -730,33 +902,37 @@ export default function EmployeeLocationTasksPage() {
         <>
           <section
             role="tablist"
+            aria-orientation="horizontal"
             aria-label={t("Location task status tabs")}
-            className="grid grid-cols-3 gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+            className="grid grid-cols-3 border-b border-border"
           >
-            {tabs.map(({ status, label }) => (
+            {tabs.map(({ status, label }, index) => (
               <button
                 key={status}
+                ref={(element) => {
+                  tabRefs.current[index] = element;
+                }}
                 type="button"
                 role="tab"
                 id={`location-task-tab-${status}`}
                 aria-selected={selectedTab === status}
                 aria-controls="location-task-panel"
+                aria-label={`${t(label)}, ${t("{count} task(s)", {
+                  count: counts[status],
+                })}`}
+                tabIndex={selectedTab === status ? 0 : -1}
                 onClick={() => selectTab(status)}
-                className={`flex min-h-12 min-w-0 flex-wrap items-center justify-center gap-1 rounded-xl px-2 py-2 text-center text-sm font-semibold leading-5 transition-colors ${
+                onKeyDown={(event) => handleTabKeyDown(event, index)}
+                className={`flex min-h-12 min-w-0 flex-col items-center justify-center gap-0.5 border-b-2 border-transparent px-1 py-2 text-center text-sm font-medium leading-5 transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring${
                   selectedTab === status
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                    ? "border-primary text-primary"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                <span className="min-w-0 break-words">{t(label)}</span>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs ${
-                    selectedTab === status
-                      ? "bg-white/20 text-white"
-                      : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                  }`}
-                  aria-label={t("{count} task(s)", { count: counts[status] })}
-                >
+                <span className="min-w-0 break-words text-xs sm:text-sm">
+                  {t(label)}
+                </span>
+                <span className="text-xs font-normal tabular-nums text-muted-foreground">
                   {counts[status]}
                 </span>
               </button>
@@ -767,21 +943,56 @@ export default function EmployeeLocationTasksPage() {
             role="tabpanel"
             id="location-task-panel"
             aria-labelledby={`location-task-tab-${selectedTab}`}
-            className="min-w-0 space-y-4"
+            tabIndex={0}
+            className="min-w-0 space-y-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
+            {selectedTab === "IN_PROGRESS" && (
+              <section
+                aria-labelledby="location-task-breakdown-heading"
+                className="space-y-2"
+              >
+                <h2
+                  id="location-task-breakdown-heading"
+                  className="text-sm font-semibold text-foreground"
+                >
+                  {t("Tasks by status")}
+                </h2>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 border-y border-border py-2 sm:grid-cols-4">
+                  {inProgressStatusGroups.map(
+                    ({ status, tasks: statusTasks }) => (
+                      <div key={status} className="min-w-0">
+                        <dt className="break-words text-sm leading-5 text-muted-foreground">
+                          {employeeJobStatusLabel(status, t)}
+                        </dt>
+                        <dd className="mt-1 text-base font-semibold tabular-nums text-foreground">
+                          {statusTasks.length}
+                        </dd>
+                      </div>
+                    ),
+                  )}
+                </dl>
+              </section>
+            )}
+
             {totalTasks === 0 ? (
-              <div className="rounded-2xl border border-dashed bg-white p-8 text-center dark:bg-slate-950">
-                <p className="font-semibold">{t("No location tasks assigned to you.")}</p>
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                  {t("Assigned ATM location collection and correction tasks will appear here.")}
+              <div className="rounded-lg border border-border bg-card p-5">
+                <p className="font-semibold text-foreground">
+                  {t("No location tasks assigned to you.")}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  {t(
+                    "Assigned ATM location collection and correction tasks will appear here.",
+                  )}
                 </p>
               </div>
             ) : selectedTasks.length === 0 ? (
-              <div className="rounded-2xl border border-dashed bg-white p-8 text-center dark:bg-slate-950">
-                <p className="font-semibold">{t("No tasks in this status.")}</p>
+              <div className="rounded-lg border border-border bg-card p-5">
+                <p className="font-semibold text-foreground">
+                  {t("No tasks in this status.")}
+                </p>
               </div>
             ) : (
-              <div className="grid min-w-0 gap-4">
+              <div className="grid min-w-0 gap-3">
                 {visibleTasks.map((task) => (
                   <LocationTaskCard
                     key={task._id}
@@ -797,15 +1008,15 @@ export default function EmployeeLocationTasksPage() {
             )}
 
             {selectedTasks.length > PAGE_SIZE && (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white p-4 dark:bg-slate-950">
-                <p className="text-sm text-slate-600 dark:text-slate-300">
+              <div className="flex flex-col gap-3 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-muted-foreground">
                   {selectedTasks.length} · {page} / {totalPages}
                 </p>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:flex">
                   <Button
                     type="button"
                     variant="outline"
-                    className="min-h-11"
+                    className="min-h-11 w-full sm:w-auto"
                     disabled={page <= 1 || isFetching}
                     onClick={() => setPage((current) => current - 1)}
                   >
@@ -814,7 +1025,7 @@ export default function EmployeeLocationTasksPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    className="min-h-11"
+                    className="min-h-11 w-full sm:w-auto"
                     disabled={page >= totalPages || isFetching}
                     onClick={() => setPage((current) => current + 1)}
                   >

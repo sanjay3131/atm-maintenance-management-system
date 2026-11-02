@@ -4,9 +4,8 @@ export const EMPLOYEE_REQUIRED_PHOTOS_PER_TYPE = 3;
 
 export function getEmployeeJobDetailsScreen(status: JobStatus) {
   if (status === "ASSIGNED") return "assigned" as const;
-  if (status === "ACCEPTED" || status === "ON_HOLD") {
-    return "accepted" as const;
-  }
+  if (status === "ACCEPTED") return "accepted" as const;
+  if (status === "ON_HOLD") return "on-hold" as const;
   if (status === "IN_PROGRESS") return "in-progress" as const;
   if (
     status === "COMPLETED" ||

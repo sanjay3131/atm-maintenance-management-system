@@ -149,6 +149,43 @@ export const getEmployeeLocationTaskTabTasks = (
     EMPLOYEE_LOCATION_TASK_TAB_STATUSES[tab].includes(task.status),
   );
 
+const getEmployeeLocationTaskPriority = (task: ATMLocationTask) => {
+  if (task.status === "IN_PROGRESS" && task.active) return 0;
+  if (task.status === "ON_HOLD") return 1;
+  if (task.status === "PENDING_REVIEW" || task.status === "REJECTED") return 2;
+  return 3;
+};
+
+const getEmployeeLocationTaskActivity = (task: ATMLocationTask) =>
+  Math.max(
+    ...[task.updatedAt, task.resumedAt, task.createdAt]
+      .map((value) => Date.parse(value ?? ""))
+      .filter((value) => Number.isFinite(value)),
+    0,
+  );
+
+export const sortEmployeeLocationTasksForEmployee = (
+  tasks: ATMLocationTask[],
+) =>
+  tasks
+    .map((task, index) => ({ task, index }))
+    .sort(({ task: left, index: leftIndex }, { task: right, index: rightIndex }) => {
+      const priorityDifference =
+        getEmployeeLocationTaskPriority(left) -
+        getEmployeeLocationTaskPriority(right);
+      if (priorityDifference !== 0) return priorityDifference;
+
+      if (getEmployeeLocationTaskPriority(left) === 0) {
+        const activityDifference =
+          getEmployeeLocationTaskActivity(right) -
+          getEmployeeLocationTaskActivity(left);
+        if (activityDifference !== 0) return activityDifference;
+      }
+
+      return leftIndex - rightIndex;
+    })
+    .map(({ task }) => task);
+
 export const getEmployeeLocationTaskTabCounts = (tasks: ATMLocationTask[]) => {
   const counts: Record<EmployeeLocationTaskTab, number> = {
     ASSIGNED: 0,

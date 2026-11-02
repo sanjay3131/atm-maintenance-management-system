@@ -12,7 +12,13 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -98,13 +104,19 @@ function getGeolocationError(
   t: ReturnType<typeof useEmployeeLanguage>["t"],
 ) {
   if (error.code === error.PERMISSION_DENIED) {
-    return t("Location permission is required to continue. Allow location access in your browser and try again.");
+    return t(
+      "Location permission is required to continue. Allow location access in your browser and try again.",
+    );
   }
   if (error.code === error.POSITION_UNAVAILABLE) {
-    return t("Your current location is unavailable. Check your device location settings and retry.");
+    return t(
+      "Your current location is unavailable. Check your device location settings and retry.",
+    );
   }
   if (error.code === error.TIMEOUT) {
-    return t("Getting your location took too long. Move to an area with a clear GPS signal and retry.");
+    return t(
+      "Getting your location took too long. Move to an area with a clear GPS signal and retry.",
+    );
   }
   return t("Could not get your location. Please retry.");
 }
@@ -182,14 +194,16 @@ function PendingPhotoCard({
         className="aspect-square w-full rounded object-cover"
       />
       <p className="mt-2 truncate text-xs font-medium">
-        {t(photo.photoType === "before" ? "Before" : "After")} · {photo.file.name}
+        {t(photo.photoType === "before" ? "Before" : "After")} ·{" "}
+        {photo.file.name}
       </p>
       <div className="mt-2 grid grid-cols-2 gap-2">
         <Button
           type="button"
           size="sm"
           variant="outline"
-          className="min-h-11 min-w-0 px-2"
+          className="min-h-11 min-w-0 px-2 
+          "
           disabled={disabled}
           onClick={onReplace}
         >
@@ -213,7 +227,19 @@ function PendingPhotoCard({
   );
 }
 
-export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
+interface EmployeeFieldWorkPanelProps {
+  job: Job;
+  workDescription?: ReactNode;
+  materials?: ReactNode;
+  onPendingSelectionChange?: (hasPendingSelection: boolean) => void;
+}
+
+export default function EmployeeFieldWorkPanel({
+  job,
+  workDescription,
+  materials,
+  onPendingSelectionChange,
+}: EmployeeFieldWorkPanelProps) {
   const { t, language } = useEmployeeLanguage();
   const queryClient = useQueryClient();
   const reducedMotion = useReducedMotion();
@@ -228,7 +254,9 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
   const [uploadStatus, setUploadStatus] = useState<
     Record<JobPhotoType, UploadStatus>
   >({ before: "idle", after: "idle" });
-  const [uploadError, setUploadError] = useState("");
+  const [uploadErrors, setUploadErrors] = useState<
+    Record<JobPhotoType, string>
+  >({ before: "", after: "" });
   const [activeUpload, setActiveUpload] = useState<{
     photoType: JobPhotoType;
     fileCount: number;
@@ -238,12 +266,15 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
   const [isUploading, setIsUploading] = useState(false);
   const uploadLockRef = useRef(false);
   const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false);
-  const cameraInputRefs = useRef<
-    Record<JobPhotoType, HTMLInputElement | null>
-  >({ before: null, after: null });
-  const pickerInputRefs = useRef<
-    Record<JobPhotoType, HTMLInputElement | null>
-  >({ before: null, after: null });
+  const [expandedStep, setExpandedStep] = useState<
+    "location" | "before" | "after" | "review" | null
+  >("before");
+  const cameraInputRefs = useRef<Record<JobPhotoType, HTMLInputElement | null>>(
+    { before: null, after: null },
+  );
+  const pickerInputRefs = useRef<Record<JobPhotoType, HTMLInputElement | null>>(
+    { before: null, after: null },
+  );
   const replaceInputRefs = useRef<
     Record<JobPhotoType, HTMLInputElement | null>
   >({ before: null, after: null });
@@ -257,20 +288,23 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
 
   useEffect(
     () => () => {
-      Object.values(selectedPhotosRef.current).flat().forEach((photo) => {
-        URL.revokeObjectURL(photo.previewUrl);
-      });
+      Object.values(selectedPhotosRef.current)
+        .flat()
+        .forEach((photo) => {
+          URL.revokeObjectURL(photo.previewUrl);
+        });
+      onPendingSelectionChange?.(false);
     },
-    [],
+    [onPendingSelectionChange],
   );
 
   const atm = typeof job.atmId === "object" && job.atmId ? job.atmId : null;
   const coordinates = atm?.location?.coordinates;
   const hasAtmCoordinates = Boolean(
     atm?.locationConfigured &&
-      coordinates?.length === 2 &&
-      Number.isFinite(coordinates[0]) &&
-      Number.isFinite(coordinates[1]),
+    coordinates?.length === 2 &&
+    Number.isFinite(coordinates[0]) &&
+    Number.isFinite(coordinates[1]),
   );
   const persistedCounts: PhotoCounts = {
     before: Math.max(
@@ -292,11 +326,6 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
   const evidenceComplete = photoTypes.every(
     ({ type }) => persistedCounts[type] >= REQUIRED_PHOTOS_PER_TYPE,
   );
-  const selectionsComplete = photoTypes.every(
-    ({ type }) =>
-      persistedCounts[type] + selectedPhotos[type].length >=
-      REQUIRED_PHOTOS_PER_TYPE,
-  );
   const atmLatitude = coordinates?.[1];
   const atmLongitude = coordinates?.[0];
   const distance =
@@ -314,10 +343,10 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
   const withinRadius = distance !== null && distance <= 20;
   const canComplete = Boolean(
     gps &&
-      hasAtmCoordinates &&
-      withinRadius &&
-      evidenceComplete &&
-      !isUploading,
+    hasAtmCoordinates &&
+    withinRadius &&
+    evidenceComplete &&
+    !isUploading,
   );
 
   const replaceSelection = (
@@ -337,6 +366,9 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
       .forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
     selectedPhotosRef.current = next;
     setSelectedPhotos(next);
+    onPendingSelectionChange?.(
+      Object.values(next).some((photos) => photos.length > 0),
+    );
   };
 
   const handleFileSelection = (
@@ -415,9 +447,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
       }
     } else {
       const accepted: PendingPhoto[] = [];
-      const fingerprints = new Set(
-        currentSelection.map((photo) => photo.id),
-      );
+      const fingerprints = new Set(currentSelection.map((photo) => photo.id));
       for (const [index, file] of validFiles.entries()) {
         const id = getFileId(file);
         if (fingerprints.has(id)) {
@@ -430,11 +460,14 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
         }
         if (accepted.length >= availableSlots) {
           issues.push(
-            t("{count} selected {type} photo(s) were not added; only {slots} more can be selected.", {
-              count: validFiles.length - index,
-              type: t(photoType === "before" ? "Before" : "After"),
-              slots: availableSlots,
-            }),
+            t(
+              "{count} selected {type} photo(s) were not added; only {slots} more can be selected.",
+              {
+                count: validFiles.length - index,
+                type: t(photoType === "before" ? "Before" : "After"),
+                slots: availableSlots,
+              },
+            ),
           );
           break;
         }
@@ -452,10 +485,8 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
     }
 
     if (issues.length > 0) toast.error(issues.join(" "));
-    if (uploadStatus[photoType] !== "uploaded") {
-      setUploadStatus((current) => ({ ...current, [photoType]: "idle" }));
-    }
-    setUploadError("");
+    setUploadStatus((current) => ({ ...current, [photoType]: "idle" }));
+    setUploadErrors((current) => ({ ...current, [photoType]: "" }));
   };
 
   const removeSelectedPhoto = (photoType: JobPhotoType, id: string) => {
@@ -464,7 +495,7 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
       selectedPhotosRef.current[photoType].filter((photo) => photo.id !== id),
     );
     setUploadStatus((current) => ({ ...current, [photoType]: "idle" }));
-    setUploadError("");
+    setUploadErrors((current) => ({ ...current, [photoType]: "" }));
   };
 
   const startReplacingPhoto = (photoType: JobPhotoType, id: string) => {
@@ -488,6 +519,13 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
           longitude: position.coords.longitude,
           accuracy: position.coords.accuracy,
         });
+        setExpandedStep(
+          persistedCounts.before < REQUIRED_PHOTOS_PER_TYPE
+            ? "before"
+            : persistedCounts.after < REQUIRED_PHOTOS_PER_TYPE
+              ? "after"
+              : "review",
+        );
         setIsLocating(false);
       },
       (error) => {
@@ -509,7 +547,9 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
     }
     if (!isAcceptableATMLocationRequestAccuracy(gps.accuracy)) {
       setGpsError(
-        t("GPS accuracy must be 50 meters or better. Retry GPS capture in a clearer area before submitting the location request."),
+        t(
+          "GPS accuracy must be 50 meters or better. Retry GPS capture in a clearer area before submitting the location request.",
+        ),
       );
       return;
     }
@@ -528,7 +568,9 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
       .catch((error) => {
         if (isAxiosError(error) && error.response?.status === 403) {
           toast.error(
-            t("You are not assigned to this ATM. Ask an administrator to assign this ATM to you."),
+            t(
+              "You are not assigned to this ATM. Ask an administrator to assign this ATM to you.",
+            ),
           );
           return;
         }
@@ -550,189 +592,196 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
       : EMPTY_COUNTS;
     if (refreshedJob) {
       setConfirmedCounts((current) => ({
-        before: Math.max(
-          current.before,
-          refreshedCounts.before,
-        ),
-        after: Math.max(
-          current.after,
-          refreshedCounts.after,
-        ),
+        before: Math.max(current.before, refreshedCounts.before),
+        after: Math.max(current.after, refreshedCounts.after),
       }));
     }
     return refreshedCounts;
   };
 
-  const uploadSelectedPhotos = async () => {
-    if (uploadLockRef.current || !selectionsComplete || evidenceComplete) {
-      return;
-    }
-    const confirmedDuringUpload = { ...persistedCounts };
+  const uploadSelectedPhotos = async (type: JobPhotoType) => {
+    if (uploadLockRef.current || evidenceComplete) return;
+    const currentJob = queryClient.getQueryData<Job>(["job", job._id]) ?? job;
+    const currentCount = Math.max(
+      persistedCounts[type],
+      getValidPhotoCount(
+        type === "before" ? currentJob.beforePhotos : currentJob.afterPhotos,
+        type,
+      ),
+    );
+    const selected = selectedPhotosRef.current[type].slice(
+      0,
+      Math.max(0, REQUIRED_PHOTOS_PER_TYPE - currentCount),
+    );
+    if (selected.length === 0) return;
+    const files = selected.map((photo) => photo.file);
+    const expectedCount = currentCount + files.length;
+    const attemptedPhotoIds = new Set(selected.map((photo) => photo.id));
     uploadLockRef.current = true;
     setIsUploading(true);
-    setUploadError("");
+    setUploadErrors((current) => ({ ...current, [type]: "" }));
+    setUploadStatus((current) => ({ ...current, [type]: "uploading" }));
+    setActiveUpload({
+      photoType: type,
+      fileCount: files.length,
+      persistedCount: currentCount,
+    });
 
     try {
-      for (const { type } of photoTypes) {
-        const currentJob =
-          queryClient.getQueryData<Job>(["job", job._id]) ?? job;
-        const currentCount = Math.max(
-          confirmedDuringUpload[type],
-          getValidPhotoCount(
-            type === "before"
-              ? currentJob.beforePhotos
-              : currentJob.afterPhotos,
-            type,
+      const response = await uploadMutation.mutateAsync({
+        jobId: job._id,
+        files,
+        photoType: type,
+        onProgress: (progress) =>
+          setActiveUpload({
+            photoType: type,
+            fileCount: files.length,
+            persistedCount: currentCount,
+            progress,
+          }),
+      });
+      const totalForType =
+        type === "before" ? response.totalBefore : response.totalAfter;
+      if (
+        response.photos.length !== files.length ||
+        response.photos.some((photo) => !photo || photo.photoType !== type) ||
+        totalForType < expectedCount
+      ) {
+        throw new Error(
+          t(
+            "The server could not confirm the uploaded {type} photos. Refresh the job before retrying.",
+            {
+              type: t(type === "before" ? "Before" : "After"),
+            },
           ),
-        );
-        const remaining = Math.max(0, REQUIRED_PHOTOS_PER_TYPE - currentCount);
-        if (remaining === 0) {
-          setUploadStatus((current) => ({ ...current, [type]: "uploaded" }));
-          continue;
-        }
-
-        const files = selectedPhotosRef.current[type]
-          .slice(0, remaining)
-          .map((photo) => photo.file);
-        if (files.length !== remaining) {
-          throw new Error(
-            t("Select {count} more {type} photo(s) before uploading.", {
-              count: remaining,
-              type: t(type === "before" ? "Before" : "After"),
-            }),
-          );
-        }
-
-        setUploadStatus((current) => ({ ...current, [type]: "uploading" }));
-        setActiveUpload({
-          photoType: type,
-          fileCount: files.length,
-          persistedCount: currentCount,
-        });
-        const response = await uploadMutation.mutateAsync({
-          jobId: job._id,
-          files,
-          photoType: type,
-          onProgress: (progress) =>
-            setActiveUpload({
-              photoType: type,
-              fileCount: files.length,
-              persistedCount: currentCount,
-              progress,
-            }),
-        });
-
-        const totalForType =
-          type === "before" ? response.totalBefore : response.totalAfter;
-        if (
-          response.photos.length !== files.length ||
-          response.photos.some(
-            (photo) => !photo || photo.photoType !== type,
-          ) ||
-          totalForType < REQUIRED_PHOTOS_PER_TYPE
-        ) {
-          throw new Error(
-            t("The server did not confirm all required {type} photos. Refresh the job and retry any missing photos.", {
-              type: t(type === "before" ? "Before" : "After"),
-            }),
-          );
-        }
-
-        setConfirmedCounts((current) => ({
-          ...current,
-          [type]: Math.max(current[type], totalForType),
-        }));
-        confirmedDuringUpload[type] = Math.max(
-          confirmedDuringUpload[type],
-          totalForType,
-        );
-        replaceSelection(type, []);
-        setUploadStatus((current) => ({ ...current, [type]: "uploaded" }));
-        const refreshedCounts = await refreshPersistedEvidence();
-        confirmedDuringUpload.before = Math.max(
-          confirmedDuringUpload.before,
-          refreshedCounts.before,
-        );
-        confirmedDuringUpload.after = Math.max(
-          confirmedDuringUpload.after,
-          refreshedCounts.after,
         );
       }
 
+      setConfirmedCounts((current) => ({
+        ...current,
+        [type]: Math.max(current[type], totalForType),
+      }));
+      replaceSelection(
+        type,
+        selectedPhotosRef.current[type].filter(
+          (photo) => !attemptedPhotoIds.has(photo.id),
+        ),
+      );
+      setUploadStatus((current) => ({ ...current, [type]: "uploaded" }));
       setActiveUpload(null);
-      const finalCounts: PhotoCounts = {
-        before: Math.max(
-          confirmedDuringUpload.before,
-          getValidPhotoCount(job.beforePhotos, "before"),
-          getValidPhotoCount(
-            queryClient.getQueryData<Job>(["job", job._id])?.beforePhotos,
-            "before",
-          ),
-        ),
-        after: Math.max(
-          confirmedDuringUpload.after,
-          getValidPhotoCount(job.afterPhotos, "after"),
-          getValidPhotoCount(
-            queryClient.getQueryData<Job>(["job", job._id])?.afterPhotos,
-            "after",
-          ),
-        ),
-      };
+
+      const nextBefore =
+        type === "before"
+          ? Math.max(persistedCounts.before, totalForType)
+          : persistedCounts.before;
+      const nextAfter =
+        type === "after"
+          ? Math.max(persistedCounts.after, totalForType)
+          : persistedCounts.after;
       if (
-        finalCounts.before >= REQUIRED_PHOTOS_PER_TYPE &&
-        finalCounts.after >= REQUIRED_PHOTOS_PER_TYPE
+        nextBefore >= REQUIRED_PHOTOS_PER_TYPE &&
+        nextAfter >= REQUIRED_PHOTOS_PER_TYPE
       ) {
-        setConfirmedCounts(finalCounts);
-        toast.success(t("All required Before and After photos are uploaded."));
-      } else {
-        throw new Error(
-          t("The uploaded photos could not be confirmed. Refresh the job before retrying."),
+        setExpandedStep("review");
+      } else if (type === "before" && nextBefore >= REQUIRED_PHOTOS_PER_TYPE) {
+        setExpandedStep("after");
+      }
+
+      try {
+        const refreshedCounts = await refreshPersistedEvidence();
+        if (refreshedCounts[type] < expectedCount) {
+          const refreshError = t(
+            "The upload was accepted, but the saved {type} photo count could not be confirmed after refreshing. Reload the job before continuing.",
+            {
+              type: t(type === "before" ? "Before" : "After"),
+            },
+          );
+          setUploadErrors((current) => ({ ...current, [type]: refreshError }));
+          toast.error(refreshError);
+        } else {
+          toast.success(
+            t("{type} photos uploaded and saved.", {
+              type: t(type === "before" ? "Before" : "After"),
+            }),
+          );
+        }
+      } catch {
+        const refreshError = t(
+          "Photos were saved, but the job could not be refreshed. Reload before continuing.",
         );
+        setUploadErrors((current) => ({ ...current, [type]: refreshError }));
+        toast.error(refreshError);
       }
     } catch (error) {
       const message = getApiErrorMessage(error, t, language);
       setActiveUpload(null);
       setUploadStatus((current) => ({
         ...current,
-        ...(current.before === "uploading" ? { before: "failed" } : {}),
-        ...(current.after === "uploading" ? { after: "failed" } : {}),
+        [type]: "failed",
       }));
       try {
         const refreshedCounts = await refreshPersistedEvidence();
-        confirmedDuringUpload.before = Math.max(
-          confirmedDuringUpload.before,
-          refreshedCounts.before,
+        const savedCount = Math.max(
+          refreshedCounts[type],
+          getValidPhotoCount(
+            type === "before"
+              ? queryClient.getQueryData<Job>(["job", job._id])?.beforePhotos
+              : queryClient.getQueryData<Job>(["job", job._id])?.afterPhotos,
+            type,
+          ),
         );
-        confirmedDuringUpload.after = Math.max(
-          confirmedDuringUpload.after,
-          refreshedCounts.after,
+        const savedFromAttempt = Math.min(
+          selected.length,
+          Math.max(0, savedCount - currentCount),
         );
-        for (const { type } of photoTypes) {
-          if (
-            confirmedDuringUpload[type] >= REQUIRED_PHOTOS_PER_TYPE &&
-            selectedPhotosRef.current[type].length > 0
-          ) {
-            replaceSelection(type, []);
-            setUploadStatus((current) => ({
-              ...current,
-              [type]: "uploaded",
-            }));
-          }
+        if (savedFromAttempt > 0) {
+          const savedIds = new Set(
+            selected.slice(0, savedFromAttempt).map((photo) => photo.id),
+          );
+          replaceSelection(
+            type,
+            selectedPhotosRef.current[type].filter(
+              (photo) => !savedIds.has(photo.id),
+            ),
+          );
+          setConfirmedCounts((current) => ({
+            ...current,
+            [type]: Math.max(current[type], savedCount),
+          }));
         }
-        if (
-          confirmedDuringUpload.before >= REQUIRED_PHOTOS_PER_TYPE &&
-          confirmedDuringUpload.after >= REQUIRED_PHOTOS_PER_TYPE
-        ) {
-          setUploadError("");
-          setUploadStatus({ before: "uploaded", after: "uploaded" });
-          toast.success(t("All required Before and After photos are uploaded."));
-          return;
+        const allAttemptedWereSaved =
+          savedFromAttempt === selected.length && savedFromAttempt > 0;
+        if (allAttemptedWereSaved) {
+          setUploadStatus((current) => ({ ...current, [type]: "uploaded" }));
         }
-        setUploadError(message);
-        toast.error(message);
+        const partialError =
+          savedFromAttempt > 0 && !allAttemptedWereSaved
+            ? t(
+                "{saved} selected {type} photo(s) were saved; the remaining selection is ready to retry.",
+                {
+                  saved: savedFromAttempt,
+                  type: t(type === "before" ? "Before" : "After"),
+                },
+              )
+            : allAttemptedWereSaved
+              ? t("{type} photos uploaded and saved.", {
+                  type: t(type === "before" ? "Before" : "After"),
+                })
+              : message;
+        setUploadErrors((current) => ({
+          ...current,
+          [type]: allAttemptedWereSaved ? "" : partialError,
+        }));
+        if (allAttemptedWereSaved) toast.success(partialError);
+        else toast.error(partialError);
       } catch {
-        const refreshError = t("{message} The saved photo status could not be refreshed; reload the job before retrying.", { message });
-        setUploadError(refreshError);
+        const refreshError = t(
+          "{message} The saved photo status could not be refreshed; reload the job before retrying.",
+          {
+            message,
+          },
+        );
+        setUploadErrors((current) => ({ ...current, [type]: refreshError }));
         toast.error(refreshError);
       }
     } finally {
@@ -764,379 +813,457 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
     );
   };
 
-  return (
-    <Card className="min-w-0 overflow-hidden border-0 shadow-none">
-      <CardHeader className={`min-w-0 ${employeeLanguageClasses(language, "p-4 pb-3 sm:p-5", "p-3 pb-2 sm:p-4")}`}>
-        <CardTitle>{t("Field Work")}</CardTitle>
-      </CardHeader>
-      <CardContent className={`min-w-0 ${employeeLanguageClasses(language, "space-y-4 p-4 pt-0 sm:p-5 sm:pt-0", "space-y-3 p-3 pt-0 sm:p-4 sm:pt-0")}`}>
-        <section
-          className="min-w-0 space-y-3 rounded-lg border border-border bg-accent/20 p-3 sm:p-4"
-          aria-labelledby="job-gps-heading"
-        >
-          <div>
-            <h2
-              id="job-gps-heading"
-              className="flex items-center gap-2 text-sm font-semibold"
-            >
-              <MapPin className="size-4 shrink-0" aria-hidden="true" />
-              {t("GPS location")}
-            </h2>
-            <p className="mt-1 break-words text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
-              {t("The server checks your submitted location against the ATM before completing the job.")}
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            className={employeeLanguageClasses(
-              language,
-              "min-h-11 w-full sm:w-auto",
-              "min-h-11 h-auto w-full whitespace-normal py-3 leading-5 sm:w-auto",
+  const renderPhotoSection = ({ type, title }: (typeof photoTypes)[number]) => {
+    const selected = selectedPhotos[type];
+    const persistedCount = persistedCounts[type];
+    const canSelectMore =
+      persistedCount + selected.length < MAX_PHOTOS_PER_TYPE;
+    const status = uploadStatus[type];
+    const currentUpload = activeUpload?.photoType === type;
+    const pickerLabel = t(type === "before" ? "Before" : "After");
+    const uploadLabel =
+      type === "before" ? "Upload Before Photos" : "Upload After Photos";
+
+    return (
+      <details
+        key={type}
+        open={expandedStep === type}
+        onToggle={(event) => {
+          if (event.currentTarget.open) setExpandedStep(type);
+          else if (expandedStep === type) setExpandedStep(null);
+        }}
+        className="min-w-0 border-b border-border last:border-b-0"
+      >
+        <summary className="flex min-h-12 cursor-pointer flex-wrap items-center justify-between gap-2 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <span>{t(title)}</span>
+          <span className="flex flex-wrap items-center gap-x-2 text-xs font-normal tabular-nums text-muted-foreground">
+            <span>
+              {t("{count}/{required} saved", {
+                count: Math.min(REQUIRED_PHOTOS_PER_TYPE, persistedCount),
+                required: REQUIRED_PHOTOS_PER_TYPE,
+              })}
+            </span>
+            {selected.length > 0 && (
+              <span>{t("{count} selected", { count: selected.length })}</span>
             )}
-            onClick={acquireLocation}
-            disabled={isLocating || locationRequestMutation.isPending}
-          >
-            {isLocating ? (
-              <LoaderCircle className="animate-spin" />
-            ) : (
-              <MapPin />
-            )}
-            {isLocating
-              ? t("Getting location...")
-              : gps
-                ? t("Refresh location")
-                : t("Get current location")}
-          </Button>
-          {gpsError && (
-            <p role="alert" className="break-words text-sm leading-6 text-destructive [overflow-wrap:anywhere]">
-              {gpsError}
-            </p>
-          )}
-          {!hasAtmCoordinates && (
-            <p role="status" className="break-words text-sm leading-6 text-destructive [overflow-wrap:anywhere]">
-              {t("ATM location is not configured. Acquire your current location and submit it for Admin or SuperAdmin approval before completing this job.")}
-            </p>
-          )}
-          {gps && (
-            <div
-              className="min-w-0 break-words rounded-md bg-background/70 p-3 text-sm"
-              role="status"
-            >
-              <p className="break-words leading-6 [overflow-wrap:anywhere]">{t("Location acquired · accuracy ±{accuracy} m", { accuracy: Math.round(gps.accuracy) })}</p>
-              {distance !== null && (
-                <p
-                  className={
-                    withinRadius
-                      ? "mt-1 font-medium text-emerald-700 dark:text-emerald-300"
-                      : "mt-1 font-medium text-destructive"
-                  }
-                >
-                  {distance} m from ATM ·{" "}
-                  {t(withinRadius ? "Within 20 m" : "Outside 20 m")}
-                </p>
-              )}
-              {gps.accuracy > 20 && (
-                <p className="mt-1 text-muted-foreground">
-                  {t("GPS accuracy is low. Retry from a location with a clearer signal if possible.")}
-                </p>
-              )}
-              {!isAcceptableATMLocationRequestAccuracy(gps.accuracy) && (
-                <p className="mt-1 text-destructive" role="alert">
-                  {t("GPS accuracy must be 50 meters or better. Retry GPS capture in a clearer area before submitting the location request.")}
-                </p>
-              )}
+          </span>
+        </summary>
+        <div className="space-y-3 pb-4 pt-2">
+          {persistedCount < REQUIRED_PHOTOS_PER_TYPE && (
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
+              <input
+                ref={(node) => {
+                  cameraInputRefs.current[type] = node;
+                }}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                multiple
+                className="sr-only"
+                aria-label={t("Take {type} photo", { type: pickerLabel })}
+                disabled={!canSelectMore || isUploading}
+                onChange={(event) => handleFileSelection(type, event)}
+              />
+              <input
+                ref={(node) => {
+                  pickerInputRefs.current[type] = node;
+                }}
+                type="file"
+                accept="image/*"
+                multiple
+                className="sr-only"
+                aria-label={t("Choose {type} photos", { type: pickerLabel })}
+                disabled={!canSelectMore || isUploading}
+                onChange={(event) => handleFileSelection(type, event)}
+              />
+              <input
+                ref={(node) => {
+                  replaceInputRefs.current[type] = node;
+                }}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                aria-label={t("Replace a selected {type} photo", {
+                  type: pickerLabel,
+                })}
+                disabled={isUploading}
+                onChange={(event) => handleFileSelection(type, event, true)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className={employeeLanguageClasses(
+                  language,
+                  "min-h-11 w-full sm:w-auto",
+                  "min-h-11 h-auto w-full whitespace-normal py-3 leading-5 sm:w-auto",
+                )}
+                disabled={!canSelectMore || isUploading}
+                onClick={() => cameraInputRefs.current[type]?.click()}
+              >
+                <Camera aria-hidden="true" />
+                {t("Take photo")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className={employeeLanguageClasses(
+                  language,
+                  "min-h-11 w-full sm:w-auto",
+                  "min-h-11 h-auto w-full whitespace-normal py-3 leading-5 sm:w-auto",
+                )}
+                disabled={!canSelectMore || isUploading}
+                onClick={() => pickerInputRefs.current[type]?.click()}
+              >
+                <ImagePlus aria-hidden="true" />
+                {t("Choose photos")}
+              </Button>
             </div>
           )}
-          {atm &&
-            canSubmitEmployeeATMLocationRequest(atm) &&
-            gps && (
+
+          {selected.length > 0 && (
+            <>
+              <p className="text-sm text-muted-foreground" role="status">
+                {t("Selected photos are previews only. Upload them to save.")}
+              </p>
+              <ul className="grid min-w-0 grid-cols-1 gap-2 min-[420px]:gap-3 sm:grid-cols-3">
+                <AnimatePresence initial={false}>
+                  {selected.map((photo) => (
+                    <PendingPhotoCard
+                      key={photo.id}
+                      photo={photo}
+                      disabled={isUploading}
+                      t={t}
+                      onRemove={() => removeSelectedPhoto(type, photo.id)}
+                      onReplace={() => startReplacingPhoto(type, photo.id)}
+                    />
+                  ))}
+                </AnimatePresence>
+              </ul>
+            </>
+          )}
+
+          <Button
+            type="button"
+            className="min-h-12 w-full whitespace-normal sm:w-auto"
+            disabled={selected.length === 0 || isUploading}
+            onClick={() => void uploadSelectedPhotos(type)}
+          >
+            {currentUpload ? (
+              <LoaderCircle className="animate-spin" aria-hidden="true" />
+            ) : (
+              <Upload aria-hidden="true" />
+            )}
+            {currentUpload
+              ? t("Uploading {type} photos...", { type: pickerLabel })
+              : t(uploadLabel)}
+          </Button>
+
+          {uploadErrors[type] && (
+            <p
+              role="alert"
+              className="break-words text-sm text-destructive [overflow-wrap:anywhere]"
+            >
+              {uploadErrors[type]}
+            </p>
+          )}
+          {status === "uploaded" && selected.length === 0 && (
+            <p className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
+              <Check className="size-4 shrink-0" aria-hidden="true" />
+              {t("{type} photos uploaded successfully.", { type: pickerLabel })}
+            </p>
+          )}
+          {currentUpload && (
+            <motion.p
+              initial={reducedMotion ? false : { opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="break-words text-sm font-medium"
+              role="status"
+              aria-live="polite"
+            >
+              <LoaderCircle className="mr-2 inline size-4 animate-spin" />
+              {t("Uploading {type} photos: {count}/", {
+                type: pickerLabel,
+                count: activeUpload.persistedCount + activeUpload.fileCount,
+              })}
+              {REQUIRED_PHOTOS_PER_TYPE}
+              {activeUpload.progress !== undefined &&
+                ` · ${activeUpload.progress}%`}
+            </motion.p>
+          )}
+        </div>
+      </details>
+    );
+  };
+
+  return (
+    <Card className="min-w-0 overflow-hidden border-0 shadow-none p-2">
+      <CardHeader
+        className={`min-w-0 ${employeeLanguageClasses(language, "p-0 pb-2", "p-0 pb-2")}`}
+      >
+        <CardTitle className="text-base">{t("Field Work")}</CardTitle>
+      </CardHeader>
+      <CardContent
+        className={`min-w-0 ${employeeLanguageClasses(language, "space-y-4 p-0", "space-y-3 p-0")}`}
+      >
+        <details
+          open={expandedStep === "location"}
+          onToggle={(event) => {
+            if (event.currentTarget.open) setExpandedStep("location");
+            else if (expandedStep === "location") setExpandedStep(null);
+          }}
+          className="border-y border-border"
+        >
+          <summary className="flex min-h-12 cursor-pointer items-center justify-between gap-3 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <span className="flex items-center gap-2">
+              <MapPin className="size-4 shrink-0" aria-hidden="true" />
+              {t("GPS location")}
+            </span>
+            {gps && withinRadius && (
+              <Check
+                className="size-4 shrink-0 text-emerald-700 dark:text-emerald-300"
+                aria-label={t("Validated")}
+              />
+            )}
+          </summary>
+          <div className="space-y-3 pb-4 pt-2">
+            <p className="break-words text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">
+              {t(
+                "The server checks your submitted location against the ATM before completing the job.",
+              )}
+            </p>
             <Button
               type="button"
-              className="min-h-11 w-full sm:w-auto"
-              onClick={submitCurrentLocationForReview}
-              disabled={
-                locationRequestMutation.isPending ||
-                !isAcceptableATMLocationRequestAccuracy(gps.accuracy)
-              }
+              variant="outline"
+              className={employeeLanguageClasses(
+                language,
+                "min-h-11 w-full sm:w-auto",
+                "min-h-11 h-auto w-full whitespace-normal py-3 leading-5 sm:w-auto",
+              )}
+              onClick={acquireLocation}
+              disabled={isLocating || locationRequestMutation.isPending}
             >
-              {locationRequestMutation.isPending ? (
+              {isLocating ? (
                 <LoaderCircle className="animate-spin" />
               ) : (
                 <MapPin />
               )}
-              {locationRequestMutation.isPending
-                ? t("Submitting location request...")
-                : t("Submit Current Location for ATM Review")}
+              {isLocating
+                ? t("Getting location...")
+                : gps
+                  ? t("Refresh location")
+                  : t("Get current location")}
             </Button>
-          )}
+            {gpsError && (
+              <p
+                role="alert"
+                className="break-words text-sm leading-6 text-destructive [overflow-wrap:anywhere]"
+              >
+                {gpsError}
+              </p>
+            )}
+            {!hasAtmCoordinates && (
+              <p
+                role="status"
+                className="break-words text-sm leading-6 text-destructive [overflow-wrap:anywhere]"
+              >
+                {t(
+                  "ATM location is not configured. Acquire your current location and submit it for Admin or SuperAdmin approval before completing this job.",
+                )}
+              </p>
+            )}
+            {gps && (
+              <div
+                className="min-w-0 break-words bg-muted/40 p-3 text-sm"
+                role="status"
+              >
+                <p className="break-words leading-6 [overflow-wrap:anywhere]">
+                  {t("Location acquired · accuracy ±{accuracy} m", {
+                    accuracy: Math.round(gps.accuracy),
+                  })}
+                </p>
+                {distance !== null && (
+                  <p
+                    className={
+                      withinRadius
+                        ? "mt-1 font-medium text-emerald-700 dark:text-emerald-300"
+                        : "mt-1 font-medium text-destructive"
+                    }
+                  >
+                    {distance} m from ATM ·{" "}
+                    {t(withinRadius ? "Within 20 m" : "Outside 20 m")}
+                  </p>
+                )}
+                {gps.accuracy > 20 && (
+                  <p className="mt-1 text-muted-foreground">
+                    {t(
+                      "GPS accuracy is low. Retry from a location with a clearer signal if possible.",
+                    )}
+                  </p>
+                )}
+                {atm &&
+                  canSubmitEmployeeATMLocationRequest(atm) &&
+                  !isAcceptableATMLocationRequestAccuracy(gps.accuracy) && (
+                    <p className="mt-1 text-destructive" role="alert">
+                      {t(
+                        "GPS accuracy must be 50 meters or better. Retry GPS capture in a clearer area before submitting the location request.",
+                      )}
+                    </p>
+                  )}
+              </div>
+            )}
+            {atm && canSubmitEmployeeATMLocationRequest(atm) && gps && (
+              <Button
+                type="button"
+                className="min-h-11 w-full whitespace-normal sm:w-auto"
+                onClick={submitCurrentLocationForReview}
+                disabled={
+                  locationRequestMutation.isPending ||
+                  !isAcceptableATMLocationRequestAccuracy(gps.accuracy)
+                }
+              >
+                {locationRequestMutation.isPending ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <MapPin />
+                )}
+                {locationRequestMutation.isPending
+                  ? t("Submitting location request...")
+                  : t("Submit Current Location for ATM Review")}
+              </Button>
+            )}
+          </div>
+        </details>
+
+        <section aria-label={t("Before photos")}>
+          {renderPhotoSection(photoTypes[0])}
         </section>
 
-        <section className="min-w-0 space-y-4 border-t border-border pt-4">
-          <div>
-            <h2 className="text-sm font-semibold">{t("Cleaning photos")}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {t("Select three Before and three After photos. Review the previews, then upload both groups.")}
-            </p>
-          </div>
+        {workDescription}
 
-          {photoTypes.map(({ type, title }) => {
-            const selected = selectedPhotos[type];
-            const persistedCount = persistedCounts[type];
-            const displayedCount = Math.min(
-              REQUIRED_PHOTOS_PER_TYPE,
-              persistedCount + selected.length,
-            );
-            const canSelectMore =
-              persistedCount + selected.length < MAX_PHOTOS_PER_TYPE;
-            const status = uploadStatus[type];
-            const currentUpload = activeUpload?.photoType === type;
-            const pickerLabel = t(type === "before" ? "Before" : "After");
+        {materials && (
+          <section className="border-y border-border py-3">
+            <h2 className="mb-2 text-sm font-semibold">
+              {t("Materials Used")}
+            </h2>
+            {materials}
+          </section>
+        )}
 
-            return (
-              <section
-                key={type}
-                className="min-w-0 space-y-3 rounded-lg border border-border bg-muted/20 p-3 sm:p-4"
-                aria-labelledby={`${type}-photos-heading`}
-              >
-                <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-2">
-                  <h3
-                    id={`${type}-photos-heading`}
-                    className="font-semibold"
-                  >
-                    {t(title)}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {t("{type}: {count}/", { type: pickerLabel, count: displayedCount })}
-                    {REQUIRED_PHOTOS_PER_TYPE}
-                  </p>
-                </div>
+        <section aria-label={t("After photos")}>
+          {renderPhotoSection(photoTypes[1])}
+        </section>
 
-                {!evidenceComplete && (
-                  <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
-                    <input
-                      ref={(node) => {
-                        cameraInputRefs.current[type] = node;
-                      }}
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      multiple
-                      className="sr-only"
-                      aria-label={t("Take {type} photo", { type: pickerLabel })}
-                      disabled={!canSelectMore || isUploading}
-                      onChange={(event) => handleFileSelection(type, event)}
-                    />
-                    <input
-                      ref={(node) => {
-                        pickerInputRefs.current[type] = node;
-                      }}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="sr-only"
-                      aria-label={t("Choose {type} photos", { type: pickerLabel })}
-                      disabled={!canSelectMore || isUploading}
-                      onChange={(event) => handleFileSelection(type, event)}
-                    />
-                    <input
-                      ref={(node) => {
-                        replaceInputRefs.current[type] = node;
-                      }}
-                      type="file"
-                      accept="image/*"
-                      className="sr-only"
-                      aria-label={t("Replace a selected {type} photo", { type: pickerLabel })}
-                      disabled={isUploading}
-                      onChange={(event) => handleFileSelection(type, event, true)}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className={employeeLanguageClasses(
-                        language,
-                        "min-h-11 w-full sm:w-auto",
-                        "min-h-11 h-auto min-w-0 w-full whitespace-normal [overflow-wrap:anywhere] px-2 py-2 leading-5 sm:w-auto",
-                      )}
-                      disabled={!canSelectMore || isUploading}
-                      onClick={() => cameraInputRefs.current[type]?.click()}
-                    >
-                      <Camera aria-hidden="true" />
-                      {t("Take photo")}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className={employeeLanguageClasses(
-                        language,
-                        "min-h-11 w-full sm:w-auto",
-                        "min-h-11 h-auto min-w-0 w-full whitespace-normal [overflow-wrap:anywhere] px-2 py-2 leading-5 sm:w-auto",
-                      )}
-                      disabled={!canSelectMore || isUploading}
-                      onClick={() => pickerInputRefs.current[type]?.click()}
-                    >
-                      <ImagePlus aria-hidden="true" />
-                      {t("Choose photos")}
-                    </Button>
-                  </div>
-                )}
-
-                {selected.length > 0 && (
-                  <ul className="grid min-w-0 grid-cols-2 gap-2 min-[420px]:gap-3 sm:grid-cols-3">
-                    <AnimatePresence initial={false}>
-                      {selected.map((photo) => (
-                        <PendingPhotoCard
-                          key={photo.id}
-                          photo={photo}
-                          disabled={isUploading}
-                          t={t}
-                          onRemove={() => removeSelectedPhoto(type, photo.id)}
-                          onReplace={() => startReplacingPhoto(type, photo.id)}
-                        />
-                      ))}
-                    </AnimatePresence>
-                  </ul>
-                )}
-
-                {persistedCount > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    {t("{count} photo(s) already uploaded and saved.", { count: persistedCount })}
-                  </p>
-                )}
-                {status === "uploaded" && (
-                  <p className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
-                    <Check className="size-4 shrink-0" aria-hidden="true" />
-                    {t("{type} photos uploaded successfully.", { type: pickerLabel })}
-                  </p>
-                )}
-                {currentUpload && (
-                  <motion.p
-                    initial={reducedMotion ? false : { opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="break-words text-sm font-medium"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    <LoaderCircle className="mr-2 inline size-4 animate-spin" />
-                    {t("Uploading {type} photos: {count}/", {
-                      type: pickerLabel,
-                      count: activeUpload.persistedCount + activeUpload.fileCount,
-                    })}
-                    {REQUIRED_PHOTOS_PER_TYPE}
-                    {activeUpload.progress !== undefined &&
-                      ` · ${activeUpload.progress}%`}
-                  </motion.p>
-                )}
-              </section>
-            );
-          })}
-
-          {!evidenceComplete && uploadError && (
-            <p role="alert" className="break-words text-sm text-destructive">
-              {uploadError}
-            </p>
-          )}
-
-          {!evidenceComplete && (
-            <Button
-              type="button"
-              className="min-h-12 w-full sm:w-auto"
-              disabled={!selectionsComplete || isUploading}
-              onClick={() => void uploadSelectedPhotos()}
-            >
-              {isUploading ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <Upload aria-hidden="true" />
-              )}
-              {isUploading ? t("Uploading photos...") : t("Upload Photos")}
-            </Button>
-          )}
-
-          <JobPhotoGallery
-            beforePhotos={job.beforePhotos}
-            afterPhotos={job.afterPhotos}
-            compact
-          />
-
-          <AnimatePresence>
+        <details
+          open={expandedStep === "review"}
+          onToggle={(event) => {
+            if (event.currentTarget.open) setExpandedStep("review");
+            else if (expandedStep === "review") setExpandedStep(null);
+          }}
+          className="border-y border-border"
+        >
+          <summary className="flex min-h-12 cursor-pointer items-center justify-between gap-3 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {t("Review and complete")}
             {evidenceComplete && (
-              <motion.div
-                initial={reducedMotion ? false : { opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={reducedMotion ? undefined : { opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="relative overflow-hidden rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100"
+              <Check
+                className="size-4 shrink-0 text-emerald-700 dark:text-emerald-300"
+                aria-label={t("Validated")}
+              />
+            )}
+          </summary>
+          <div className="space-y-4 pb-4 pt-2">
+            {!evidenceComplete && (
+              <section
+                aria-label={t("Missing photo evidence")}
+                className="space-y-2"
+              >
+                <h3 className="text-sm font-semibold">
+                  {t("Missing photo evidence")}
+                </h3>
+                <ul className="space-y-1 text-sm text-muted-foreground">
+                  {photoTypes
+                    .filter(
+                      ({ type }) =>
+                        persistedCounts[type] < REQUIRED_PHOTOS_PER_TYPE,
+                    )
+                    .map(({ type }) => (
+                      <li key={type}>
+                        {t(
+                          "{type}: {count}/{required} saved; {remaining} remaining",
+                          {
+                            type: t(type === "before" ? "Before" : "After"),
+                            count: Math.min(
+                              REQUIRED_PHOTOS_PER_TYPE,
+                              persistedCounts[type],
+                            ),
+                            required: REQUIRED_PHOTOS_PER_TYPE,
+                            remaining: Math.max(
+                              0,
+                              REQUIRED_PHOTOS_PER_TYPE - persistedCounts[type],
+                            ),
+                          },
+                        )}
+                      </li>
+                    ))}
+                </ul>
+              </section>
+            )}
+
+            <JobPhotoGallery
+              beforePhotos={job.beforePhotos}
+              afterPhotos={job.afterPhotos}
+              compact
+              showCounts={false}
+            />
+
+            {evidenceComplete && (
+              <p
+                className="flex items-center gap-2 border-l-2 border-emerald-600 py-2 pl-3 text-sm font-medium"
                 role="status"
                 aria-live="polite"
               >
-                {!reducedMotion && (
-                  <div
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-x-1/3 top-0 flex justify-around"
-                  >
-                    {["bg-emerald-500", "bg-amber-400", "bg-sky-500"].map(
-                      (color, index) => (
-                        <motion.span
-                          key={color}
-                          className={`size-2 rounded-sm ${color}`}
-                          initial={{ y: -8, opacity: 0 }}
-                          animate={{ y: 18 + (index % 2) * 7, opacity: [0, 1, 0] }}
-                          transition={{ duration: 0.65, delay: index * 0.08 }}
-                        />
-                      ),
-                    )}
-                  </div>
-                )}
-                <p className="flex items-center gap-2 font-semibold">
-                  <CircleCheck className="size-5 shrink-0" aria-hidden="true" />
-                  {t("All 3 Before and 3 After photos are uploaded.")}
-                </p>
-                <p className="mt-1 text-sm">
-                  {t("Acquire your GPS location to complete the job.")}
-                </p>
-              </motion.div>
+                <CircleCheck
+                  className="size-5 shrink-0 text-emerald-700 dark:text-emerald-300"
+                  aria-hidden="true"
+                />
+                {t("All 3 Before and 3 After photos are uploaded.")}
+              </p>
             )}
-          </AnimatePresence>
-        </section>
-
-        <div className="flex min-w-0 flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:flex-wrap sm:items-center">
-          {evidenceComplete && (
-            <motion.div
-              initial={reducedMotion ? false : { opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.18 }}
-            >
-              <Button
-                type="button"
-                className="min-h-12 w-full sm:w-auto"
-                disabled={
-                  !canComplete ||
-                  completeMutation.isPending ||
-                  isUploading
-                }
-                onClick={() => setIsCompleteDialogOpen(true)}
-              >
-                {completeMutation.isPending ? (
-                  <LoaderCircle className="animate-spin" />
-                ) : (
-                  <CircleCheck />
+            <div className="space-y-3 border-t border-border pt-4">
+              {evidenceComplete && (
+                <Button
+                  type="button"
+                  className="min-h-12 w-full sm:w-auto"
+                  disabled={
+                    !canComplete || completeMutation.isPending || isUploading
+                  }
+                  onClick={() => setIsCompleteDialogOpen(true)}
+                >
+                  {completeMutation.isPending ? (
+                    <LoaderCircle className="animate-spin" />
+                  ) : (
+                    <CircleCheck />
+                  )}
+                  {t("Complete Job")}
+                </Button>
+              )}
+              {!gps && evidenceComplete && (
+                <p className="break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
+                  {t("Get your current location to complete this job.")}
+                </p>
+              )}
+              {gps &&
+                !withinRadius &&
+                distance !== null &&
+                evidenceComplete && (
+                  <p className="break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">
+                    {t(
+                      "Move within 20 m of the ATM and refresh your location to continue.",
+                    )}
+                  </p>
                 )}
-                {t("Complete Job")}
-              </Button>
-            </motion.div>
-          )}
-          {!gps && evidenceComplete && (
-            <p className="break-words text-sm text-muted-foreground">
-              {t("Get your current location to complete this job.")}
-            </p>
-          )}
-          {gps && !withinRadius && distance !== null && evidenceComplete && (
-            <p className="break-words text-sm text-muted-foreground">
-              {t("Move within 20 m of the ATM and refresh your location to continue.")}
-            </p>
-          )}
-        </div>
+            </div>
+          </div>
+        </details>
       </CardContent>
 
       <Dialog
@@ -1145,10 +1272,12 @@ export default function EmployeeFieldWorkPanel({ job }: { job: Job }) {
           if (!completeMutation.isPending) setIsCompleteDialogOpen(open);
         }}
       >
-        <DialogContent className="w-[calc(100vw-1rem)] max-w-lg">
+        <DialogContent className="max-h-[95dvh] w-[calc(100vw-1rem)] max-w-lg overflow-y-auto">
           <DialogTitle>{t("Complete this job?")}</DialogTitle>
           <DialogDescription className="mt-2">
-            {t("The server will validate your GPS coordinates. Once completed, you cannot continue working on this job unless an authorized user changes its status.")}
+            {t(
+              "The server will validate your GPS coordinates. Once completed, you cannot continue working on this job unless an authorized user changes its status.",
+            )}
           </DialogDescription>
           <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button

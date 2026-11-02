@@ -49,8 +49,11 @@ import {
   holdJob,
   cancelJob,
 } from "./jobs.controller.js";
+import jobCostReportRouter from "../jobCostReports/jobCostReport.routes.js";
 
 const router = Router();
+
+router.use("/:jobId/cost-report", jobCostReportRouter);
 
 // Recurring maintenance administration
 router.get(

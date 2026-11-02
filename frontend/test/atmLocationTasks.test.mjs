@@ -11,6 +11,7 @@ import {
   getEmployeeLocationTaskGroups,
   getEmployeeLocationTaskTabCounts,
   getEmployeeLocationTaskTabTasks,
+  sortEmployeeLocationTasksForEmployee,
   getATMLocationTaskRequestId,
   getBulkATMLocationTaskErrorMessage,
   getLocationTaskActionErrorMessage,
@@ -449,6 +450,63 @@ test("employee location tabs count and filter lifecycle statuses without showing
   );
 });
 
+test("employee in-progress tasks prioritize latest persisted starts and resumes", () => {
+  const tasks = [
+    inProgressTask({
+      _id: "held",
+      status: "ON_HOLD",
+      updatedAt: "2026-10-01T10:00:00.000Z",
+      createdAt: "2026-09-01T10:00:00.000Z",
+    }),
+    inProgressTask({
+      _id: "pending",
+      status: "PENDING_REVIEW",
+      updatedAt: "2026-10-03T10:00:00.000Z",
+      createdAt: "2026-09-03T10:00:00.000Z",
+    }),
+    inProgressTask({
+      _id: "started-older",
+      updatedAt: "2026-10-04T10:00:00.000Z",
+      createdAt: "2026-09-04T10:00:00.000Z",
+    }),
+    inProgressTask({
+      _id: "rejected",
+      status: "REJECTED",
+      updatedAt: "2026-10-02T10:00:00.000Z",
+      createdAt: "2026-09-02T10:00:00.000Z",
+    }),
+    inProgressTask({
+      _id: "resumed-latest",
+      updatedAt: "2026-10-06T10:00:00.000Z",
+      resumedAt: "2026-10-06T10:00:00.000Z",
+      createdAt: "2026-09-06T10:00:00.000Z",
+    }),
+    inProgressTask({
+      _id: "started-latest",
+      updatedAt: "2026-10-05T10:00:00.000Z",
+      createdAt: "2026-09-05T10:00:00.000Z",
+    }),
+  ];
+
+  const expectedOrder = [
+    "resumed-latest",
+    "started-latest",
+    "started-older",
+    "held",
+    "pending",
+    "rejected",
+  ];
+  assert.deepEqual(
+    sortEmployeeLocationTasksForEmployee(tasks).map(({ _id }) => _id),
+    expectedOrder,
+  );
+  assert.deepEqual(
+    sortEmployeeLocationTasksForEmployee(tasks).map(({ _id }) => _id),
+    expectedOrder,
+    "the order is derived from persisted timestamps and remains stable after refresh",
+  );
+});
+
 test("linked request identification handles populated, string, and missing task relationships", () => {
   assert.equal(
     getATMLocationTaskRequestId({ locationRequestId: "request-1" }),
@@ -630,7 +688,14 @@ test("task lifecycle APIs, translated controls, and proposal flows use scoped in
   assert.match(page, /getEmployeeLocationTaskTabCounts\(tasks\)/);
   assert.match(page, /getEmployeeLocationTaskTabTasks\(tasks, selectedTab\)/);
   assert.match(page, /role="tablist"/);
+  assert.equal([...page.matchAll(/role="tablist"/g)].length, 1);
   assert.match(page, /role="tab"/);
+  assert.match(page, /sortEmployeeLocationTasksForEmployee\(tabTasks\)/);
+  assert.match(page, /!workflowExpanded && \(/);
+  assert.match(page, /!submitted && \(/);
+  assert.match(page, /submitted \|\| request\?\.status === "PENDING"[\s\S]*?"PENDING_REVIEW"/);
+  assert.match(page, /onClick=\{\(\) => onContinue\(null\)\}/);
+  assert.match(page, /t\("Collapse workflow"\)/);
   assert.match(page, /onTaskStarted=\{showStartedTask\}/);
   assert.match(page, /onTaskResumed=\{showStartedTask\}/);
   assert.doesNotMatch(page, /useATMLocationTasks\(/);
@@ -669,6 +734,36 @@ test("task lifecycle APIs, translated controls, and proposal flows use scoped in
   assert.match(i18n, /"Continue task": "Continue task"/);
   assert.match(i18n, /"Continue task": "பணியைத் தொடரவும்"/);
   assert.match(i18n, /"No tasks in this status\.": "இந்த நிலையில் பணிகள் இல்லை\."/);
+});
+
+test("employee location task screen summarizes real statuses and supports keyboard tab navigation", async () => {
+  const page = await readFile(
+    new URL("../src/pages/employee/EmployeeLocationTasksPage.tsx", import.meta.url),
+    "utf8",
+  );
+  const layout = await readFile(
+    new URL("../src/layouts/EmployeeLayout.tsx", import.meta.url),
+    "utf8",
+  );
+  const i18n = await readFile(
+    new URL("../src/features/employee-portal/i18n.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(page, /getEmployeeLocationTaskTabCounts\(tasks\)/);
+  assert.match(page, /getEmployeeLocationTaskGroups\(tasks\)\.filter/);
+  for (const status of ["IN_PROGRESS", "ON_HOLD", "PENDING_REVIEW", "REJECTED"]) {
+    assert.match(page, new RegExp(`status === "${status}"`));
+  }
+  assert.match(page, /aria-orientation="horizontal"/);
+  assert.match(page, /tabIndex=\{selectedTab === status \? 0 : -1\}/);
+  assert.match(page, /case "ArrowRight"/);
+  assert.match(page, /case "ArrowLeft"/);
+  assert.match(page, /case "Home"/);
+  assert.match(page, /case "End"/);
+  assert.match(layout, /location\.pathname !== "\/employee\/location-tasks"/);
+  assert.match(i18n, /"My Location Tasks": "Location Tasks"/);
+  assert.match(i18n, /"My Location Tasks": "இருப்பிடப் பணிகள்"/);
 });
 
 test("mutation errors expose backend messages and explain conflicts", () => {

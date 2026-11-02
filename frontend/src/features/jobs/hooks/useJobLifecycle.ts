@@ -21,15 +21,16 @@ import type {
 
 interface JobLifecycleVariables {
   jobId: string;
+  reason?: string;
 }
 
 const useJobLifecycleMutation = (
-  mutationFn: (jobId: string) => Promise<Job>,
+  mutationFn: (jobId: string, reason?: string) => Promise<Job>,
 ) => {
   const queryClient = useQueryClient();
 
   return useMutation<Job, Error, JobLifecycleVariables>({
-    mutationFn: ({ jobId }) => mutationFn(jobId),
+    mutationFn: ({ jobId, reason }) => mutationFn(jobId, reason),
     onSuccess: async (_job, { jobId }) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["job", jobId] }),
@@ -41,10 +42,14 @@ const useJobLifecycleMutation = (
   });
 };
 
-export const useAcceptJob = () => useJobLifecycleMutation(acceptJob);
-export const useStartJob = () => useJobLifecycleMutation(startJob);
-export const useHoldJob = () => useJobLifecycleMutation(holdJob);
-export const useCloseJob = () => useJobLifecycleMutation(closeJob);
+export const useAcceptJob = () =>
+  useJobLifecycleMutation((jobId) => acceptJob(jobId));
+export const useStartJob = () =>
+  useJobLifecycleMutation((jobId) => startJob(jobId));
+export const useHoldJob = () =>
+  useJobLifecycleMutation((jobId, reason) => holdJob(jobId, reason));
+export const useCloseJob = () =>
+  useJobLifecycleMutation((jobId) => closeJob(jobId));
 
 export const useCancelJob = () => {
   const queryClient = useQueryClient();

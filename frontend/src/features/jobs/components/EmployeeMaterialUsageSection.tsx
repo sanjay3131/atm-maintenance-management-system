@@ -75,8 +75,12 @@ function getCreateError(
 
 export default function EmployeeMaterialUsageSection({
   job,
+  showEmpty = false,
+  hideUsageHeading = false,
 }: {
   job: Job;
+  showEmpty?: boolean;
+  hideUsageHeading?: boolean;
 }) {
   const { t, language } = useEmployeeLanguage();
   const canRecord = job.status === "IN_PROGRESS";
@@ -306,7 +310,7 @@ export default function EmployeeMaterialUsageSection({
         </Card>
       )}
 
-      {usageQuery.isLoading && !canRecord && (
+      {usageQuery.isLoading && (!canRecord || showEmpty) && (
         <div
           className="flex items-center gap-2 py-3 text-sm text-muted-foreground"
           role="status"
@@ -331,54 +335,63 @@ export default function EmployeeMaterialUsageSection({
           </Button>
         </div>
       )}
-      {showUsage && (
+      {(showUsage ||
+        (showEmpty && usageQuery.isSuccess && usageEntries.length === 0)) && (
         <Card className="min-w-0 overflow-hidden border-0 shadow-none">
-          <CardHeader className={employeeLanguageClasses(language, "p-4 sm:p-6", "p-3 sm:p-4")}>
-            <CardTitle>{t("Materials Used")}</CardTitle>
-          </CardHeader>
+          {!hideUsageHeading && (
+            <CardHeader className={employeeLanguageClasses(language, "p-4 sm:p-6", "p-3 sm:p-4")}>
+              <CardTitle>{t("Materials Used")}</CardTitle>
+            </CardHeader>
+          )}
           <CardContent className={employeeLanguageClasses(language, "min-w-0 p-4 pt-0 sm:p-6 sm:pt-0", "min-w-0 p-3 pt-0 sm:p-4 sm:pt-0")}>
             <section aria-label={t("Recorded materials")} aria-live="polite">
-              <ul className="divide-y border-y border-border">
-                {usageEntries.map((entry) => {
-                  const recordedAt = formatRecordedAt(entry.createdAt, language);
-                  return (
-                    <li
-                      key={entry._id}
-                      className={`flex min-w-0 flex-col gap-2 py-3 first:pt-2 last:pb-2 sm:flex-row sm:items-center sm:justify-between ${employeeLanguageClasses(language, "", "sm:items-start")}`}
-                    >
-                      <p className="min-w-0 break-words text-sm font-medium">
-                        {entry.itemNameSnapshot}
-                      </p>
-                      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-                        <span>
-                          {entry.quantity} {entry.unitSnapshot}
-                        </span>
-                        {recordedAt && (
-                          <time dateTime={entry.createdAt}>{recordedAt}</time>
-                        )}
-                        {canRecord && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="size-11 shrink-0"
-                            aria-label={t("Remove {item} usage", { item: entry.itemNameSnapshot })}
-                            onClick={() =>
-                              setUsageToRemove({
-                                _id: entry._id,
-                                itemNameSnapshot: entry.itemNameSnapshot,
-                              })
-                            }
-                            disabled={deleteMutation.isPending}
-                          >
-                            <Trash2 />
-                          </Button>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+              {usageEntries.length === 0 ? (
+                <p className="py-2 text-sm text-muted-foreground">
+                  {t("No materials have been recorded.")}
+                </p>
+              ) : (
+                <ul className="divide-y border-y border-border">
+                  {usageEntries.map((entry) => {
+                    const recordedAt = formatRecordedAt(entry.createdAt, language);
+                    return (
+                      <li
+                        key={entry._id}
+                        className={`flex min-w-0 flex-col gap-2 py-3 first:pt-2 last:pb-2 sm:flex-row sm:items-center sm:justify-between ${employeeLanguageClasses(language, "", "sm:items-start")}`}
+                      >
+                        <p className="min-w-0 break-words text-sm font-medium">
+                          {entry.itemNameSnapshot}
+                        </p>
+                        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                          <span>
+                            {entry.quantity} {entry.unitSnapshot}
+                          </span>
+                          {recordedAt && (
+                            <time dateTime={entry.createdAt}>{recordedAt}</time>
+                          )}
+                          {canRecord && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-11 shrink-0"
+                              aria-label={t("Remove {item} usage", { item: entry.itemNameSnapshot })}
+                              onClick={() =>
+                                setUsageToRemove({
+                                  _id: entry._id,
+                                  itemNameSnapshot: entry.itemNameSnapshot,
+                                })
+                              }
+                              disabled={deleteMutation.isPending}
+                            >
+                              <Trash2 />
+                            </Button>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </section>
           </CardContent>
           <ConfirmMaterialUsageRemovalDialog
