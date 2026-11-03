@@ -58,6 +58,12 @@ import {
   prepareImageForUpload,
 } from "../utils/imagePreparation";
 import { createFinalizationRetryCoordinator } from "../utils/finalizationRetry";
+import {
+  getEligiblePhotoUploads,
+  processPhotoUploadQueue,
+  withPhotoUploadLock,
+  type PhotoUploadQueueStatus,
+} from "../utils/photoUploadQueue";
 
 const REQUIRED_PHOTOS_PER_TYPE = EMPLOYEE_REQUIRED_PHOTOS_PER_TYPE;
 const MAX_PHOTOS_PER_TYPE = 3;
@@ -86,13 +92,7 @@ interface PendingPhoto {
 type PhotoSelection = Record<JobPhotoType, PendingPhoto[]>;
 type PhotoCounts = Record<JobPhotoType, number>;
 type UploadStatus = "idle" | "uploading" | "uploaded" | "failed";
-type PendingUploadStatus =
-  | "idle"
-  | "uploading"
-  | "uploaded"
-  | "failed"
-  | "verification"
-  | "finalization-pending";
+type PendingUploadStatus = PhotoUploadQueueStatus;
 
 const EMPTY_SELECTION: PhotoSelection = { before: [], after: [] };
 
@@ -753,136 +753,167 @@ export default function EmployeeFieldWorkPanel({
 
   const uploadSelectedPhotos = async (type: JobPhotoType) => {
     if (uploadLockRef.current || evidenceComplete) return;
-    uploadLockRef.current = true;
-    setIsUploading(true);
-    setUploadErrors((current) => ({ ...current, [type]: "" }));
 
     try {
-      while (true) {
-        const currentJob =
-          queryClient.getQueryData<Job>(["job", job._id]) ?? job;
-        const currentCount = Math.max(
-          persistedCounts[type],
-          getValidPhotoCount(
-            type === "before"
-              ? currentJob.beforePhotos
-              : currentJob.afterPhotos,
-            type,
-          ),
-        );
-        if (currentCount >= REQUIRED_PHOTOS_PER_TYPE) break;
+      const result = await withPhotoUploadLock(
+        uploadLockRef,
+        setIsUploading,
+        async () => {
+          setUploadErrors((current) => ({ ...current, [type]: "" }));
+          const eligiblePhotos = getEligiblePhotoUploads(
+            selectedPhotosRef.current[type],
+            pendingUploadStatuses,
+          );
+          const queueResult = await processPhotoUploadQueue({
+            photos: eligiblePhotos,
+            requiredCount: REQUIRED_PHOTOS_PER_TYPE,
+            getSavedCount: () => {
+              const currentJob =
+                queryClient.getQueryData<Job>(["job", job._id]) ?? job;
+              return Math.max(
+                persistedCounts[type],
+                getValidPhotoCount(
+                  type === "before"
+                    ? currentJob.beforePhotos
+                    : currentJob.afterPhotos,
+                  type,
+                ),
+              );
+            },
+            processPhoto: async (pendingPhoto) => {
+              const currentJob =
+                queryClient.getQueryData<Job>(["job", job._id]) ?? job;
+              const currentCount = Math.max(
+                persistedCounts[type],
+                getValidPhotoCount(
+                  type === "before"
+                    ? currentJob.beforePhotos
+                    : currentJob.afterPhotos,
+                  type,
+                ),
+              );
+              setPendingUploadStatuses((current) => ({
+                ...current,
+                [pendingPhoto.id]: "uploading",
+              }));
+              setUploadStatus((current) => ({ ...current, [type]: "uploading" }));
+              setActiveUpload({
+                photoType: type,
+                photoId: pendingPhoto.id,
+                persistedCount: currentCount,
+              });
 
-        const pendingPhoto = selectedPhotosRef.current[type].find(
-          (photo) =>
-            pendingUploadStatuses[photo.id] !== "verification" &&
-          pendingUploadStatuses[photo.id] !== "uploading" &&
-          pendingUploadStatuses[photo.id] !== "finalization-pending",
-        );
-        if (!pendingPhoto) break;
+              try {
+                const response = await uploadMutation.mutateAsync({
+                  jobId: job._id,
+                  files: [pendingPhoto.file],
+                  photoType: type,
+                  clientPhotoId: pendingPhoto.clientPhotoId,
+                  onProgress: (progress) =>
+                    setActiveUpload((current) =>
+                      current?.photoId === pendingPhoto.id
+                        ? {
+                            ...current,
+                            progress,
+                          }
+                        : current,
+                    ),
+                });
+                if (
+                  !["uploaded", "finalized"].includes(response.status) ||
+                  response.clientPhotoId !== pendingPhoto.clientPhotoId ||
+                  !response.uploadIntentId ||
+                  (response.status === "uploaded" &&
+                    response.finalizationPending !== true) ||
+                  (response.status === "finalized" &&
+                    response.finalizationPending !== false)
+                ) {
+                  throw new Error(
+                    t(
+                      "The server could not confirm the uploaded {type} photo. Verify the upload before retrying.",
+                      {
+                        type: t(type === "before" ? "Before" : "After"),
+                      },
+                    ),
+                  );
+                }
 
-        setPendingUploadStatuses((current) => ({
-          ...current,
-          [pendingPhoto.id]: "uploading",
-        }));
-        setUploadStatus((current) => ({ ...current, [type]: "uploading" }));
-        setActiveUpload({
-          photoType: type,
-          photoId: pendingPhoto.id,
-          persistedCount: currentCount,
-        });
+                setPendingUploadStatuses((current) => ({
+                  ...current,
+                  [pendingPhoto.id]:
+                    response.status === "finalized"
+                      ? "uploaded"
+                      : "finalization-pending",
+                }));
+                setUploadStatus((current) => ({
+                  ...current,
+                  [type]: "uploaded",
+                }));
+                if (response.status === "finalized") {
+                  setPendingIntentRecords((current) =>
+                    current.filter(
+                      (record) =>
+                        record.uploadIntentId !== response.uploadIntentId,
+                    ),
+                  );
+                  return "uploaded";
+                }
 
-        try {
-          const response = await uploadMutation.mutateAsync({
-            jobId: job._id,
-            files: [pendingPhoto.file],
-            photoType: type,
-            clientPhotoId: pendingPhoto.clientPhotoId,
-            onProgress: (progress) =>
-              setActiveUpload((current) =>
-                current?.photoId === pendingPhoto.id
-                  ? {
-                      ...current,
-                      progress,
-                    }
-                  : current,
-              ),
+                const finalized = await finalizePendingIntent(
+                  response.uploadIntentId,
+                  type,
+                  pendingPhoto.id,
+                );
+                return finalized ? "uploaded" : "finalization-pending";
+              } catch (error) {
+                const ambiguous =
+                  isAmbiguousUploadError(error) ||
+                  (error instanceof Error &&
+                    error.message.includes("could not confirm"));
+                setPendingUploadStatuses((current) => ({
+                  ...current,
+                  [pendingPhoto.id]: ambiguous ? "verification" : "failed",
+                }));
+                setUploadStatus((current) => ({ ...current, [type]: "failed" }));
+                const message = ambiguous
+                  ? t("Photo upload response was not confirmed. Verify the saved photo before retrying.")
+                  : getApiErrorMessage(error, t, language);
+                setUploadErrors((current) => ({ ...current, [type]: message }));
+                throw error;
+              } finally {
+                setActiveUpload(null);
+              }
+            },
           });
-          if (
-            !["uploaded", "finalized"].includes(response.status) ||
-            response.clientPhotoId !== pendingPhoto.clientPhotoId ||
-            !response.uploadIntentId ||
-            (response.status === "uploaded" &&
-              response.finalizationPending !== true) ||
-            (response.status === "finalized" &&
-              response.finalizationPending !== false)
-          ) {
-            throw new Error(
-              t(
-                "The server could not confirm the uploaded {type} photo. Verify the upload before retrying.",
-                {
-                  type: t(type === "before" ? "Before" : "After"),
-                },
-              ),
-            );
-          }
 
-          setPendingUploadStatuses((current) => ({
-            ...current,
-            [pendingPhoto.id]:
-              response.status === "finalized"
-                ? "uploaded"
-                : "finalization-pending",
-          }));
-          setUploadStatus((current) => ({ ...current, [type]: "uploaded" }));
-          setActiveUpload(null);
-          if (response.status === "finalized") {
-            setPendingIntentRecords((current) =>
-              current.filter(
-                (record) =>
-                  record.uploadIntentId !== response.uploadIntentId,
-              ),
-            );
+          if (queueResult.failure) {
+            const { error } = queueResult.failure;
+            const ambiguous =
+              isAmbiguousUploadError(error) ||
+              (error instanceof Error &&
+                error.message.includes("could not confirm"));
+            const message = ambiguous
+              ? t("Photo upload response was not confirmed. Verify the saved photo before retrying.")
+              : getApiErrorMessage(error, t, language);
+            toast.error(message);
+          } else if (
+            queueResult.finalizationPendingCount > 0 ||
+            queueResult.uploadedCount > 0
+          ) {
             toast.success(
-              t("{type} photos uploaded successfully.", {
-                type: t(type === "before" ? "Before" : "After"),
-              }),
-            );
-          } else {
-            const finalized = await finalizePendingIntent(
-              response.uploadIntentId,
-              type,
-              pendingPhoto.id,
-            );
-            toast.success(
-              finalized
-                ? t("{type} photos uploaded successfully.", {
+              queueResult.finalizationPendingCount > 0
+                ? t("{type} photo uploaded; finalization is pending.", {
                     type: t(type === "before" ? "Before" : "After"),
                   })
-                : t("{type} photo uploaded; finalization is pending.", {
+                : t("{type} photos uploaded successfully.", {
                     type: t(type === "before" ? "Before" : "After"),
                   }),
             );
           }
-          continue;
-        } catch (error) {
-          setActiveUpload(null);
-          const ambiguous =
-            isAmbiguousUploadError(error) ||
-            (error instanceof Error &&
-              error.message.includes("could not confirm"));
-          setPendingUploadStatuses((current) => ({
-            ...current,
-            [pendingPhoto.id]: ambiguous ? "verification" : "failed",
-          }));
-          setUploadStatus((current) => ({ ...current, [type]: "failed" }));
-          const message = ambiguous
-            ? t("Photo upload response was not confirmed. Verify the saved photo before retrying.")
-            : getApiErrorMessage(error, t, language);
-          setUploadErrors((current) => ({ ...current, [type]: message }));
-          toast.error(message);
-          break;
-        }
-      }
+          return queueResult;
+        },
+      );
+      if (!result) return;
     } catch (error) {
       const message = getApiErrorMessage(error, t, language);
       setActiveUpload(null);
@@ -892,10 +923,6 @@ export default function EmployeeFieldWorkPanel({
       }));
       setUploadErrors((current) => ({ ...current, [type]: message }));
       toast.error(message);
-    } finally {
-      setActiveUpload(null);
-      uploadLockRef.current = false;
-      setIsUploading(false);
     }
   };
 

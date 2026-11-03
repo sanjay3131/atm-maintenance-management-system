@@ -10,10 +10,15 @@ const servicePath = new URL(
   "../src/features/jobs/services/jobs.service.ts",
   import.meta.url,
 );
+const queuePath = new URL(
+  "../src/features/jobs/utils/photoUploadQueue.ts",
+  import.meta.url,
+);
 
-const [panel, service] = await Promise.all([
+const [panel, service, queue] = await Promise.all([
   readFile(panelPath, "utf8"),
   readFile(servicePath, "utf8"),
+  readFile(queuePath, "utf8"),
 ]);
 
 test("employee photo upload sends one pending photo per request", () => {
@@ -49,17 +54,19 @@ test("retries reuse the pending photo client identity and replacements create a 
 });
 
 test("employee photo upload processes pending photos sequentially", () => {
-  assert.match(panel, /while \(true\) \{/);
+  assert.match(panel, /processPhotoUploadQueue\(\{/);
   assert.match(
     panel,
-    /await uploadMutation\.mutateAsync\(\{[\s\S]*?files: \[pendingPhoto\.file\]/,
+    /processPhoto: async \(pendingPhoto\) => \{[\s\S]*?await uploadMutation\.mutateAsync\(\{[\s\S]*?files: \[pendingPhoto\.file\]/,
   );
+  assert.match(queue, /for \(const photo of photos\)/);
+  assert.match(queue, /await processPhoto\(photo\)/);
   assert.match(panel, /finalizationPending !== true/);
   assert.match(panel, /finalizePendingIntent\(/);
 });
 
 test("successful upload automatically finalizes and preserves retryable pending state", () => {
-  assert.match(panel, /pendingUploadStatuses\[photo\.id\] !== "finalization-pending"/);
+  assert.match(queue, /statuses\[photo\.id\] !== "finalization-pending"/);
   assert.match(panel, /"finalization-pending"/);
   assert.match(panel, /useFinalizeJobPhoto/);
   assert.match(panel, /finalizationPending !== false/);
@@ -75,7 +82,7 @@ test("uncertain upload outcomes require verification and do not retry automatica
   assert.match(panel, /pendingUploadStatuses\[photo\.id\]/);
   assert.match(panel, /ambiguous \? "verification" : "failed"/);
   assert.match(panel, /Photo upload response was not confirmed/);
-  assert.match(panel, /pendingUploadStatuses\[photo\.id\] !== "verification"/);
+  assert.match(queue, /statuses\[photo\.id\] !== "verification"/);
 });
 
 test("pending upload intents are hydrated idempotently after remount", () => {
