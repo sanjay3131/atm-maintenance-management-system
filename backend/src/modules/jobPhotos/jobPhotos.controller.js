@@ -3,6 +3,7 @@ import ApiResponse from "../../utils/ApiResponse.js";
 import ApiError from "../../utils/ApiError.js";
 import cloudinary from "../../config/cloudinary.js";
 import JobPhoto from "./jobPhotos.model.js";
+import JobPhotoUploadIntent from "./jobPhotoUploadIntent.model.js";
 import Job from "../jobs/jobs.model.js";
 import {
   isCustomerVisibleJob,
@@ -15,15 +16,27 @@ import mongoose from "mongoose";
 import { requireCurrentSupervisedJob } from "../supervisor/supervisor.scope.js";
 import { publishDomainEventSafely } from "../../realtime/domain-events.js";
 import { resolveJobRecipients } from "../../realtime/recipient-resolver.js";
+import {
+  assertLiveIntentLease,
+  completeUploadIntent,
+  finalizeUploadIntent,
+  getFinalizedUploadResult,
+  markIntentFailure,
+  reserveUploadIntent,
+  setIntentState,
+  uploadOrReconcileAsset,
+  validateUploadedFile,
+} from "./jobPhotoUpload.service.js";
 
 // ============================================
-// UPLOAD PHOTOS TO CLOUDINARY
+// RESERVE AND UPLOAD ONE PHOTO TO CLOUDINARY
 // ============================================
 export const createUploadPhotosHandler = (
   publishEvent = publishDomainEventSafely,
 ) => asyncHandler(async (req, res) => {
   const { jobId } = req.params;
   const { photoType } = req.body; // "before" or "after"
+  const { clientPhotoId } = req.body;
 
   if (!photoType || !["before", "after"].includes(photoType)) {
     throw new ApiError(400, "photoType must be 'before' or 'after'");
@@ -31,6 +44,9 @@ export const createUploadPhotosHandler = (
 
   if (!req.files || req.files.length === 0) {
     throw new ApiError(400, "No photos provided");
+  }
+  if (req.files.length !== 1) {
+    throw new ApiError(400, "Exactly one photo must be uploaded per request");
   }
 
   // Verify job exists
@@ -60,7 +76,7 @@ export const createUploadPhotosHandler = (
     );
   }
 
-  // Check photo limits: 3 per type, 6 total
+  // Check finalized photo limits. Upload intents do not count until finalization.
   const beforePhotoIds = job.beforePhotos || [];
   const afterPhotoIds = job.afterPhotos || [];
   const currentPhotoIds = [...beforePhotoIds, ...afterPhotoIds];
@@ -72,7 +88,7 @@ export const createUploadPhotosHandler = (
     photoType,
     isExpired: false,
   });
-  const newCount = req.files.length;
+  const newCount = 1;
 
   if (existingTypeCount + newCount > 3) {
     throw new ApiError(
@@ -93,131 +109,163 @@ export const createUploadPhotosHandler = (
     );
   }
 
-  // Upload each file to Cloudinary
-  const savedPhotos = [];
-  const uploadedPublicIds = [];
-
-  try {
-    for (const file of req.files) {
-      const uploadResult = await new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          {
-            folder: `atm-fsm/jobs/${jobId}/${photoType}`,
-            resource_type: "image",
-            transformation: [{ quality: "auto", fetch_format: "auto" }],
-            tags: [`job_${jobId}`, `atm_${job.atmId}`, photoType],
-          },
-          (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          },
-        );
-        stream.end(file.buffer);
-      });
-      uploadedPublicIds.push(uploadResult.public_id);
-
-      const thumbnailUrl = cloudinary.url(uploadResult.public_id, {
-        width: 300,
-        height: 300,
-        crop: "fill",
-        quality: "auto",
-        fetch_format: "auto",
-      });
-
-      const photo = await JobPhoto.create({
-        jobId,
-        atmId: job.atmId,
-        photoType,
-        publicId: uploadResult.public_id,
-        url: uploadResult.secure_url,
-        thumbnailUrl,
-        originalName: file.originalname,
-        size: uploadResult.bytes || file.size,
-        mimeType: file.mimetype,
-        uploadedBy: req.user._id,
-        uploadedAt: new Date(),
-        gpsData: req.body.gpsData ? JSON.parse(req.body.gpsData) : undefined,
-      });
-
-      savedPhotos.push(photo);
-    }
-
-    const photoIds = savedPhotos.map((photo) => photo._id);
-    if (photoType === "before") {
-      job.beforePhotos = [...(job.beforePhotos || []), ...photoIds];
-    } else {
-      job.afterPhotos = [...(job.afterPhotos || []), ...photoIds];
-    }
-    await job.save();
-  } catch (error) {
-    const photoIds = savedPhotos.map((photo) => photo._id);
-    const cleanupOperations = [];
-    if (photoIds.length > 0) {
-      cleanupOperations.push(
-        Job.updateOne(
-          { _id: job._id },
-          { $pull: { [`${photoType}Photos`]: { $in: photoIds } } },
-        ),
-        JobPhoto.deleteMany({ _id: { $in: photoIds } }),
-      );
-    }
-    cleanupOperations.push(
-      ...uploadedPublicIds.map(async (publicId) => {
-        if (!(await deleteSinglePhoto(publicId))) {
-          throw new Error(`Cloudinary rollback failed for ${publicId}`);
-        }
-      }),
-    );
-    const cleanupResults = await Promise.allSettled(cleanupOperations);
-    cleanupResults.forEach((result) => {
-      if (result.status === "rejected") {
-        console.error("[Job Photos] Upload rollback failed:", result.reason);
-      }
-    });
-    throw error;
+  if (!clientPhotoId) {
+    throw new ApiError(400, "clientPhotoId is required");
   }
 
-  await publishEvent({
-    event: "domain:job:updated",
-    entityType: "job",
-    entityId: job._id,
-    action: "photos-uploaded",
-    resolveRecipients: () => resolveJobRecipients(job),
+  const file = req.files[0];
+  const metadata = validateUploadedFile(file);
+  const reservation = await reserveUploadIntent({
+    jobId,
+    clientPhotoId,
+    ownerUserId: req.user._id,
+    photoType,
+    metadata,
+    isAdmin,
   });
+  let intent = reservation.intent;
+  if (intent.state !== "finalized") {
+    intent = await assertLiveIntentLease(intent);
+    if (intent.state === "reserved" || intent.state === "failed") {
+      intent = await setIntentState(intent, "uploading");
+    }
+    let asset;
+    try {
+      asset = await uploadOrReconcileAsset({ intent, file, metadata });
+    } catch (error) {
+      if (!error.uploadInProgress && !error.claimLost) {
+        await markIntentFailure(
+          intent,
+          error.statusCode === 504 ? "provider_timeout" : "verification_required",
+          error.statusCode === 504
+            ? "Cloudinary verification timed out"
+            : "Cloudinary verification requires reconciliation",
+        );
+      }
+      throw error;
+    }
+    try {
+      intent = await completeUploadIntent(intent, asset);
+    } catch (error) {
+      throw error;
+    }
 
-  const [totalBefore, totalAfter] = await Promise.all([
-    JobPhoto.countDocuments({
-      jobId,
-      photoType: "before",
-      isExpired: false,
-    }),
-    JobPhoto.countDocuments({
-      jobId,
-      photoType: "after",
-      isExpired: false,
-    }),
-  ]);
+    return res.status(reservation.replay ? 200 : 201).json(
+      new ApiResponse(
+        reservation.replay ? 200 : 201,
+        {
+          status: "uploaded",
+          clientPhotoId: intent.clientPhotoId,
+          uploadIntentId: String(intent._id),
+          ownerVersion: intent.ownerVersion,
+          finalizationPending: true,
+          asset: {
+            publicId: asset.publicId,
+            secureUrl: asset.secureUrl,
+            format: asset.format,
+            verifiedSha256: asset.verifiedSha256,
+          },
+        },
+        "Photo uploaded and awaiting finalization",
+      ),
+    );
+  }
 
-  return res.status(201).json(
+  const finalized = await getFinalizedUploadResult(intent);
+  return res.status(200).json(
     new ApiResponse(
-      201,
+      200,
       {
-        photos: savedPhotos.map((p) => ({
-          _id: p._id,
-          url: p.url,
-          thumbnailUrl: p.thumbnailUrl,
-          photoType: p.photoType,
-          uploadedAt: p.uploadedAt,
-        })),
-        totalBefore,
-        totalAfter,
+        status: "finalized",
+        clientPhotoId: intent.clientPhotoId,
+        uploadIntentId: String(intent._id),
+        ownerVersion: intent.ownerVersion,
+        finalizationPending: false,
+        jobPhoto: finalized.jobPhoto,
       },
-      `${savedPhotos.length} ${photoType} photo(s) uploaded successfully`,
+      "Photo upload was already finalized",
     ),
   );
 });
 
 export const uploadPhotos = createUploadPhotosHandler();
+
+export const finalizePhoto = asyncHandler(async (req, res) => {
+  const { jobId, uploadIntentId } = req.params;
+  const result = await finalizeUploadIntent({
+    jobId,
+    uploadIntentId,
+    userId: req.user._id,
+    userType: req.user.userType,
+  });
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        status: "finalized",
+        clientPhotoId: result.intent.clientPhotoId,
+        uploadIntentId: String(result.intent._id),
+        ownerVersion: result.intent.ownerVersion,
+        finalizationPending: false,
+        jobPhoto: result.jobPhoto,
+      },
+      "Photo finalized successfully",
+    ),
+  );
+});
+
+export const getPendingUploadIntents = asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  if (!mongoose.isValidObjectId(jobId)) {
+    throw new ApiError(400, "Invalid job ID");
+  }
+  const job = await Job.findById(jobId);
+  if (!job || job.isDeleted) {
+    throw new ApiError(404, "Job not found");
+  }
+
+  const isAdmin = ["admin", "superAdmin"].includes(req.user.userType);
+  const isAssigned =
+    job.assignedEmployeeId?.toString() === req.user._id.toString();
+  if (!isAdmin && !isAssigned) {
+    throw new ApiError(403, "You can only view uploads for your assigned jobs");
+  }
+
+  const intents = await JobPhotoUploadIntent.find({
+    jobId,
+    state: { $in: ["reserved", "uploading", "uploaded", "failed", "quarantined"] },
+    ...(isAdmin
+      ? {}
+      : {
+          $or: [
+            { ownerUserId: req.user._id },
+            { currentOwnerUserId: req.user._id },
+          ],
+        }),
+  }).select(
+    "_id clientPhotoId ownerUserId currentOwnerUserId photoType ownerVersion state leaseExpiresAt failureCode failedAt",
+  );
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      intents.map((intent) => ({
+        uploadIntentId: String(intent._id),
+        clientPhotoId: intent.clientPhotoId,
+        ownerUserId: String(intent.ownerUserId),
+        currentOwnerUserId: String(intent.currentOwnerUserId),
+        photoType: intent.photoType,
+        ownerVersion: intent.ownerVersion,
+        state: intent.state,
+        leaseExpiresAt: intent.leaseExpiresAt,
+        failureCode: intent.failureCode,
+        failedAt: intent.failedAt,
+      })),
+      "Pending photo uploads retrieved successfully",
+    ),
+  );
+});
 
 // ============================================
 // GET PHOTOS FOR A JOB

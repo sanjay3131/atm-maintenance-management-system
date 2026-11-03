@@ -8,6 +8,11 @@ const jobPhotoSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    uploadIntentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "JobPhotoUploadIntent",
+      immutable: true,
+    },
     atmId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ATM",
@@ -74,7 +79,16 @@ const jobPhotoSchema = new mongoose.Schema(
 // Compound indexes
 jobPhotoSchema.index({ jobId: 1, photoType: 1 });
 jobPhotoSchema.index({ atmId: 1, uploadedAt: 1 });
-jobPhotoSchema.index({ uploadedAt: 1 }); // For FIFO cleanup
+jobPhotoSchema.index(
+  { uploadIntentId: 1 },
+  {
+    unique: true,
+    name: "job_photo_upload_intent_unique",
+    partialFilterExpression: {
+      uploadIntentId: { $exists: true },
+    },
+  },
+);
 
 const JobPhoto = mongoose.model("JobPhoto", jobPhotoSchema);
 

@@ -89,6 +89,14 @@ const jobSchema = new mongoose.Schema(
       default: 0,
       select: false,
     },
+    // Future finalization treats a missing value as logical revision 0 and
+    // must use a fenced conditional write that handles both missing and
+    // explicitly stored revisions. No schema default avoids implicit legacy
+    // backfill when an existing Job is hydrated and saved.
+    photoFinalizationRevision: {
+      type: Number,
+      min: 0,
+    },
     assignedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

@@ -11,6 +11,8 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test:location-workflow-mongo": "node --test test/integration/atmLocationWorkflow.mongodb.test.js",
+    "job-photos:ensure-indexes": "node scripts/ensureJobPhotoUploadIndexes.js",
+    "job-photos:backfill-fence": "node scripts/backfillJobPhotoUploadFence.js",
     "employees:ensure-user-id-index": "node scripts/ensureEmployeeUserIdUniqueIndex.js",
     "attendance:ensure-supervisor-indexes": "node scripts/ensureSupervisorAttendanceIndexes.js"
   },

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import {
   useEffect,
+  useCallback,
   useRef,
   useState,
   type ChangeEvent,
@@ -34,9 +35,17 @@ import {
   isAcceptableATMLocationRequestAccuracy,
 } from "@/features/atms/atmLocationRequest.utils";
 import JobPhotoGallery from "@/features/jobs/components/JobPhotoGallery";
-import { useCompleteJob, useUploadJobPhoto } from "../hooks/useJobLifecycle";
+import {
+  useCompleteJob,
+  useFinalizeJobPhoto,
+  useUploadJobPhoto,
+} from "../hooks/useJobLifecycle";
 import type { Job, JobPhoto } from "../types/job.types";
-import type { JobPhotoType } from "../services/jobs.service";
+import {
+  getPendingJobPhotoUploads,
+  type JobPhotoType,
+  type PendingJobPhotoUpload,
+} from "../services/jobs.service";
 import { EMPLOYEE_REQUIRED_PHOTOS_PER_TYPE } from "../utils/employeeJobDetails.utils";
 import {
   employeeErrorMessage,
@@ -44,6 +53,11 @@ import {
   useEmployeeLanguage,
   type EmployeeTranslationKey,
 } from "@/features/employee-portal/i18n";
+import {
+  ImagePreparationError,
+  prepareImageForUpload,
+} from "../utils/imagePreparation";
+import { createFinalizationRetryCoordinator } from "../utils/finalizationRetry";
 
 const REQUIRED_PHOTOS_PER_TYPE = EMPLOYEE_REQUIRED_PHOTOS_PER_TYPE;
 const MAX_PHOTOS_PER_TYPE = 3;
@@ -63,6 +77,7 @@ interface GpsPosition {
 
 interface PendingPhoto {
   id: string;
+  clientPhotoId: string;
   file: File;
   photoType: JobPhotoType;
   previewUrl: string;
@@ -71,9 +86,15 @@ interface PendingPhoto {
 type PhotoSelection = Record<JobPhotoType, PendingPhoto[]>;
 type PhotoCounts = Record<JobPhotoType, number>;
 type UploadStatus = "idle" | "uploading" | "uploaded" | "failed";
+type PendingUploadStatus =
+  | "idle"
+  | "uploading"
+  | "uploaded"
+  | "failed"
+  | "verification"
+  | "finalization-pending";
 
 const EMPTY_SELECTION: PhotoSelection = { before: [], after: [] };
-const EMPTY_COUNTS: PhotoCounts = { before: 0, after: 0 };
 
 function getApiErrorMessage(
   error: unknown,
@@ -161,15 +182,23 @@ function getFileId(file: File) {
   return `${file.name}:${file.size}:${file.lastModified}`;
 }
 
+function isAmbiguousUploadError(error: unknown) {
+  return isAxiosError(error) && !error.response;
+}
+
 function PendingPhotoCard({
   photo,
   disabled,
+  status,
+  progress,
   onRemove,
   onReplace,
   t,
 }: {
   photo: PendingPhoto;
   disabled: boolean;
+  status: PendingUploadStatus;
+  progress?: number;
   onRemove: () => void;
   onReplace: () => void;
   t: ReturnType<typeof useEmployeeLanguage>["t"];
@@ -197,6 +226,32 @@ function PendingPhotoCard({
         {t(photo.photoType === "before" ? "Before" : "After")} ·{" "}
         {photo.file.name}
       </p>
+      {status === "idle" && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {t("Waiting to upload")}
+        </p>
+      )}
+      {status === "uploading" && (
+        <p className="mt-1 text-xs font-medium" role="status">
+          {t("Uploading...")}
+          {progress !== undefined ? ` ${progress}%` : ""}
+        </p>
+      )}
+      {status === "failed" && (
+        <p className="mt-1 text-xs font-medium text-destructive">
+          {t("Retry")}
+        </p>
+      )}
+      {status === "verification" && (
+        <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+          {t("Photo upload requires verification before retrying.")}
+        </p>
+      )}
+      {status === "finalization-pending" && (
+        <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+          {t("Uploaded; finalization is pending.")}
+        </p>
+      )}
       <div className="mt-2 grid grid-cols-2 gap-2">
         <Button
           type="button"
@@ -249,8 +304,6 @@ export default function EmployeeFieldWorkPanel({
   const [selectedPhotos, setSelectedPhotos] =
     useState<PhotoSelection>(EMPTY_SELECTION);
   const selectedPhotosRef = useRef<PhotoSelection>(EMPTY_SELECTION);
-  const [confirmedCounts, setConfirmedCounts] =
-    useState<PhotoCounts>(EMPTY_COUNTS);
   const [uploadStatus, setUploadStatus] = useState<
     Record<JobPhotoType, UploadStatus>
   >({ before: "idle", after: "idle" });
@@ -259,12 +312,23 @@ export default function EmployeeFieldWorkPanel({
   >({ before: "", after: "" });
   const [activeUpload, setActiveUpload] = useState<{
     photoType: JobPhotoType;
-    fileCount: number;
+    photoId: string;
     persistedCount: number;
     progress?: number;
   } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const uploadLockRef = useRef(false);
+  const [pendingUploadStatuses, setPendingUploadStatuses] = useState<
+    Record<string, PendingUploadStatus>
+  >({});
+  const [pendingIntentRecords, setPendingIntentRecords] = useState<
+    PendingJobPhotoUpload[]
+  >([]);
+  const [preparingPhotoType, setPreparingPhotoType] =
+    useState<JobPhotoType | null>(null);
+  const preparationLockRef = useRef(false);
+  const preparationAbortRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
   const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false);
   const [expandedStep, setExpandedStep] = useState<
     "location" | "before" | "after" | "review" | null
@@ -283,20 +347,125 @@ export default function EmployeeFieldWorkPanel({
     id: string;
   } | null>(null);
   const uploadMutation = useUploadJobPhoto();
+  const finalizeMutation = useFinalizeJobPhoto();
   const completeMutation = useCompleteJob();
   const locationRequestMutation = useSubmitATMLocationRequest();
+  const finalizationCoordinatorRef = useRef(
+    createFinalizationRetryCoordinator(),
+  );
+  const [finalizingIntentId, setFinalizingIntentId] = useState<string | null>(
+    null,
+  );
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      preparationAbortRef.current?.abort();
       Object.values(selectedPhotosRef.current)
         .flat()
         .forEach((photo) => {
           URL.revokeObjectURL(photo.previewUrl);
         });
-      onPendingSelectionChange?.(false);
+        onPendingSelectionChange?.(false);
+    };
+  }, [onPendingSelectionChange]);
+
+  useEffect(() => {
+    let active = true;
+    void getPendingJobPhotoUploads(job._id)
+      .then((records) => {
+        if (active) {
+          setPendingIntentRecords(
+            Array.from(
+              new Map(records.map((record) => [record.clientPhotoId, record])).values(),
+            ),
+          );
+        }
+      })
+      .catch(() => {
+        if (active) setPendingIntentRecords([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [job._id]);
+
+  const finalizePendingIntent = useCallback(async (
+    uploadIntentId: string,
+    photoType?: JobPhotoType,
+    photoId?: string,
+    retry = false,
+  ) => {
+    const coordinator = finalizationCoordinatorRef.current;
+    if (coordinator.isLocked()) return false;
+    if (isMountedRef.current) setFinalizingIntentId(uploadIntentId);
+    try {
+      const attempt = (intentId: string) =>
+        finalizeMutation.mutateAsync({
+          jobId: job._id,
+          uploadIntentId: intentId,
+        });
+      const finalized = retry
+        ? await coordinator.retry(uploadIntentId, attempt)
+        : await coordinator.run(uploadIntentId, attempt);
+      if (!finalized) return false;
+      if (isMountedRef.current) {
+        setPendingIntentRecords((current) =>
+          current.filter((record) => record.uploadIntentId !== uploadIntentId),
+        );
+        if (photoId && photoType) {
+          setPendingUploadStatuses((current) => ({
+            ...current,
+            [photoId]: "uploaded",
+          }));
+          setUploadStatus((current) => ({
+            ...current,
+            [photoType]: "uploaded",
+          }));
+        }
+      }
+      return finalized;
+    } finally {
+      if (isMountedRef.current) setFinalizingIntentId(null);
+    }
+  }, [finalizeMutation, job._id]);
+
+  const retryPendingFinalization = useCallback(
+    (record: PendingJobPhotoUpload) => {
+      if (
+        record.state !== "uploaded" ||
+        finalizationCoordinatorRef.current.isLocked()
+      ) {
+        return;
+      }
+      void finalizePendingIntent(record.uploadIntentId, undefined, undefined, true);
     },
-    [onPendingSelectionChange],
+    [finalizePendingIntent],
   );
+
+  useEffect(() => {
+    let active = true;
+    const records = pendingIntentRecords.filter(
+      (record) =>
+        record.state === "uploaded" &&
+        !finalizationCoordinatorRef.current.hasAttempted(record.uploadIntentId),
+    );
+    void (async () => {
+      for (const record of records) {
+        if (!active) break;
+        finalizationCoordinatorRef.current.markAttempted(record.uploadIntentId);
+        try {
+          await finalizePendingIntent(record.uploadIntentId);
+        } catch {
+          // Keep the uploaded intent visible for a later explicit retry.
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [finalizePendingIntent, job._id, pendingIntentRecords]);
 
   const atm = typeof job.atmId === "object" && job.atmId ? job.atmId : null;
   const coordinates = atm?.location?.coordinates;
@@ -307,14 +476,8 @@ export default function EmployeeFieldWorkPanel({
     Number.isFinite(coordinates[1]),
   );
   const persistedCounts: PhotoCounts = {
-    before: Math.max(
-      getValidPhotoCount(job.beforePhotos, "before"),
-      confirmedCounts.before,
-    ),
-    after: Math.max(
-      getValidPhotoCount(job.afterPhotos, "after"),
-      confirmedCounts.after,
-    ),
+    before: getValidPhotoCount(job.beforePhotos, "before"),
+    after: getValidPhotoCount(job.afterPhotos, "after"),
   };
   const photoTypes: Array<{
     type: JobPhotoType;
@@ -348,6 +511,7 @@ export default function EmployeeFieldWorkPanel({
     evidenceComplete &&
     !isUploading,
   );
+  const isPreparing = preparingPhotoType !== null;
 
   const replaceSelection = (
     photoType: JobPhotoType,
@@ -371,7 +535,7 @@ export default function EmployeeFieldWorkPanel({
     );
   };
 
-  const handleFileSelection = (
+  const handleFileSelection = async (
     photoType: JobPhotoType,
     event: ChangeEvent<HTMLInputElement>,
     replace = false,
@@ -383,6 +547,7 @@ export default function EmployeeFieldWorkPanel({
     const target = replace ? replaceTargetRef.current : null;
     if (replace || replaceTargetRef.current) replaceTargetRef.current = null;
     const isReplace = target?.photoType === photoType;
+    if (preparationLockRef.current) return;
     const currentSelection = selectedPhotosRef.current[photoType];
     const persistedCount = persistedCounts[photoType];
     const availableSlots = Math.max(
@@ -410,55 +575,28 @@ export default function EmployeeFieldWorkPanel({
       }
     }
 
-    if (isReplace) {
-      const replacementFile = validFiles[0];
-      if (!replacementFile) {
-        if (issues.length > 0) toast.error(issues.join(" "));
-        return;
-      }
-      if (validFiles.length > 1) {
-        issues.push(
-          t("Only the first valid image was used to replace this photo."),
-        );
-      }
-      const duplicate = currentSelection.some(
-        (photo) =>
-          photo.id === getFileId(replacementFile) && photo.id !== target.id,
-      );
-      if (duplicate) {
-        issues.push(
-          t("{filename}: this file is already selected.", {
-            filename: replacementFile.name,
-          }),
-        );
-      } else {
-        const replacement: PendingPhoto = {
-          id: getFileId(replacementFile),
-          file: replacementFile,
-          photoType,
-          previewUrl: URL.createObjectURL(replacementFile),
-        };
-        replaceSelection(
-          photoType,
-          currentSelection.map((photo) =>
-            photo.id === target.id ? replacement : photo,
-          ),
-        );
-      }
-    } else {
+    if (isReplace && !validFiles[0]) {
+      if (issues.length > 0) toast.error(issues.join(" "));
+      return;
+    }
+    if (!isReplace && validFiles.length === 0) {
+      if (issues.length > 0) toast.error(issues.join(" "));
+      return;
+    }
+    if (isReplace && validFiles.length > 1) {
+      issues.push(t("Only the first valid image was used to replace this photo."));
+    }
+
+    preparationLockRef.current = true;
+    preparationAbortRef.current = new AbortController();
+    setPreparingPhotoType(photoType);
+    try {
+      const filesToPrepare = isReplace ? validFiles.slice(0, 1) : validFiles;
       const accepted: PendingPhoto[] = [];
       const fingerprints = new Set(currentSelection.map((photo) => photo.id));
-      for (const [index, file] of validFiles.entries()) {
-        const id = getFileId(file);
-        if (fingerprints.has(id)) {
-          issues.push(
-            t("{filename}: this file is already selected.", {
-              filename: file.name,
-            }),
-          );
-          continue;
-        }
-        if (accepted.length >= availableSlots) {
+
+      for (const [index, file] of filesToPrepare.entries()) {
+        if (!isReplace && accepted.length >= availableSlots) {
           issues.push(
             t(
               "{count} selected {type} photo(s) were not added; only {slots} more can be selected.",
@@ -471,22 +609,57 @@ export default function EmployeeFieldWorkPanel({
           );
           break;
         }
+
+        const preparedFile = await prepareImageForUpload(file, {
+          signal: preparationAbortRef.current.signal,
+        });
+        if (!isMountedRef.current) return;
+        const id = getFileId(preparedFile);
+        const duplicate = fingerprints.has(id);
+        if (duplicate && (!isReplace || id !== target?.id)) {
+          issues.push(
+            t("{filename}: this file is already selected.", {
+              filename: file.name,
+            }),
+          );
+          continue;
+        }
         fingerprints.add(id);
         accepted.push({
           id,
-          file,
+          clientPhotoId: crypto.randomUUID(),
+          file: preparedFile,
           photoType,
-          previewUrl: URL.createObjectURL(file),
+          previewUrl: URL.createObjectURL(preparedFile),
         });
       }
-      if (accepted.length > 0) {
+
+      if (isReplace && accepted[0] && target) {
+        replaceSelection(
+          photoType,
+          currentSelection.map((photo) =>
+            photo.id === target.id ? accepted[0] : photo,
+          ),
+        );
+      } else if (!isReplace && accepted.length > 0) {
         replaceSelection(photoType, [...currentSelection, ...accepted]);
       }
+    } catch (error) {
+      if (isMountedRef.current && error instanceof ImagePreparationError) {
+        issues.push(t("The selected image could not be prepared for upload."));
+      } else if (isMountedRef.current) {
+        issues.push(t("The selected image could not be prepared for upload."));
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setPreparingPhotoType(null);
+        if (issues.length > 0) toast.error(issues.join(" "));
+        setUploadStatus((current) => ({ ...current, [photoType]: "idle" }));
+        setUploadErrors((current) => ({ ...current, [photoType]: "" }));
+      }
+      preparationAbortRef.current = null;
+      preparationLockRef.current = false;
     }
-
-    if (issues.length > 0) toast.error(issues.join(" "));
-    setUploadStatus((current) => ({ ...current, [photoType]: "idle" }));
-    setUploadErrors((current) => ({ ...current, [photoType]: "" }));
   };
 
   const removeSelectedPhoto = (photoType: JobPhotoType, id: string) => {
@@ -578,139 +751,137 @@ export default function EmployeeFieldWorkPanel({
       });
   };
 
-  const refreshPersistedEvidence = async () => {
-    await queryClient.refetchQueries({
-      queryKey: ["job", job._id],
-      exact: true,
-    });
-    const refreshedJob = queryClient.getQueryData<Job>(["job", job._id]);
-    const refreshedCounts = refreshedJob
-      ? {
-          before: getValidPhotoCount(refreshedJob.beforePhotos, "before"),
-          after: getValidPhotoCount(refreshedJob.afterPhotos, "after"),
-        }
-      : EMPTY_COUNTS;
-    if (refreshedJob) {
-      setConfirmedCounts((current) => ({
-        before: Math.max(current.before, refreshedCounts.before),
-        after: Math.max(current.after, refreshedCounts.after),
-      }));
-    }
-    return refreshedCounts;
-  };
-
   const uploadSelectedPhotos = async (type: JobPhotoType) => {
     if (uploadLockRef.current || evidenceComplete) return;
-    const currentJob = queryClient.getQueryData<Job>(["job", job._id]) ?? job;
-    const currentCount = Math.max(
-      persistedCounts[type],
-      getValidPhotoCount(
-        type === "before" ? currentJob.beforePhotos : currentJob.afterPhotos,
-        type,
-      ),
-    );
-    const selected = selectedPhotosRef.current[type].slice(
-      0,
-      Math.max(0, REQUIRED_PHOTOS_PER_TYPE - currentCount),
-    );
-    if (selected.length === 0) return;
-    const files = selected.map((photo) => photo.file);
-    const expectedCount = currentCount + files.length;
-    const attemptedPhotoIds = new Set(selected.map((photo) => photo.id));
     uploadLockRef.current = true;
     setIsUploading(true);
     setUploadErrors((current) => ({ ...current, [type]: "" }));
-    setUploadStatus((current) => ({ ...current, [type]: "uploading" }));
-    setActiveUpload({
-      photoType: type,
-      fileCount: files.length,
-      persistedCount: currentCount,
-    });
 
     try {
-      const response = await uploadMutation.mutateAsync({
-        jobId: job._id,
-        files,
-        photoType: type,
-        onProgress: (progress) =>
-          setActiveUpload({
-            photoType: type,
-            fileCount: files.length,
-            persistedCount: currentCount,
-            progress,
-          }),
-      });
-      const totalForType =
-        type === "before" ? response.totalBefore : response.totalAfter;
-      if (
-        response.photos.length !== files.length ||
-        response.photos.some((photo) => !photo || photo.photoType !== type) ||
-        totalForType < expectedCount
-      ) {
-        throw new Error(
-          t(
-            "The server could not confirm the uploaded {type} photos. Refresh the job before retrying.",
-            {
-              type: t(type === "before" ? "Before" : "After"),
-            },
+      while (true) {
+        const currentJob =
+          queryClient.getQueryData<Job>(["job", job._id]) ?? job;
+        const currentCount = Math.max(
+          persistedCounts[type],
+          getValidPhotoCount(
+            type === "before"
+              ? currentJob.beforePhotos
+              : currentJob.afterPhotos,
+            type,
           ),
         );
-      }
+        if (currentCount >= REQUIRED_PHOTOS_PER_TYPE) break;
 
-      setConfirmedCounts((current) => ({
-        ...current,
-        [type]: Math.max(current[type], totalForType),
-      }));
-      replaceSelection(
-        type,
-        selectedPhotosRef.current[type].filter(
-          (photo) => !attemptedPhotoIds.has(photo.id),
-        ),
-      );
-      setUploadStatus((current) => ({ ...current, [type]: "uploaded" }));
-      setActiveUpload(null);
-
-      const nextBefore =
-        type === "before"
-          ? Math.max(persistedCounts.before, totalForType)
-          : persistedCounts.before;
-      const nextAfter =
-        type === "after"
-          ? Math.max(persistedCounts.after, totalForType)
-          : persistedCounts.after;
-      if (
-        nextBefore >= REQUIRED_PHOTOS_PER_TYPE &&
-        nextAfter >= REQUIRED_PHOTOS_PER_TYPE
-      ) {
-        setExpandedStep("review");
-      } else if (type === "before" && nextBefore >= REQUIRED_PHOTOS_PER_TYPE) {
-        setExpandedStep("after");
-      }
-
-      try {
-        const refreshedCounts = await refreshPersistedEvidence();
-        if (refreshedCounts[type] < expectedCount) {
-          const refreshError = t(
-            "The upload was accepted, but the saved {type} photo count could not be confirmed after refreshing. Reload the job before continuing.",
-            {
-              type: t(type === "before" ? "Before" : "After"),
-            },
-          );
-          setUploadErrors((current) => ({ ...current, [type]: refreshError }));
-          toast.error(refreshError);
-        } else {
-          toast.success(
-            t("{type} photos uploaded and saved.", {
-              type: t(type === "before" ? "Before" : "After"),
-            }),
-          );
-        }
-      } catch {
-        const refreshError = t(
-          "Photos were saved, but the job could not be refreshed. Reload before continuing.",
+        const pendingPhoto = selectedPhotosRef.current[type].find(
+          (photo) =>
+            pendingUploadStatuses[photo.id] !== "verification" &&
+          pendingUploadStatuses[photo.id] !== "uploading" &&
+          pendingUploadStatuses[photo.id] !== "finalization-pending",
         );
-        setUploadErrors((current) => ({ ...current, [type]: refreshError }));
-        toast.error(refreshError);
+        if (!pendingPhoto) break;
+
+        setPendingUploadStatuses((current) => ({
+          ...current,
+          [pendingPhoto.id]: "uploading",
+        }));
+        setUploadStatus((current) => ({ ...current, [type]: "uploading" }));
+        setActiveUpload({
+          photoType: type,
+          photoId: pendingPhoto.id,
+          persistedCount: currentCount,
+        });
+
+        try {
+          const response = await uploadMutation.mutateAsync({
+            jobId: job._id,
+            files: [pendingPhoto.file],
+            photoType: type,
+            clientPhotoId: pendingPhoto.clientPhotoId,
+            onProgress: (progress) =>
+              setActiveUpload((current) =>
+                current?.photoId === pendingPhoto.id
+                  ? {
+                      ...current,
+                      progress,
+                    }
+                  : current,
+              ),
+          });
+          if (
+            !["uploaded", "finalized"].includes(response.status) ||
+            response.clientPhotoId !== pendingPhoto.clientPhotoId ||
+            !response.uploadIntentId ||
+            (response.status === "uploaded" &&
+              response.finalizationPending !== true) ||
+            (response.status === "finalized" &&
+              response.finalizationPending !== false)
+          ) {
+            throw new Error(
+              t(
+                "The server could not confirm the uploaded {type} photo. Verify the upload before retrying.",
+                {
+                  type: t(type === "before" ? "Before" : "After"),
+                },
+              ),
+            );
+          }
+
+          setPendingUploadStatuses((current) => ({
+            ...current,
+            [pendingPhoto.id]:
+              response.status === "finalized"
+                ? "uploaded"
+                : "finalization-pending",
+          }));
+          setUploadStatus((current) => ({ ...current, [type]: "uploaded" }));
+          setActiveUpload(null);
+          if (response.status === "finalized") {
+            setPendingIntentRecords((current) =>
+              current.filter(
+                (record) =>
+                  record.uploadIntentId !== response.uploadIntentId,
+              ),
+            );
+            toast.success(
+              t("{type} photos uploaded successfully.", {
+                type: t(type === "before" ? "Before" : "After"),
+              }),
+            );
+          } else {
+            const finalized = await finalizePendingIntent(
+              response.uploadIntentId,
+              type,
+              pendingPhoto.id,
+            );
+            toast.success(
+              finalized
+                ? t("{type} photos uploaded successfully.", {
+                    type: t(type === "before" ? "Before" : "After"),
+                  })
+                : t("{type} photo uploaded; finalization is pending.", {
+                    type: t(type === "before" ? "Before" : "After"),
+                  }),
+            );
+          }
+          continue;
+        } catch (error) {
+          setActiveUpload(null);
+          const ambiguous =
+            isAmbiguousUploadError(error) ||
+            (error instanceof Error &&
+              error.message.includes("could not confirm"));
+          setPendingUploadStatuses((current) => ({
+            ...current,
+            [pendingPhoto.id]: ambiguous ? "verification" : "failed",
+          }));
+          setUploadStatus((current) => ({ ...current, [type]: "failed" }));
+          const message = ambiguous
+            ? t("Photo upload response was not confirmed. Verify the saved photo before retrying.")
+            : getApiErrorMessage(error, t, language);
+          setUploadErrors((current) => ({ ...current, [type]: message }));
+          toast.error(message);
+          break;
+        }
       }
     } catch (error) {
       const message = getApiErrorMessage(error, t, language);
@@ -719,72 +890,10 @@ export default function EmployeeFieldWorkPanel({
         ...current,
         [type]: "failed",
       }));
-      try {
-        const refreshedCounts = await refreshPersistedEvidence();
-        const savedCount = Math.max(
-          refreshedCounts[type],
-          getValidPhotoCount(
-            type === "before"
-              ? queryClient.getQueryData<Job>(["job", job._id])?.beforePhotos
-              : queryClient.getQueryData<Job>(["job", job._id])?.afterPhotos,
-            type,
-          ),
-        );
-        const savedFromAttempt = Math.min(
-          selected.length,
-          Math.max(0, savedCount - currentCount),
-        );
-        if (savedFromAttempt > 0) {
-          const savedIds = new Set(
-            selected.slice(0, savedFromAttempt).map((photo) => photo.id),
-          );
-          replaceSelection(
-            type,
-            selectedPhotosRef.current[type].filter(
-              (photo) => !savedIds.has(photo.id),
-            ),
-          );
-          setConfirmedCounts((current) => ({
-            ...current,
-            [type]: Math.max(current[type], savedCount),
-          }));
-        }
-        const allAttemptedWereSaved =
-          savedFromAttempt === selected.length && savedFromAttempt > 0;
-        if (allAttemptedWereSaved) {
-          setUploadStatus((current) => ({ ...current, [type]: "uploaded" }));
-        }
-        const partialError =
-          savedFromAttempt > 0 && !allAttemptedWereSaved
-            ? t(
-                "{saved} selected {type} photo(s) were saved; the remaining selection is ready to retry.",
-                {
-                  saved: savedFromAttempt,
-                  type: t(type === "before" ? "Before" : "After"),
-                },
-              )
-            : allAttemptedWereSaved
-              ? t("{type} photos uploaded and saved.", {
-                  type: t(type === "before" ? "Before" : "After"),
-                })
-              : message;
-        setUploadErrors((current) => ({
-          ...current,
-          [type]: allAttemptedWereSaved ? "" : partialError,
-        }));
-        if (allAttemptedWereSaved) toast.success(partialError);
-        else toast.error(partialError);
-      } catch {
-        const refreshError = t(
-          "{message} The saved photo status could not be refreshed; reload the job before retrying.",
-          {
-            message,
-          },
-        );
-        setUploadErrors((current) => ({ ...current, [type]: refreshError }));
-        toast.error(refreshError);
-      }
+      setUploadErrors((current) => ({ ...current, [type]: message }));
+      toast.error(message);
     } finally {
+      setActiveUpload(null);
       uploadLockRef.current = false;
       setIsUploading(false);
     }
@@ -861,7 +970,7 @@ export default function EmployeeFieldWorkPanel({
                 multiple
                 className="sr-only"
                 aria-label={t("Take {type} photo", { type: pickerLabel })}
-                disabled={!canSelectMore || isUploading}
+                disabled={!canSelectMore || isUploading || isPreparing}
                 onChange={(event) => handleFileSelection(type, event)}
               />
               <input
@@ -873,7 +982,7 @@ export default function EmployeeFieldWorkPanel({
                 multiple
                 className="sr-only"
                 aria-label={t("Choose {type} photos", { type: pickerLabel })}
-                disabled={!canSelectMore || isUploading}
+                disabled={!canSelectMore || isUploading || isPreparing}
                 onChange={(event) => handleFileSelection(type, event)}
               />
               <input
@@ -886,7 +995,7 @@ export default function EmployeeFieldWorkPanel({
                 aria-label={t("Replace a selected {type} photo", {
                   type: pickerLabel,
                 })}
-                disabled={isUploading}
+                disabled={isUploading || isPreparing}
                 onChange={(event) => handleFileSelection(type, event, true)}
               />
               <Button
@@ -897,7 +1006,7 @@ export default function EmployeeFieldWorkPanel({
                   "min-h-11 w-full sm:w-auto",
                   "min-h-11 h-auto w-full whitespace-normal py-3 leading-5 sm:w-auto",
                 )}
-                disabled={!canSelectMore || isUploading}
+                disabled={!canSelectMore || isUploading || isPreparing}
                 onClick={() => cameraInputRefs.current[type]?.click()}
               >
                 <Camera aria-hidden="true" />
@@ -911,7 +1020,7 @@ export default function EmployeeFieldWorkPanel({
                   "min-h-11 w-full sm:w-auto",
                   "min-h-11 h-auto w-full whitespace-normal py-3 leading-5 sm:w-auto",
                 )}
-                disabled={!canSelectMore || isUploading}
+                disabled={!canSelectMore || isUploading || isPreparing}
                 onClick={() => pickerInputRefs.current[type]?.click()}
               >
                 <ImagePlus aria-hidden="true" />
@@ -932,6 +1041,12 @@ export default function EmployeeFieldWorkPanel({
                       key={photo.id}
                       photo={photo}
                       disabled={isUploading}
+                      status={pendingUploadStatuses[photo.id] ?? "idle"}
+                      progress={
+                        activeUpload?.photoId === photo.id
+                          ? activeUpload.progress
+                          : undefined
+                      }
                       t={t}
                       onRemove={() => removeSelectedPhoto(type, photo.id)}
                       onReplace={() => startReplacingPhoto(type, photo.id)}
@@ -942,10 +1057,17 @@ export default function EmployeeFieldWorkPanel({
             </>
           )}
 
+          {preparingPhotoType === type && (
+            <p className="text-sm font-medium" role="status" aria-live="polite">
+              <LoaderCircle className="mr-2 inline size-4 animate-spin" />
+              {t("Preparing {type} photos...", { type: pickerLabel })}
+            </p>
+          )}
+
           <Button
             type="button"
             className="min-h-12 w-full whitespace-normal sm:w-auto"
-            disabled={selected.length === 0 || isUploading}
+            disabled={selected.length === 0 || isUploading || isPreparing}
             onClick={() => void uploadSelectedPhotos(type)}
           >
             {currentUpload ? (
@@ -981,11 +1103,7 @@ export default function EmployeeFieldWorkPanel({
               aria-live="polite"
             >
               <LoaderCircle className="mr-2 inline size-4 animate-spin" />
-              {t("Uploading {type} photos: {count}/", {
-                type: pickerLabel,
-                count: activeUpload.persistedCount + activeUpload.fileCount,
-              })}
-              {REQUIRED_PHOTOS_PER_TYPE}
+              {t("Uploading...")}
               {activeUpload.progress !== undefined &&
                 ` · ${activeUpload.progress}%`}
             </motion.p>
@@ -1005,6 +1123,46 @@ export default function EmployeeFieldWorkPanel({
       <CardContent
         className={`min-w-0 ${employeeLanguageClasses(language, "space-y-4 p-0", "space-y-3 p-0")}`}
       >
+        {pendingIntentRecords.length > 0 && (
+          <div
+            className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100"
+            role="status"
+          >
+            <p className="font-medium">
+              {t("Some uploaded photos are awaiting finalization.")}
+            </p>
+            <ul className="mt-1 list-disc pl-5">
+              {pendingIntentRecords.map((record) => (
+                <li key={record.clientPhotoId}>
+                  <span>
+                    {t(record.photoType === "before" ? "Before" : "After")} ·{" "}
+                    {record.state === "uploaded"
+                      ? t("Uploaded; finalization is pending.")
+                      : record.state === "quarantined"
+                        ? t("Verification requires administrator attention.")
+                        : record.state === "failed"
+                          ? t("Upload failed and can be retried.")
+                          : t("Upload is being processed.")}
+                  </span>
+                  {record.state === "uploaded" && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="ml-2"
+                      disabled={finalizingIntentId !== null}
+                      onClick={() => retryPendingFinalization(record)}
+                    >
+                      {finalizingIntentId === record.uploadIntentId
+                        ? t("Retrying...")
+                        : t("Retry")}
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <details
           open={expandedStep === "location"}
           onToggle={(event) => {

@@ -15,6 +15,7 @@ import type {
   MyJobsQueryParams,
   MyJobPerformance,
   JobPerformancePeriod,
+  JobPhoto,
   ApproveJobData,
   VerifyJobData,
   UpdateJobData,
@@ -32,10 +33,50 @@ export interface CompleteJobData {
 }
 
 export interface UploadJobPhotoResponse {
-  photos: NonNullable<Job["beforePhotos"]>;
-  totalBefore: number;
-  totalAfter: number;
+  status: "uploaded" | "finalized";
+  clientPhotoId: string;
+  uploadIntentId: string;
+  ownerVersion: number;
+  finalizationPending: boolean;
+  asset?: {
+    publicId: string;
+    secureUrl?: string | null;
+    format?: string | null;
+    verifiedSha256: string;
+  };
+  jobPhoto?: JobPhoto;
 }
+
+export interface FinalizeJobPhotoResponse {
+  status: "finalized";
+  clientPhotoId: string;
+  uploadIntentId: string;
+  ownerVersion: number;
+  finalizationPending: false;
+  jobPhoto: JobPhoto;
+}
+
+export interface PendingJobPhotoUpload {
+  uploadIntentId: string;
+  clientPhotoId: string;
+  ownerUserId: string;
+  currentOwnerUserId: string;
+  photoType: JobPhotoType;
+  ownerVersion: number;
+  state: "reserved" | "uploading" | "uploaded" | "failed" | "quarantined";
+  leaseExpiresAt?: string | null;
+  failureCode?: string | null;
+  failedAt?: string | null;
+}
+
+export const getPendingJobPhotoUploads = async (
+  jobId: string,
+): Promise<PendingJobPhotoUpload[]> => {
+  const response = await api.get<{ data: PendingJobPhotoUpload[] }>(
+    `/photos/job/${jobId}/pending`,
+  );
+  return response.data.data;
+};
 
 export const getJobs = async (
   params: JobsQueryParams,
@@ -285,11 +326,13 @@ export const uploadJobPhotos = async (
   jobId: string,
   files: File[],
   photoType: JobPhotoType,
+  clientPhotoId: string,
   onProgress?: (percent: number) => void,
 ): Promise<UploadJobPhotoResponse> => {
   const formData = new FormData();
   files.forEach((file) => formData.append("photos", file, file.name));
   formData.append("photoType", photoType);
+  formData.append("clientPhotoId", clientPhotoId);
 
   const response = await api.post<{ data: UploadJobPhotoResponse }>(
     `/photos/upload/${jobId}`,
@@ -304,5 +347,15 @@ export const uploadJobPhotos = async (
     },
   );
 
+  return response.data.data;
+};
+
+export const finalizeJobPhoto = async (
+  jobId: string,
+  uploadIntentId: string,
+): Promise<FinalizeJobPhotoResponse> => {
+  const response = await api.post<{ data: FinalizeJobPhotoResponse }>(
+    `/photos/finalize/${jobId}/${uploadIntentId}`,
+  );
   return response.data.data;
 };

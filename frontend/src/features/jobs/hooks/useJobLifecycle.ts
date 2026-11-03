@@ -8,6 +8,7 @@ import {
   holdJob,
   startJob,
   uploadJobPhotos,
+  finalizeJobPhoto,
   verifyJob,
   type CompleteJobData,
   type JobPhotoType,
@@ -134,6 +135,7 @@ interface UploadJobPhotoVariables {
   jobId: string;
   files: File[];
   photoType: JobPhotoType;
+  clientPhotoId: string;
   onProgress?: (percent: number) => void;
 }
 
@@ -145,11 +147,34 @@ export const useUploadJobPhoto = () => {
       jobId,
       files,
       photoType,
+      clientPhotoId,
       onProgress,
     }: UploadJobPhotoVariables) =>
-      uploadJobPhotos(jobId, files, photoType, onProgress),
+      uploadJobPhotos(jobId, files, photoType, clientPhotoId, onProgress),
     onSuccess: async (_response, { jobId }) => {
       await queryClient.invalidateQueries({ queryKey: ["job", jobId] });
+    },
+  });
+};
+
+interface FinalizeJobPhotoVariables {
+  jobId: string;
+  uploadIntentId: string;
+}
+
+export const useFinalizeJobPhoto = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ jobId, uploadIntentId }: FinalizeJobPhotoVariables) =>
+      finalizeJobPhoto(jobId, uploadIntentId),
+    onSuccess: async (_response, { jobId }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["job", jobId] }),
+        queryClient.invalidateQueries({ queryKey: ["job-history", jobId] }),
+        queryClient.invalidateQueries({ queryKey: ["my-jobs"] }),
+        queryClient.invalidateQueries({ queryKey: ["jobs"] }),
+      ]);
     },
   });
 };

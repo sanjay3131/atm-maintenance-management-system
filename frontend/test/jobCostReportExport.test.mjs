@@ -73,7 +73,7 @@ test("uses the authenticated report client and confirm-before-download flow", as
   assert.match(component, /reportFields: localEditableState\.reportFields/);
   assert.match(component, /serviceVisits: localEditableState\.serviceVisits/);
   assert.doesNotMatch(component, /Confirm or discard your local edits before refreshing/);
-  assert.match(component, /lg:grid-cols-2/);
+  assert.match(component, /grid min-w-0 gap-6 lg:grid-cols-2 lg:items-start/);
   assert.doesNotMatch(component, /Save draft/);
   assert.doesNotMatch(component, /Print preview/);
   assert.match(preview, /SERVICE VISITS LOG/);

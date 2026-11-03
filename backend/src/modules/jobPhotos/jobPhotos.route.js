@@ -6,6 +6,8 @@ import { validateRequest } from "../../middlewares/validate.middleware.js";
 import { supervisorJobParamsSchema } from "../supervisor/supervisor.validation.js";
 import {
   uploadPhotos,
+  finalizePhoto,
+  getPendingUploadIntents,
   getJobPhotos,
   deletePhoto,
   getPhotoStats,
@@ -20,6 +22,20 @@ router.post(
   authorizeRoles("employee", "admin", "superAdmin"),
   upload.array("photos", 3),
   uploadPhotos,
+);
+
+router.post(
+  "/finalize/:jobId/:uploadIntentId",
+  verifyAccessToken,
+  authorizeRoles("employee", "admin", "superAdmin"),
+  finalizePhoto,
+);
+
+router.get(
+  "/job/:jobId/pending",
+  verifyAccessToken,
+  authorizeRoles("employee", "admin", "superAdmin"),
+  getPendingUploadIntents,
 );
 
 // Get photos for a job

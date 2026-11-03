@@ -42,7 +42,10 @@ import {
 } from "@/features/jobs/hooks/useJobLifecycle";
 import { useJobHistory } from "@/features/jobs/hooks/useJobHistory";
 import { useJob } from "@/features/jobs/hooks/useJob";
-import { formatAcSubType, formatJobWorkType } from "@/features/jobs/utils/jobWorkType.utils";
+import {
+  formatAcSubType,
+  formatJobWorkType,
+} from "@/features/jobs/utils/jobWorkType.utils";
 import {
   canLoadEmployeeMaterialUsage,
   getEmployeeFieldworkProgress,
@@ -222,9 +225,7 @@ function EmployeeDisclosure({
           aria-hidden="true"
         />
       </summary>
-      <div className="min-w-0 border-t border-border pb-3 pt-3">
-        {children}
-      </div>
+      <div className="min-w-0 border-t border-border pb-3 pt-3">{children}</div>
     </details>
   );
 }
@@ -543,8 +544,8 @@ export default function JobDetailsPage({
     <div
       className={
         readOnly
-            ? `mx-auto w-full min-w-0 max-w-6xl pb-32 pt-3 ${employeeLanguageClasses(language, "space-y-4 px-3 sm:px-5 lg:px-8", "space-y-3 px-3 sm:px-5 lg:px-8")}`
-          : "space-y-6 p-6"
+          ? `mx-auto w-full min-w-0 max-w-6xl pb-32 pt-3 ${employeeLanguageClasses(language, "space-y-4 px-3 sm:px-5 lg:px-8", "space-y-3 px-3 sm:px-5 lg:px-8")}`
+          : "min-w-0 space-y-6 p-4 sm:p-6"
       }
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -717,7 +718,9 @@ export default function JobDetailsPage({
               <div className="min-w-0">
                 <p className="break-words text-xs font-medium tracking-wide text-muted-foreground [overflow-wrap:anywhere]">
                   {t("Job ID")}: {formatValue(job.jobId)}
-                  {job.jobNumber && job.jobNumber !== job.jobId && ` · ${job.jobNumber}`}
+                  {job.jobNumber &&
+                    job.jobNumber !== job.jobId &&
+                    ` · ${job.jobNumber}`}
                 </p>
                 <CardTitle className="mt-1 break-words text-xl font-semibold leading-6 tracking-tight text-card-foreground [overflow-wrap:anywhere]">
                   {job.title}
@@ -826,10 +829,7 @@ export default function JobDetailsPage({
                 { label: t("Before photos"), count: fieldworkProgress.before },
                 { label: t("After photos"), count: fieldworkProgress.after },
               ].map(({ label, count }) => (
-                <div
-                  key={label}
-                  className="rounded-lg bg-muted/50 px-3 py-2"
-                >
+                <div key={label} className="rounded-lg bg-muted/50 px-3 py-2">
                   <p className="text-xs text-muted-foreground">{label}</p>
                   <p className="mt-0.5 text-sm font-semibold tabular-nums">
                     {count}/3
@@ -954,973 +954,1067 @@ export default function JobDetailsPage({
         </EmployeeDisclosure>
       )}
 
-      {readOnly && canLoadEmployeeMaterialUsage(job.status) && (
-        job.status === "IN_PROGRESS" ? (
+      {readOnly &&
+        canLoadEmployeeMaterialUsage(job.status) &&
+        (job.status === "IN_PROGRESS" ? (
           <EmployeeDisclosure enabled title={t("Materials Used")}>
             <EmployeeMaterialUsageSection job={job} />
           </EmployeeDisclosure>
         ) : (
           <EmployeeMaterialUsageSection job={job} />
-        )
-      )}
+        ))}
 
-      {readOnly && <div className="grid min-w-0 gap-3 lg:grid-cols-2">
-        {!readOnly && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("Job Information")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl>
-                <DetailRow label={t("Job ID")} value={formatValue(job.jobId)} />
-                <DetailRow
-                  label={t("Job number")}
-                  value={formatValue(job.jobNumber)}
-                />
-                <DetailRow label={t("Title")} value={formatValue(job.title)} />
-                <DetailRow label={t("Work type")} value={localize(formatJobWorkType(job.workType))} />
-                {job.workType === "ac" && (
-                  <DetailRow
-                    label={t("AC sub-type")}
-                    value={localize(formatAcSubType(job.acSubType))}
-                  />
-                )}
-                <DetailRow label={t("Priority")} value={localize(formatLabel(job.priority))} />
-                <DetailRow
-                  label={t("Description")}
-                  value={formatValue(job.description)}
-                />
-                <DetailRow label={t("Created")} value={formatDate(job.createdAt, language)} />
-                <DetailRow label={t("Updated")} value={formatDate(job.updatedAt, language)} />
-              </dl>
-            </CardContent>
-          </Card>
-        )}
-
-        {job.recurringMaintenance?.source === "RECURRING" && (
-          <EmployeeDisclosure
-            enabled={readOnly}
-            title={t("Recurring Maintenance")}
-          >
+      {readOnly && (
+        <div className="grid min-w-0 gap-3 lg:grid-cols-2">
+          {!readOnly && (
             <Card>
               <CardHeader>
-                <CardTitle>{t("Recurring Maintenance")}</CardTitle>
+                <CardTitle>{t("Job Information")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <dl>
                   <DetailRow
-                    label={t("Type")}
-                    value={localize(formatLabel(
-                      job.recurringMaintenance.maintenanceType,
-                    ))}
+                    label={t("Job ID")}
+                    value={formatValue(job.jobId)}
                   />
                   <DetailRow
-                    label={t("Scheduled date")}
-                    value={formatScheduledDate(
-                      job.recurringMaintenance.scheduledDate,
+                    label={t("Job number")}
+                    value={formatValue(job.jobNumber)}
+                  />
+                  <DetailRow
+                    label={t("Title")}
+                    value={formatValue(job.title)}
+                  />
+                  <DetailRow
+                    label={t("Work type")}
+                    value={localize(formatJobWorkType(job.workType))}
+                  />
+                  {job.workType === "ac" && (
+                    <DetailRow
+                      label={t("AC sub-type")}
+                      value={localize(formatAcSubType(job.acSubType))}
+                    />
+                  )}
+                  <DetailRow
+                    label={t("Priority")}
+                    value={localize(formatLabel(job.priority))}
+                  />
+                  <DetailRow
+                    label={t("Description")}
+                    value={formatValue(job.description)}
+                  />
+                  <DetailRow
+                    label={t("Created")}
+                    value={formatDate(job.createdAt, language)}
+                  />
+                  <DetailRow
+                    label={t("Updated")}
+                    value={formatDate(job.updatedAt, language)}
+                  />
+                </dl>
+              </CardContent>
+            </Card>
+          )}
+
+          {job.recurringMaintenance?.source === "RECURRING" && (
+            <EmployeeDisclosure
+              enabled={readOnly}
+              title={t("Recurring Maintenance")}
+            >
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t("Recurring Maintenance")}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <dl>
+                    <DetailRow
+                      label={t("Type")}
+                      value={localize(
+                        formatLabel(job.recurringMaintenance.maintenanceType),
+                      )}
+                    />
+                    <DetailRow
+                      label={t("Scheduled date")}
+                      value={formatScheduledDate(
+                        job.recurringMaintenance.scheduledDate,
+                        language,
+                      )}
+                    />
+                  </dl>
+                </CardContent>
+              </Card>
+            </EmployeeDisclosure>
+          )}
+
+          {!readOnly && (
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("ATM Information")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl>
+                  <DetailRow
+                    label={t("ATM ID")}
+                    value={formatValue(atmDetails?.atmId || atm?.atmId)}
+                  />
+                  <DetailRow
+                    label={t("Location")}
+                    value={formatValue(
+                      atmDetails?.locationName || atm?.locationName,
+                    )}
+                  />
+                  <DetailRow
+                    label={t("Address")}
+                    value={formatValue(atmDetails?.address || atm?.address)}
+                  />
+                  <DetailRow
+                    label={t("Bank")}
+                    value={formatValue(
+                      atmDetails?.bankId?.bankName || atm?.bank,
+                    )}
+                  />
+                  <DetailRow
+                    label={t("District")}
+                    value={formatValue(atmDetails?.districtId?.districtName)}
+                  />
+                  <DetailRow
+                    label={t("Region")}
+                    value={formatValue(atmDetails?.regionId?.name)}
+                  />
+                  <DetailRow
+                    label={t("ATM status")}
+                    value={formatValue(atmDetails?.status)}
+                  />
+                  <DetailRow
+                    label={t("Installation type")}
+                    value={formatValue(atmDetails?.installationType)}
+                  />
+                  {isATMDetailsLoading && (
+                    <DetailRow
+                      label={t("Additional ATM information")}
+                      value={t("Loading...")}
+                    />
+                  )}
+                </dl>
+              </CardContent>
+            </Card>
+          )}
+
+          <EmployeeDisclosure enabled={readOnly} title={t("Assignment")}>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("Assignment")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl>
+                  <DetailRow
+                    label={t("Employee")}
+                    value={getPersonName(employee)}
+                  />
+                  <DetailRow
+                    label={t("Employee code")}
+                    value={formatValue(employee?.employeeCode)}
+                  />
+                  <DetailRow
+                    label={t("Phone")}
+                    value={formatValue(employee?.phoneNumber)}
+                  />
+                  <DetailRow
+                    label={t("Assigned at")}
+                    value={formatDate(job.assignedAt, language)}
+                  />
+                  <DetailRow
+                    label={t("Assigned by")}
+                    value={getPersonName(job.assignedBy)}
+                  />
+                </dl>
+              </CardContent>
+            </Card>
+          </EmployeeDisclosure>
+
+          <EmployeeDisclosure enabled={readOnly} title={t("Customer")}>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("Customer")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl>
+                  <DetailRow label={t("Name")} value={customerName} />
+                  <DetailRow
+                    label={t("Email")}
+                    value={formatValue(customer?.customerEmail)}
+                  />
+                  <DetailRow
+                    label={t("Phone")}
+                    value={formatValue(customer?.customerPhone)}
+                  />
+                  {!readOnly && (
+                    <DetailRow
+                      label={t("Customer reference")}
+                      value={formatValue(
+                        customer?._id ||
+                          (typeof job.customerId === "string"
+                            ? job.customerId
+                            : undefined),
+                      )}
+                    />
+                  )}
+                </dl>
+              </CardContent>
+            </Card>
+          </EmployeeDisclosure>
+
+          <EmployeeDisclosure enabled={readOnly} title={t("Complaint")}>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("Complaint")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {complaint ? (
+                  <dl>
+                    <DetailRow
+                      label={t("Complaint number")}
+                      value={formatValue(complaint.complaintNumber)}
+                    />
+                    <DetailRow
+                      label={t("Title")}
+                      value={formatValue(complaint.title)}
+                    />
+                    <DetailRow
+                      label={t("Description")}
+                      value={formatValue(complaint.description)}
+                    />
+                    <DetailRow
+                      label={t("Reported by")}
+                      value={formatValue(complaint.reportedBy)}
+                    />
+                    <DetailRow
+                      label={t("Reported via")}
+                      value={localize(formatLabel(complaint.reportedVia))}
+                    />
+                    <DetailRow
+                      label={t("Status")}
+                      value={localize(formatLabel(complaint.status))}
+                    />
+                    <DetailRow
+                      label={t("Reported at")}
+                      value={formatDate(complaint.reportedAt, language)}
+                    />
+                  </dl>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {t("No complaint is linked to this job.")}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </EmployeeDisclosure>
+
+          <EmployeeDisclosure enabled={readOnly} title={t("Lifecycle dates")}>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("Lifecycle dates")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl>
+                  {lifecycleDates.map(([label, value]) => (
+                    <DetailRow
+                      key={label}
+                      label={t(label)}
+                      value={formatDate(value, language)}
+                    />
+                  ))}
+                </dl>
+              </CardContent>
+            </Card>
+          </EmployeeDisclosure>
+
+          {!readOnly && (
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("Completion GPS")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl>
+                  <DetailRow
+                    label={t("Latitude")}
+                    value={formatGpsValue(
+                      job.employeeGpsAtCompletion?.latitude,
+                    )}
+                  />
+                  <DetailRow
+                    label={t("Longitude")}
+                    value={formatGpsValue(
+                      job.employeeGpsAtCompletion?.longitude,
+                    )}
+                  />
+                  <DetailRow
+                    label={t("Accuracy")}
+                    value={
+                      job.employeeGpsAtCompletion?.accuracy !== undefined &&
+                      Number.isFinite(job.employeeGpsAtCompletion.accuracy)
+                        ? `${job.employeeGpsAtCompletion.accuracy} m`
+                        : NOT_AVAILABLE
+                    }
+                  />
+                  <DetailRow
+                    label={t("Distance from ATM")}
+                    value={
+                      job.gpsDistance !== undefined &&
+                      Number.isFinite(job.gpsDistance)
+                        ? `${job.gpsDistance} m`
+                        : NOT_AVAILABLE
+                    }
+                  />
+                  <DetailRow
+                    label={t("GPS validation")}
+                    value={
+                      job.gpsValidated === true ? (
+                        <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                          {t("Validated")}
+                        </Badge>
+                      ) : job.gpsValidated === false ? (
+                        <Badge variant="secondary">{t("Not validated")}</Badge>
+                      ) : (
+                        NOT_AVAILABLE
+                      )
+                    }
+                  />
+                  <DetailRow
+                    label={t("Captured at")}
+                    value={formatDate(
+                      job.employeeGpsAtCompletion?.timestamp,
                       language,
                     )}
                   />
                 </dl>
               </CardContent>
             </Card>
-          </EmployeeDisclosure>
-        )}
+          )}
 
-        {!readOnly && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("ATM Information")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl>
-                <DetailRow
-                  label={t("ATM ID")}
-                  value={formatValue(atmDetails?.atmId || atm?.atmId)}
-                />
-                <DetailRow
-                  label={t("Location")}
-                  value={formatValue(
-                    atmDetails?.locationName || atm?.locationName,
-                  )}
-                />
-                <DetailRow
-                  label={t("Address")}
-                  value={formatValue(atmDetails?.address || atm?.address)}
-                />
-                <DetailRow
-                  label={t("Bank")}
-                  value={formatValue(atmDetails?.bankId?.bankName || atm?.bank)}
-                />
-                <DetailRow
-                  label={t("District")}
-                  value={formatValue(atmDetails?.districtId?.districtName)}
-                />
-                <DetailRow
-                  label={t("Region")}
-                  value={formatValue(atmDetails?.regionId?.name)}
-                />
-                <DetailRow
-                  label={t("ATM status")}
-                  value={formatValue(atmDetails?.status)}
-                />
-                <DetailRow
-                  label={t("Installation type")}
-                  value={formatValue(atmDetails?.installationType)}
-                />
-                {isATMDetailsLoading && (
-                  <DetailRow
-                    label={t("Additional ATM information")}
-                    value={t("Loading...")}
-                  />
-                )}
-              </dl>
-            </CardContent>
-          </Card>
-        )}
-
-        <EmployeeDisclosure enabled={readOnly} title={t("Assignment")}>
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("Assignment")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl>
-                <DetailRow label={t("Employee")} value={getPersonName(employee)} />
-                <DetailRow
-                  label={t("Employee code")}
-                  value={formatValue(employee?.employeeCode)}
-                />
-                <DetailRow
-                  label={t("Phone")}
-                  value={formatValue(employee?.phoneNumber)}
-                />
-                <DetailRow
-                  label={t("Assigned at")}
-                  value={formatDate(job.assignedAt, language)}
-                />
-                <DetailRow
-                  label={t("Assigned by")}
-                  value={getPersonName(job.assignedBy)}
-                />
-              </dl>
-            </CardContent>
-          </Card>
-        </EmployeeDisclosure>
-
-        <EmployeeDisclosure enabled={readOnly} title={t("Customer")}>
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("Customer")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl>
-                <DetailRow label={t("Name")} value={customerName} />
-                <DetailRow
-                  label={t("Email")}
-                  value={formatValue(customer?.customerEmail)}
-                />
-                <DetailRow
-                  label={t("Phone")}
-                  value={formatValue(customer?.customerPhone)}
-                />
-                {!readOnly && (
-                  <DetailRow
-                    label={t("Customer reference")}
-                    value={formatValue(
-                      customer?._id ||
-                        (typeof job.customerId === "string"
-                          ? job.customerId
-                          : undefined),
-                    )}
-                  />
-                )}
-              </dl>
-            </CardContent>
-          </Card>
-        </EmployeeDisclosure>
-
-        <EmployeeDisclosure enabled={readOnly} title={t("Complaint")}>
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("Complaint")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {complaint ? (
-                <dl>
-                  <DetailRow
-                    label={t("Complaint number")}
-                    value={formatValue(complaint.complaintNumber)}
-                  />
-                  <DetailRow label={t("Title")} value={formatValue(complaint.title)} />
-                  <DetailRow
-                    label={t("Description")}
-                    value={formatValue(complaint.description)}
-                  />
-                  <DetailRow
-                    label={t("Reported by")}
-                    value={formatValue(complaint.reportedBy)}
-                  />
-                  <DetailRow
-                    label={t("Reported via")}
-                    value={localize(formatLabel(complaint.reportedVia))}
-                  />
-                  <DetailRow
-                    label={t("Status")}
-                    value={localize(formatLabel(complaint.status))}
-                  />
-                  <DetailRow
-                    label={t("Reported at")}
-                    value={formatDate(complaint.reportedAt, language)}
-                  />
-                </dl>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  {t("No complaint is linked to this job.")}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </EmployeeDisclosure>
-
-        <EmployeeDisclosure enabled={readOnly} title={t("Lifecycle dates")}>
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("Lifecycle dates")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl>
-                {lifecycleDates.map(([label, value]) => (
-                  <DetailRow
-                    key={label}
-                    label={t(label)}
-                    value={formatDate(value, language)}
-                  />
-                ))}
-              </dl>
-            </CardContent>
-          </Card>
-        </EmployeeDisclosure>
-
-        {!readOnly && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("Completion GPS")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl>
-                <DetailRow
-                  label={t("Latitude")}
-                  value={formatGpsValue(job.employeeGpsAtCompletion?.latitude)}
-                />
-                <DetailRow
-                  label={t("Longitude")}
-                  value={formatGpsValue(job.employeeGpsAtCompletion?.longitude)}
-                />
-                <DetailRow
-                  label={t("Accuracy")}
-                  value={
-                    job.employeeGpsAtCompletion?.accuracy !== undefined &&
-                    Number.isFinite(job.employeeGpsAtCompletion.accuracy)
-                      ? `${job.employeeGpsAtCompletion.accuracy} m`
-                      : NOT_AVAILABLE
-                  }
-                />
-                <DetailRow
-                  label={t("Distance from ATM")}
-                  value={
-                    job.gpsDistance !== undefined &&
-                    Number.isFinite(job.gpsDistance)
-                      ? `${job.gpsDistance} m`
-                      : NOT_AVAILABLE
-                  }
-                />
-                <DetailRow
-                  label={t("GPS validation")}
-                  value={
-                    job.gpsValidated === true ? (
-                      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
-                        {t("Validated")}
-                      </Badge>
-                    ) : job.gpsValidated === false ? (
-                      <Badge variant="secondary">{t("Not validated")}</Badge>
-                    ) : (
-                      NOT_AVAILABLE
-                    )
-                  }
-                />
-                <DetailRow
-                  label={t("Captured at")}
-                  value={formatDate(job.employeeGpsAtCompletion?.timestamp, language)}
-                />
-              </dl>
-            </CardContent>
-          </Card>
-        )}
-
-        <EmployeeDisclosure enabled={readOnly} title={t("Audit")}>
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("Audit")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl>
-                <DetailRow
-                  label={t("Created by")}
-                  value={getPersonName(job.createdBy)}
-                />
-                <DetailRow
-                  label={t("Updated by")}
-                  value={getPersonName(job.updatedBy)}
-                />
-              </dl>
-            </CardContent>
-          </Card>
-        </EmployeeDisclosure>
-
-        {(!readOnly ||
-          (job.status !== "IN_PROGRESS" &&
-            [...(job.beforePhotos ?? []), ...(job.afterPhotos ?? [])].some(
-              (photo) => Boolean(photo?.url || photo?.thumbnailUrl),
-            ))) && (
-          <EmployeeDisclosure enabled={readOnly} title={t("Job Photos")}>
-            <JobPhotoGallery
-              beforePhotos={job.beforePhotos}
-              afterPhotos={job.afterPhotos}
-              compact={readOnly}
-            />
-          </EmployeeDisclosure>
-        )}
-
-        {(job.employeeRemarks ||
-          job.adminRemarks ||
-          job.rejectionReason ||
-          job.cancellationReason ||
-          job.isReassigned ||
-          reassignmentHistory.length > 0) && (
-          <EmployeeDisclosure
-            enabled={readOnly}
-            title={t("Notes and reassignment")}
-          >
-            <Card className="lg:col-span-2">
+          <EmployeeDisclosure enabled={readOnly} title={t("Audit")}>
+            <Card>
               <CardHeader>
-                <CardTitle>{t("Notes and reassignment")}</CardTitle>
+                <CardTitle>{t("Audit")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <dl>
-                  {job.employeeRemarks && (
-                    <DetailRow
-                      label={t("Employee remarks")}
-                      value={job.employeeRemarks}
-                    />
-                  )}
-                  {job.adminRemarks && (
-                    <DetailRow label={t("Admin remarks")} value={job.adminRemarks} />
-                  )}
-                  {job.rejectionReason && (
-                    <DetailRow
-                      label={t("Rejection reason")}
-                      value={job.rejectionReason}
-                    />
-                  )}
-                  {job.cancellationReason && (
-                    <DetailRow
-                      label={t("Cancellation reason")}
-                      value={job.cancellationReason}
-                    />
-                  )}
-                  {job.cancelledBy && (
-                    <DetailRow
-                      label={t("Cancelled by")}
-                      value={getPersonName(job.cancelledBy)}
-                    />
-                  )}
-                  {job.isReassigned && (
-                    <DetailRow
-                      label={t("Reassigned")}
-                      value={job.reassignmentReason || t("Yes")}
-                    />
-                  )}
-                  {job.previousJobId && (
-                    <DetailRow
-                      label={t("Previous job ID")}
-                      value={job.previousJobId}
-                    />
-                  )}
-                  {reassignmentHistory.map((entry, index) => (
-                    <div
-                      key={`${entry.reassignedAt || index}-${index}`}
-                      className="border-b py-3 last:border-b-0"
-                    >
-                      <p className="text-sm font-medium">
-                        {getEmployeeLabel(entry.fromEmployee)}
-                        <span className="px-2 text-muted-foreground">{t("to")}</span>
-                        {getEmployeeLabel(entry.toEmployee)}
-                      </p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {formatValue(entry.reason)} ·{" "}
-                        {formatDate(entry.reassignedAt, language)}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {t("Reassigned by")} {getPersonName(entry.reassignedBy)}
-                      </p>
-                    </div>
-                  ))}
+                  <DetailRow
+                    label={t("Created by")}
+                    value={getPersonName(job.createdBy)}
+                  />
+                  <DetailRow
+                    label={t("Updated by")}
+                    value={getPersonName(job.updatedBy)}
+                  />
                 </dl>
               </CardContent>
             </Card>
           </EmployeeDisclosure>
-        )}
 
-        <EmployeeDisclosure enabled={readOnly} title={t("Job History")}>
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>{t("Job History")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {historyQuery.isLoading ? (
-                <p className="text-sm text-muted-foreground">
-                  {t("Loading history...")}
-                </p>
-              ) : historyQuery.isError ? (
-                <p role="status" className="text-sm text-destructive">
-                  {t("Unable to load job history.")}
-                </p>
-              ) : historyQuery.data?.length ? (
-                <ol>
-                  {historyQuery.data.map((entry) => {
-                    const actorName =
-                      [
-                        entry.performedBy?.firstName,
-                        entry.performedBy?.lastName,
-                      ]
-                        .filter(Boolean)
-                        .join(" ") || t("Unknown user");
-                    const details = formatHistoryDetailLines(
-                      entry.action,
-                      entry.details,
-                      t,
-                      (label) => employeeDisplayLabel(label, t),
-                      {
-                        documentId: atmDetails?._id ?? atm?._id,
-                        identifier: atmDetails?.atmId ?? atm?.atmId,
-                      },
-                    );
+          {(!readOnly ||
+            (job.status !== "IN_PROGRESS" &&
+              [...(job.beforePhotos ?? []), ...(job.afterPhotos ?? [])].some(
+                (photo) => Boolean(photo?.url || photo?.thumbnailUrl),
+              ))) && (
+            <EmployeeDisclosure enabled={readOnly} title={t("Job Photos")}>
+              <JobPhotoGallery
+                beforePhotos={job.beforePhotos}
+                afterPhotos={job.afterPhotos}
+                compact={readOnly}
+              />
+            </EmployeeDisclosure>
+          )}
 
-                    return (
-                      <li
-                        key={entry._id}
+          {(job.employeeRemarks ||
+            job.adminRemarks ||
+            job.rejectionReason ||
+            job.cancellationReason ||
+            job.isReassigned ||
+            reassignmentHistory.length > 0) && (
+            <EmployeeDisclosure
+              enabled={readOnly}
+              title={t("Notes and reassignment")}
+            >
+              <Card className="lg:col-span-2">
+                <CardHeader>
+                  <CardTitle>{t("Notes and reassignment")}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <dl>
+                    {job.employeeRemarks && (
+                      <DetailRow
+                        label={t("Employee remarks")}
+                        value={job.employeeRemarks}
+                      />
+                    )}
+                    {job.adminRemarks && (
+                      <DetailRow
+                        label={t("Admin remarks")}
+                        value={job.adminRemarks}
+                      />
+                    )}
+                    {job.rejectionReason && (
+                      <DetailRow
+                        label={t("Rejection reason")}
+                        value={job.rejectionReason}
+                      />
+                    )}
+                    {job.cancellationReason && (
+                      <DetailRow
+                        label={t("Cancellation reason")}
+                        value={job.cancellationReason}
+                      />
+                    )}
+                    {job.cancelledBy && (
+                      <DetailRow
+                        label={t("Cancelled by")}
+                        value={getPersonName(job.cancelledBy)}
+                      />
+                    )}
+                    {job.isReassigned && (
+                      <DetailRow
+                        label={t("Reassigned")}
+                        value={job.reassignmentReason || t("Yes")}
+                      />
+                    )}
+                    {job.previousJobId && (
+                      <DetailRow
+                        label={t("Previous job ID")}
+                        value={job.previousJobId}
+                      />
+                    )}
+                    {reassignmentHistory.map((entry, index) => (
+                      <div
+                        key={`${entry.reassignedAt || index}-${index}`}
                         className="border-b py-3 last:border-b-0"
                       >
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <p className="text-sm font-medium">
-                            {formatHistoryAction(entry.action, entry, t)}
-                          </p>
-                          <time className="text-xs text-muted-foreground">
-                            {formatDate(entry.performedAt, language)}
-                          </time>
-                        </div>
-                        {entry.fromStatus && entry.toStatus && (
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {localize(formatLabel(entry.fromStatus))} -&gt;{" "}
-                            {localize(formatLabel(entry.toStatus))}
-                          </p>
-                        )}
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {t("Performed by: {name}", { name: actorName })}
-                          {entry.performedBy?.userType && (
-                            <>
-                              {" "}
-                              · {t("Role: {role}", { role: localize(formatLabel(entry.performedBy.userType)) })}
-                            </>
-                          )}
+                        <p className="text-sm font-medium">
+                          {getEmployeeLabel(entry.fromEmployee)}
+                          <span className="px-2 text-muted-foreground">
+                            {t("to")}
+                          </span>
+                          {getEmployeeLabel(entry.toEmployee)}
                         </p>
-                        {details.map((detail, index) => (
-                          <p
-                            key={`${entry._id}-detail-${index}`}
-                            className="mt-2 break-words text-xs text-muted-foreground"
-                          >
-                            {detail}
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {formatValue(entry.reason)} ·{" "}
+                          {formatDate(entry.reassignedAt, language)}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {t("Reassigned by")}{" "}
+                          {getPersonName(entry.reassignedBy)}
+                        </p>
+                      </div>
+                    ))}
+                  </dl>
+                </CardContent>
+              </Card>
+            </EmployeeDisclosure>
+          )}
+
+          <EmployeeDisclosure enabled={readOnly} title={t("Job History")}>
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>{t("Job History")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {historyQuery.isLoading ? (
+                  <p className="text-sm text-muted-foreground">
+                    {t("Loading history...")}
+                  </p>
+                ) : historyQuery.isError ? (
+                  <p role="status" className="text-sm text-destructive">
+                    {t("Unable to load job history.")}
+                  </p>
+                ) : historyQuery.data?.length ? (
+                  <ol>
+                    {historyQuery.data.map((entry) => {
+                      const actorName =
+                        [
+                          entry.performedBy?.firstName,
+                          entry.performedBy?.lastName,
+                        ]
+                          .filter(Boolean)
+                          .join(" ") || t("Unknown user");
+                      const details = formatHistoryDetailLines(
+                        entry.action,
+                        entry.details,
+                        t,
+                        (label) => employeeDisplayLabel(label, t),
+                        {
+                          documentId: atmDetails?._id ?? atm?._id,
+                          identifier: atmDetails?.atmId ?? atm?.atmId,
+                        },
+                      );
+
+                      return (
+                        <li
+                          key={entry._id}
+                          className="border-b py-3 last:border-b-0"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <p className="text-sm font-medium">
+                              {formatHistoryAction(entry.action, entry, t)}
+                            </p>
+                            <time className="text-xs text-muted-foreground">
+                              {formatDate(entry.performedAt, language)}
+                            </time>
+                          </div>
+                          {entry.fromStatus && entry.toStatus && (
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              {localize(formatLabel(entry.fromStatus))} -&gt;{" "}
+                              {localize(formatLabel(entry.toStatus))}
+                            </p>
+                          )}
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {t("Performed by: {name}", { name: actorName })}
+                            {entry.performedBy?.userType && (
+                              <>
+                                {" "}
+                                ·{" "}
+                                {t("Role: {role}", {
+                                  role: localize(
+                                    formatLabel(entry.performedBy.userType),
+                                  ),
+                                })}
+                              </>
+                            )}
                           </p>
-                        ))}
-                      </li>
-                    );
-                  })}
-                </ol>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  {t("No history available.")}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </EmployeeDisclosure>
-      </div>}
+                          {details.map((detail, index) => (
+                            <p
+                              key={`${entry._id}-detail-${index}`}
+                              className="mt-2 break-words text-xs text-muted-foreground"
+                            >
+                              {detail}
+                            </p>
+                          ))}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {t("No history available.")}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </EmployeeDisclosure>
+        </div>
+      )}
 
       {!readOnly && (
         <>
           <AdminMaterialUsageSection job={job} />
           <JobCostReportSection jobId={job._id} />
-          <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("Job Information")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl>
-              <DetailRow label={t("Job ID")} value={formatValue(job.jobId)} />
-              <DetailRow
-                label={t("Job number")}
-                value={formatValue(job.jobNumber)}
-              />
-              <DetailRow label={t("Title")} value={formatValue(job.title)} />
-              <DetailRow label={t("Work type")} value={localize(formatJobWorkType(job.workType))} />
-              {job.workType === "ac" && (
-                <DetailRow
-                  label={t("AC sub-type")}
-                  value={localize(formatAcSubType(job.acSubType))}
-                />
-              )}
-              <DetailRow label={t("Priority")} value={localize(formatLabel(job.priority))} />
-              <DetailRow
-                label={t("Description")}
-                value={formatValue(job.description)}
-              />
-              <DetailRow label={t("Created")} value={formatDate(job.createdAt, language)} />
-              <DetailRow label={t("Updated")} value={formatDate(job.updatedAt, language)} />
-            </dl>
-          </CardContent>
-        </Card>
-
-        {job.recurringMaintenance?.source === "RECURRING" && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("Recurring Maintenance")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl>
-                <DetailRow
-                  label={t("Type")}
-                  value={localize(formatLabel(
-                    job.recurringMaintenance.maintenanceType,
-                  ))}
-                />
-                <DetailRow
-                  label={t("Scheduled date")}
-                  value={formatScheduledDate(
-                    job.recurringMaintenance.scheduledDate,
-                    language,
+          <div className="grid min-w-0 items-start gap-6 [grid-template-columns:minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("Job Information")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl>
+                  <DetailRow
+                    label={t("Job ID")}
+                    value={formatValue(job.jobId)}
+                  />
+                  <DetailRow
+                    label={t("Job number")}
+                    value={formatValue(job.jobNumber)}
+                  />
+                  <DetailRow
+                    label={t("Title")}
+                    value={formatValue(job.title)}
+                  />
+                  <DetailRow
+                    label={t("Work type")}
+                    value={localize(formatJobWorkType(job.workType))}
+                  />
+                  {job.workType === "ac" && (
+                    <DetailRow
+                      label={t("AC sub-type")}
+                      value={localize(formatAcSubType(job.acSubType))}
+                    />
                   )}
-                />
-              </dl>
-            </CardContent>
-          </Card>
-        )}
+                  <DetailRow
+                    label={t("Priority")}
+                    value={localize(formatLabel(job.priority))}
+                  />
+                  <DetailRow
+                    label={t("Description")}
+                    value={formatValue(job.description)}
+                  />
+                  <DetailRow
+                    label={t("Created")}
+                    value={formatDate(job.createdAt, language)}
+                  />
+                  <DetailRow
+                    label={t("Updated")}
+                    value={formatDate(job.updatedAt, language)}
+                  />
+                </dl>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("ATM Information")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl>
-              <DetailRow
-                label={t("ATM ID")}
-                value={formatValue(atmDetails?.atmId || atm?.atmId)}
-              />
-              <DetailRow
-                label={t("Location")}
-                value={formatValue(
-                  atmDetails?.locationName || atm?.locationName,
-                )}
-              />
-              <DetailRow
-                label={t("Address")}
-                value={formatValue(atmDetails?.address || atm?.address)}
-              />
-              <DetailRow
-                label={t("Bank")}
-                value={formatValue(atmDetails?.bankId?.bankName || atm?.bank)}
-              />
-              <DetailRow
-                label={t("District")}
-                value={formatValue(atmDetails?.districtId?.districtName)}
-              />
-              <DetailRow
-                label={t("Region")}
-                value={formatValue(atmDetails?.regionId?.name)}
-              />
-              <DetailRow
-                label={t("ATM status")}
-                value={formatValue(atmDetails?.status)}
-              />
-              <DetailRow
-                label={t("Installation type")}
-                value={formatValue(atmDetails?.installationType)}
-              />
-              {isATMDetailsLoading && (
-                <DetailRow
-                  label={t("Additional ATM information")}
-                  value={t("Loading...")}
-                />
-              )}
-            </dl>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("Assignment")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl>
-              <DetailRow label={t("Employee")} value={getPersonName(employee)} />
-              <DetailRow
-                label={t("Employee code")}
-                value={formatValue(employee?.employeeCode)}
-              />
-              <DetailRow
-                label={t("Phone")}
-                value={formatValue(employee?.phoneNumber)}
-              />
-              <DetailRow
-                label={t("Assigned at")}
-                value={formatDate(job.assignedAt, language)}
-              />
-              <DetailRow
-                label={t("Assigned by")}
-                value={getPersonName(job.assignedBy)}
-              />
-            </dl>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("Customer")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl>
-              <DetailRow label={t("Name")} value={customerName} />
-              <DetailRow
-                label={t("Email")}
-                value={formatValue(customer?.customerEmail)}
-              />
-              <DetailRow
-                label={t("Phone")}
-                value={formatValue(customer?.customerPhone)}
-              />
-              {!readOnly && (
-                <DetailRow
-                  label={t("Customer reference")}
-                  value={formatValue(
-                    customer?._id ||
-                      (typeof job.customerId === "string"
-                        ? job.customerId
-                        : undefined),
-                  )}
-                />
-              )}
-            </dl>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("Complaint")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {complaint ? (
-              <dl>
-                <DetailRow
-                  label={t("Complaint number")}
-                  value={formatValue(complaint.complaintNumber)}
-                />
-                <DetailRow label={t("Title")} value={formatValue(complaint.title)} />
-                <DetailRow
-                  label={t("Description")}
-                  value={formatValue(complaint.description)}
-                />
-                <DetailRow
-                  label={t("Reported by")}
-                  value={formatValue(complaint.reportedBy)}
-                />
-                <DetailRow
-                  label={t("Reported via")}
-                  value={localize(formatLabel(complaint.reportedVia))}
-                />
-                <DetailRow
-                  label={t("Status")}
-                  value={localize(formatLabel(complaint.status))}
-                />
-                <DetailRow
-                  label={t("Reported at")}
-                  value={formatDate(complaint.reportedAt, language)}
-                />
-              </dl>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                {t("No complaint is linked to this job.")}
-              </p>
+            {job.recurringMaintenance?.source === "RECURRING" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t("Recurring Maintenance")}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <dl>
+                    <DetailRow
+                      label={t("Type")}
+                      value={localize(
+                        formatLabel(job.recurringMaintenance.maintenanceType),
+                      )}
+                    />
+                    <DetailRow
+                      label={t("Scheduled date")}
+                      value={formatScheduledDate(
+                        job.recurringMaintenance.scheduledDate,
+                        language,
+                      )}
+                    />
+                  </dl>
+                </CardContent>
+              </Card>
             )}
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("Lifecycle dates")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl>
-              {lifecycleDates.map(([label, value]) => (
-                <DetailRow
-                  key={label}
-                  label={t(label)}
-                  value={formatDate(value, language)}
-                />
-              ))}
-            </dl>
-          </CardContent>
-        </Card>
-
-        {!readOnly && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("Completion GPS")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl>
-                <DetailRow
-                  label={t("Latitude")}
-                  value={formatGpsValue(job.employeeGpsAtCompletion?.latitude)}
-                />
-                <DetailRow
-                  label={t("Longitude")}
-                  value={formatGpsValue(job.employeeGpsAtCompletion?.longitude)}
-                />
-                <DetailRow
-                  label={t("Accuracy")}
-                  value={
-                    job.employeeGpsAtCompletion?.accuracy !== undefined &&
-                    Number.isFinite(job.employeeGpsAtCompletion.accuracy)
-                      ? `${job.employeeGpsAtCompletion.accuracy} m`
-                      : NOT_AVAILABLE
-                  }
-                />
-                <DetailRow
-                  label={t("Distance from ATM")}
-                  value={
-                    job.gpsDistance !== undefined &&
-                    Number.isFinite(job.gpsDistance)
-                      ? `${job.gpsDistance} m`
-                      : NOT_AVAILABLE
-                  }
-                />
-                <DetailRow
-                  label={t("GPS validation")}
-                  value={
-                    job.gpsValidated === true ? (
-                      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
-                        {t("Validated")}
-                      </Badge>
-                    ) : job.gpsValidated === false ? (
-                      <Badge variant="secondary">{t("Not validated")}</Badge>
-                    ) : (
-                      NOT_AVAILABLE
-                    )
-                  }
-                />
-                <DetailRow
-                  label={t("Captured at")}
-                  value={formatDate(job.employeeGpsAtCompletion?.timestamp, language)}
-                />
-              </dl>
-            </CardContent>
-          </Card>
-        )}
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("Audit")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl>
-              <DetailRow
-                label={t("Created by")}
-                value={getPersonName(job.createdBy)}
-              />
-              <DetailRow
-                label={t("Updated by")}
-                value={getPersonName(job.updatedBy)}
-              />
-            </dl>
-          </CardContent>
-        </Card>
-
-        {(!readOnly || job.status !== "IN_PROGRESS") && (
-          <JobPhotoGallery
-            beforePhotos={job.beforePhotos}
-            afterPhotos={job.afterPhotos}
-          />
-        )}
-
-        {(job.employeeRemarks ||
-          job.adminRemarks ||
-          job.rejectionReason ||
-          job.cancellationReason ||
-          job.isReassigned ||
-          reassignmentHistory.length > 0) && (
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>{t("Notes and reassignment")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl>
-                {job.employeeRemarks && (
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("ATM Information")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl>
                   <DetailRow
-                    label={t("Employee remarks")}
-                    value={job.employeeRemarks}
+                    label={t("ATM ID")}
+                    value={formatValue(atmDetails?.atmId || atm?.atmId)}
                   />
-                )}
-                {job.adminRemarks && (
-                  <DetailRow label={t("Admin remarks")} value={job.adminRemarks} />
-                )}
-                {job.rejectionReason && (
                   <DetailRow
-                    label={t("Rejection reason")}
-                    value={job.rejectionReason}
+                    label={t("Location")}
+                    value={formatValue(
+                      atmDetails?.locationName || atm?.locationName,
+                    )}
                   />
-                )}
-                {job.cancellationReason && (
                   <DetailRow
-                    label={t("Cancellation reason")}
-                    value={job.cancellationReason}
+                    label={t("Address")}
+                    value={formatValue(atmDetails?.address || atm?.address)}
                   />
-                )}
-                {job.cancelledBy && (
                   <DetailRow
-                    label={t("Cancelled by")}
-                    value={getPersonName(job.cancelledBy)}
+                    label={t("Bank")}
+                    value={formatValue(
+                      atmDetails?.bankId?.bankName || atm?.bank,
+                    )}
                   />
-                )}
-                {job.isReassigned && (
                   <DetailRow
-                    label={t("Reassigned")}
-                    value={job.reassignmentReason || t("Yes")}
+                    label={t("District")}
+                    value={formatValue(atmDetails?.districtId?.districtName)}
                   />
-                )}
-                {job.previousJobId && (
                   <DetailRow
-                    label={t("Previous job ID")}
-                    value={job.previousJobId}
+                    label={t("Region")}
+                    value={formatValue(atmDetails?.regionId?.name)}
                   />
-                )}
-                {reassignmentHistory.map((entry, index) => (
-                  <div
-                    key={`${entry.reassignedAt || index}-${index}`}
-                    className="border-b py-3 last:border-b-0"
-                  >
-                    <p className="text-sm font-medium">
-                      {getEmployeeLabel(entry.fromEmployee)}
-                      <span className="px-2 text-muted-foreground">{t("to")}</span>
-                      {getEmployeeLabel(entry.toEmployee)}
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {formatValue(entry.reason)} ·{" "}
-                      {formatDate(entry.reassignedAt, language)}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {t("Reassigned by")} {getPersonName(entry.reassignedBy)}
-                    </p>
-                  </div>
-                ))}
-              </dl>
-            </CardContent>
-          </Card>
-        )}
+                  <DetailRow
+                    label={t("ATM status")}
+                    value={formatValue(atmDetails?.status)}
+                  />
+                  <DetailRow
+                    label={t("Installation type")}
+                    value={formatValue(atmDetails?.installationType)}
+                  />
+                  {isATMDetailsLoading && (
+                    <DetailRow
+                      label={t("Additional ATM information")}
+                      value={t("Loading...")}
+                    />
+                  )}
+                </dl>
+              </CardContent>
+            </Card>
 
-        {!readOnly && (
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>{t("Job History")}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {historyQuery.isLoading ? (
-                <p className="text-sm text-muted-foreground">
-                  {t("Loading history...")}
-                </p>
-              ) : historyQuery.isError ? (
-                <p role="status" className="text-sm text-destructive">
-                  {t("Unable to load job history.")}
-                </p>
-              ) : historyQuery.data?.length ? (
-                <ol>
-                  {historyQuery.data.map((entry) => {
-                    const actorName =
-                      [
-                        entry.performedBy?.firstName,
-                        entry.performedBy?.lastName,
-                      ]
-                        .filter(Boolean)
-                        .join(" ") || t("Unknown user");
-                    const details = formatHistoryDetailLines(
-                      entry.action,
-                      entry.details,
-                      t,
-                      (label) => employeeDisplayLabel(label, t),
-                      {
-                        documentId: atmDetails?._id ?? atm?._id,
-                        identifier: atmDetails?.atmId ?? atm?.atmId,
-                      },
-                    );
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("Assignment")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl>
+                  <DetailRow
+                    label={t("Employee")}
+                    value={getPersonName(employee)}
+                  />
+                  <DetailRow
+                    label={t("Employee code")}
+                    value={formatValue(employee?.employeeCode)}
+                  />
+                  <DetailRow
+                    label={t("Phone")}
+                    value={formatValue(employee?.phoneNumber)}
+                  />
+                  <DetailRow
+                    label={t("Assigned at")}
+                    value={formatDate(job.assignedAt, language)}
+                  />
+                  <DetailRow
+                    label={t("Assigned by")}
+                    value={getPersonName(job.assignedBy)}
+                  />
+                </dl>
+              </CardContent>
+            </Card>
 
-                    return (
-                      <li
-                        key={entry._id}
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("Customer")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl>
+                  <DetailRow label={t("Name")} value={customerName} />
+                  <DetailRow
+                    label={t("Email")}
+                    value={formatValue(customer?.customerEmail)}
+                  />
+                  <DetailRow
+                    label={t("Phone")}
+                    value={formatValue(customer?.customerPhone)}
+                  />
+                  {!readOnly && (
+                    <DetailRow
+                      label={t("Customer reference")}
+                      value={formatValue(
+                        customer?._id ||
+                          (typeof job.customerId === "string"
+                            ? job.customerId
+                            : undefined),
+                      )}
+                    />
+                  )}
+                </dl>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("Complaint")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {complaint ? (
+                  <dl>
+                    <DetailRow
+                      label={t("Complaint number")}
+                      value={formatValue(complaint.complaintNumber)}
+                    />
+                    <DetailRow
+                      label={t("Title")}
+                      value={formatValue(complaint.title)}
+                    />
+                    <DetailRow
+                      label={t("Description")}
+                      value={formatValue(complaint.description)}
+                    />
+                    <DetailRow
+                      label={t("Reported by")}
+                      value={formatValue(complaint.reportedBy)}
+                    />
+                    <DetailRow
+                      label={t("Reported via")}
+                      value={localize(formatLabel(complaint.reportedVia))}
+                    />
+                    <DetailRow
+                      label={t("Status")}
+                      value={localize(formatLabel(complaint.status))}
+                    />
+                    <DetailRow
+                      label={t("Reported at")}
+                      value={formatDate(complaint.reportedAt, language)}
+                    />
+                  </dl>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {t("No complaint is linked to this job.")}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("Lifecycle dates")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl>
+                  {lifecycleDates.map(([label, value]) => (
+                    <DetailRow
+                      key={label}
+                      label={t(label)}
+                      value={formatDate(value, language)}
+                    />
+                  ))}
+                </dl>
+              </CardContent>
+            </Card>
+
+            {!readOnly && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t("Completion GPS")}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <dl>
+                    <DetailRow
+                      label={t("Latitude")}
+                      value={formatGpsValue(
+                        job.employeeGpsAtCompletion?.latitude,
+                      )}
+                    />
+                    <DetailRow
+                      label={t("Longitude")}
+                      value={formatGpsValue(
+                        job.employeeGpsAtCompletion?.longitude,
+                      )}
+                    />
+                    <DetailRow
+                      label={t("Accuracy")}
+                      value={
+                        job.employeeGpsAtCompletion?.accuracy !== undefined &&
+                        Number.isFinite(job.employeeGpsAtCompletion.accuracy)
+                          ? `${job.employeeGpsAtCompletion.accuracy} m`
+                          : NOT_AVAILABLE
+                      }
+                    />
+                    <DetailRow
+                      label={t("Distance from ATM")}
+                      value={
+                        job.gpsDistance !== undefined &&
+                        Number.isFinite(job.gpsDistance)
+                          ? `${job.gpsDistance} m`
+                          : NOT_AVAILABLE
+                      }
+                    />
+                    <DetailRow
+                      label={t("GPS validation")}
+                      value={
+                        job.gpsValidated === true ? (
+                          <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                            {t("Validated")}
+                          </Badge>
+                        ) : job.gpsValidated === false ? (
+                          <Badge variant="secondary">
+                            {t("Not validated")}
+                          </Badge>
+                        ) : (
+                          NOT_AVAILABLE
+                        )
+                      }
+                    />
+                    <DetailRow
+                      label={t("Captured at")}
+                      value={formatDate(
+                        job.employeeGpsAtCompletion?.timestamp,
+                        language,
+                      )}
+                    />
+                  </dl>
+                </CardContent>
+              </Card>
+            )}
+
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("Audit")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl>
+                  <DetailRow
+                    label={t("Created by")}
+                    value={getPersonName(job.createdBy)}
+                  />
+                  <DetailRow
+                    label={t("Updated by")}
+                    value={getPersonName(job.updatedBy)}
+                  />
+                </dl>
+              </CardContent>
+            </Card>
+
+            {(!readOnly || job.status !== "IN_PROGRESS") && (
+              <div className="min-w-0">
+                <JobPhotoGallery
+                  beforePhotos={job.beforePhotos}
+                  afterPhotos={job.afterPhotos}
+                />
+              </div>
+            )}
+
+            {(job.employeeRemarks ||
+              job.adminRemarks ||
+              job.rejectionReason ||
+              job.cancellationReason ||
+              job.isReassigned ||
+              reassignmentHistory.length > 0) && (
+              <Card className="lg:col-span-2">
+                <CardHeader>
+                  <CardTitle>{t("Notes and reassignment")}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <dl>
+                    {job.employeeRemarks && (
+                      <DetailRow
+                        label={t("Employee remarks")}
+                        value={job.employeeRemarks}
+                      />
+                    )}
+                    {job.adminRemarks && (
+                      <DetailRow
+                        label={t("Admin remarks")}
+                        value={job.adminRemarks}
+                      />
+                    )}
+                    {job.rejectionReason && (
+                      <DetailRow
+                        label={t("Rejection reason")}
+                        value={job.rejectionReason}
+                      />
+                    )}
+                    {job.cancellationReason && (
+                      <DetailRow
+                        label={t("Cancellation reason")}
+                        value={job.cancellationReason}
+                      />
+                    )}
+                    {job.cancelledBy && (
+                      <DetailRow
+                        label={t("Cancelled by")}
+                        value={getPersonName(job.cancelledBy)}
+                      />
+                    )}
+                    {job.isReassigned && (
+                      <DetailRow
+                        label={t("Reassigned")}
+                        value={job.reassignmentReason || t("Yes")}
+                      />
+                    )}
+                    {job.previousJobId && (
+                      <DetailRow
+                        label={t("Previous job ID")}
+                        value={job.previousJobId}
+                      />
+                    )}
+                    {reassignmentHistory.map((entry, index) => (
+                      <div
+                        key={`${entry.reassignedAt || index}-${index}`}
                         className="border-b py-3 last:border-b-0"
                       >
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <p className="text-sm font-medium">
-                            {formatHistoryAction(entry.action, entry, t)}
-                          </p>
-                          <time className="text-xs text-muted-foreground">
-                            {formatDate(entry.performedAt, language)}
-                          </time>
-                        </div>
-                        {entry.fromStatus && entry.toStatus && (
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {localize(formatLabel(entry.fromStatus))} -&gt;{" "}
-                            {localize(formatLabel(entry.toStatus))}
-                          </p>
-                        )}
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {t("Performed by: {name}", { name: actorName })}
-                          {entry.performedBy?.userType && (
-                            <>
-                              {" "}
-                              · {t("Role: {role}", { role: localize(formatLabel(entry.performedBy.userType)) })}
-                            </>
-                          )}
+                        <p className="text-sm font-medium">
+                          {getEmployeeLabel(entry.fromEmployee)}
+                          <span className="px-2 text-muted-foreground">
+                            {t("to")}
+                          </span>
+                          {getEmployeeLabel(entry.toEmployee)}
                         </p>
-                        {details.map((detail, index) => (
-                          <p
-                            key={`${entry._id}-detail-${index}`}
-                            className="mt-2 break-words text-xs text-muted-foreground"
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {formatValue(entry.reason)} ·{" "}
+                          {formatDate(entry.reassignedAt, language)}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {t("Reassigned by")}{" "}
+                          {getPersonName(entry.reassignedBy)}
+                        </p>
+                      </div>
+                    ))}
+                  </dl>
+                </CardContent>
+              </Card>
+            )}
+
+            {!readOnly && (
+              <Card className="lg:col-span-2">
+                <CardHeader>
+                  <CardTitle>{t("Job History")}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {historyQuery.isLoading ? (
+                    <p className="text-sm text-muted-foreground">
+                      {t("Loading history...")}
+                    </p>
+                  ) : historyQuery.isError ? (
+                    <p role="status" className="text-sm text-destructive">
+                      {t("Unable to load job history.")}
+                    </p>
+                  ) : historyQuery.data?.length ? (
+                    <ol>
+                      {historyQuery.data.map((entry) => {
+                        const actorName =
+                          [
+                            entry.performedBy?.firstName,
+                            entry.performedBy?.lastName,
+                          ]
+                            .filter(Boolean)
+                            .join(" ") || t("Unknown user");
+                        const details = formatHistoryDetailLines(
+                          entry.action,
+                          entry.details,
+                          t,
+                          (label) => employeeDisplayLabel(label, t),
+                          {
+                            documentId: atmDetails?._id ?? atm?._id,
+                            identifier: atmDetails?.atmId ?? atm?.atmId,
+                          },
+                        );
+
+                        return (
+                          <li
+                            key={entry._id}
+                            className="border-b py-3 last:border-b-0"
                           >
-                            {detail}
-                          </p>
-                        ))}
-                      </li>
-                    );
-                  })}
-                </ol>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  {t("No history available.")}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        )}
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <p className="text-sm font-medium">
+                                {formatHistoryAction(entry.action, entry, t)}
+                              </p>
+                              <time className="text-xs text-muted-foreground">
+                                {formatDate(entry.performedAt, language)}
+                              </time>
+                            </div>
+                            {entry.fromStatus && entry.toStatus && (
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                {localize(formatLabel(entry.fromStatus))} -&gt;{" "}
+                                {localize(formatLabel(entry.toStatus))}
+                              </p>
+                            )}
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {t("Performed by: {name}", { name: actorName })}
+                              {entry.performedBy?.userType && (
+                                <>
+                                  {" "}
+                                  ·{" "}
+                                  {t("Role: {role}", {
+                                    role: localize(
+                                      formatLabel(entry.performedBy.userType),
+                                    ),
+                                  })}
+                                </>
+                              )}
+                            </p>
+                            {details.map((detail, index) => (
+                              <p
+                                key={`${entry._id}-detail-${index}`}
+                                className="mt-2 break-words text-xs text-muted-foreground"
+                              >
+                                {detail}
+                              </p>
+                            ))}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      {t("No history available.")}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
         </>
       )}
@@ -1937,7 +2031,9 @@ export default function JobDetailsPage({
           <div className="space-y-2">
             <DialogTitle>{t("Reject Job")}</DialogTitle>
             <DialogDescription>
-              {t("This job will move to Rejected. You may optionally provide a reason.")}
+              {t(
+                "This job will move to Rejected. You may optionally provide a reason.",
+              )}
             </DialogDescription>
           </div>
           <div className="mt-4">
@@ -1984,9 +2080,12 @@ export default function JobDetailsPage({
           <div className="space-y-2">
             <DialogTitle>{t("Cancel Job")}</DialogTitle>
             <DialogDescription>
-              {t("Cancel {job}? This job will remain in history with its material and cost records intact. Any linked complaint will retain this job in its history; an active complaint will reopen for replacement work.", {
-                job: job.jobNumber || job.jobId,
-              })}
+              {t(
+                "Cancel {job}? This job will remain in history with its material and cost records intact. Any linked complaint will retain this job in its history; an active complaint will reopen for replacement work.",
+                {
+                  job: job.jobNumber || job.jobId,
+                },
+              )}
             </DialogDescription>
           </div>
           <div className="mt-4">

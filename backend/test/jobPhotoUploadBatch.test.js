@@ -1,15 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import mongoose from "mongoose";
 import cloudinary from "../src/config/cloudinary.js";
 import Job from "../src/modules/jobs/jobs.model.js";
 import JobPhoto from "../src/modules/jobPhotos/jobPhotos.model.js";
+import JobPhotoUploadIntent from "../src/modules/jobPhotos/jobPhotoUploadIntent.model.js";
+import JobPhotoUploadAsset from "../src/modules/jobPhotos/jobPhotoUploadAsset.model.js";
 import {
   createDeletePhotoHandler,
   createUploadPhotosHandler,
+  getPendingUploadIntents,
 } from "../src/modules/jobPhotos/jobPhotos.controller.js";
 
 const jobId = "64b000000000000000000031";
 const employeeUserId = "64b000000000000000000032";
+const clientPhotoId = "7d6f1c1a-6c8e-4e51-9c2a-0b1c2d3e4f50";
 
 const invoke = (handler, req) =>
   new Promise((resolve) => {
@@ -26,7 +32,149 @@ const invoke = (handler, req) =>
     handler(req, res, (error) => resolve({ error }));
   });
 
-test("rolls back earlier file writes when a photo batch upload fails", async () => {
+test("upload-only success persists an asset without finalizing the Job", async () => {
+  const events = [];
+  let jobSaved = false;
+  let jobPhotoCreated = false;
+  const intentId = "64b000000000000000000034";
+  const fileBuffer = Buffer.from([0xff, 0xd8, 0xff]);
+  const fileHash = createHash("sha256").update(fileBuffer).digest("hex");
+  const intent = {
+    _id: intentId,
+    jobId,
+    clientPhotoId,
+    ownerUserId: employeeUserId,
+    currentOwnerUserId: employeeUserId,
+    photoType: "before",
+    contentSha256: fileHash,
+    byteSize: fileBuffer.length,
+    verifiedMimeType: "image/jpeg",
+    originalName: "before.jpg",
+    ownerTokenHash: "b".repeat(64),
+    ownerVersion: 1,
+    state: "reserved",
+    leaseExpiresAt: new Date(Date.now() + 600000),
+  };
+  const asset = {
+    _id: "64b000000000000000000035",
+    intentId,
+    ownerVersion: 1,
+    state: "verified",
+    publicId: `jobs/${jobId}/before/${intentId}/v1`,
+    secureUrl: "https://cloudinary.invalid/photo.jpg",
+    format: "jpg",
+    verifiedSha256: fileHash,
+  };
+  const job = {
+    _id: jobId,
+    atmId: "64b000000000000000000033",
+    assignedEmployeeId: employeeUserId,
+    status: "IN_PROGRESS",
+    beforePhotos: [],
+    afterPhotos: [],
+    async save() {
+      jobSaved = true;
+    },
+  };
+  const originals = [
+    [Job, "findById", Job.findById],
+    [JobPhoto, "countDocuments", JobPhoto.countDocuments],
+    [JobPhoto, "create", JobPhoto.create],
+    [JobPhotoUploadIntent, "findOne", JobPhotoUploadIntent.findOne],
+    [JobPhotoUploadIntent, "create", JobPhotoUploadIntent.create],
+    [JobPhotoUploadIntent, "findOneAndUpdate", JobPhotoUploadIntent.findOneAndUpdate],
+    [JobPhotoUploadAsset, "findOne", JobPhotoUploadAsset.findOne],
+    [JobPhotoUploadAsset, "findOneAndUpdate", JobPhotoUploadAsset.findOneAndUpdate],
+    [mongoose, "startSession", mongoose.startSession],
+    [cloudinary.api, "resource", cloudinary.api.resource],
+    [cloudinary.uploader, "upload_stream", cloudinary.uploader.upload_stream],
+  ];
+  const originalFetch = globalThis.fetch;
+  let intentReads = 0;
+  let assetReads = 0;
+  Job.findById = async () => job;
+  JobPhoto.countDocuments = async () => 0;
+  JobPhoto.create = async () => {
+    jobPhotoCreated = true;
+    return {};
+  };
+  JobPhotoUploadIntent.findOne = () => ({
+    select: async () => {
+      intentReads += 1;
+      return intentReads === 1 ? null : intent;
+    },
+  });
+  JobPhotoUploadIntent.create = async () => intent;
+  JobPhotoUploadIntent.findOneAndUpdate = () => ({
+    select: async () => intent,
+  });
+  JobPhotoUploadAsset.findOne = async () => {
+    assetReads += 1;
+    return assetReads === 1 ? null : asset;
+  };
+  JobPhotoUploadAsset.findOneAndUpdate = async () => asset;
+  mongoose.startSession = async () => ({
+    async withTransaction(operation) {
+      return operation({});
+    },
+    async endSession() {},
+  });
+  cloudinary.api.resource = async () => {
+    const error = new Error("not found");
+    error.http_code = 404;
+    throw error;
+  };
+  cloudinary.uploader.upload_stream = (_options, callback) => ({
+    end() {
+      callback(null, {
+        public_id: asset.publicId,
+        secure_url: asset.secureUrl,
+        format: "jpg",
+      });
+    },
+  });
+  globalThis.fetch = async () => ({
+    ok: true,
+    headers: { get: (name) => (name === "content-type" ? "image/jpeg" : "3") },
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(fileBuffer);
+        controller.close();
+      },
+    }),
+  });
+
+  try {
+    const result = await invoke(createUploadPhotosHandler((event) => {
+      events.push(event);
+    }), {
+      params: { jobId },
+      body: { photoType: "before", clientPhotoId },
+      files: [{
+        buffer: fileBuffer,
+        originalname: "before.jpg",
+        size: fileBuffer.length,
+        mimetype: "image/jpeg",
+      }],
+      user: { _id: employeeUserId, userType: "employee" },
+    });
+
+    assert.ifError(result.error);
+    assert.equal(result.statusCode, 201);
+    assert.equal(result.body.data.status, "uploaded");
+    assert.equal(result.body.data.finalizationPending, true);
+    assert.equal(jobPhotoCreated, false);
+    assert.equal(jobSaved, false);
+    assert.deepEqual(job.beforePhotos, []);
+    assert.deepEqual(job.afterPhotos, []);
+    assert.deepEqual(events, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [target, key, original] of originals) target[key] = original;
+  }
+});
+
+test("upload-only endpoint rejects multi-file requests before any persistence", async () => {
   const jobPhotoRecords = [];
   const cloudinaryDeletions = [];
   const rollbackUpdates = [];
@@ -117,94 +265,88 @@ test("rolls back earlier file writes when a photo batch upload fails", async () 
       user: { _id: employeeUserId, userType: "employee" },
     });
 
-    assert.match(result.error.message, /Cloudinary upload failed/);
+    assert.match(result.error.message, /Exactly one photo/);
     assert.equal(jobPhotoRecords.length, 0);
     assert.deepEqual(job.beforePhotos, []);
-    assert.deepEqual(cloudinaryDeletions, ["job-photo-public-id"]);
-    assert.equal(rollbackUpdates.length, 1);
+    assert.deepEqual(cloudinaryDeletions, []);
+    assert.equal(rollbackUpdates.length, 0);
     assert.deepEqual(events, []);
-    assert.deepEqual(rollbackUpdates[0][1], {
-      $pull: { beforePhotos: { $in: ["photo-1"] } },
-    });
   } finally {
     for (const [target, key, original] of originals) target[key] = original;
   }
 });
 
-test("photo upload publishes safe job metadata after persistence", async () => {
-  const events = [];
-  let persisted = false;
-  let nextPhotoId = 0;
+test("upload-only endpoint requires a client photo identity", async () => {
   const job = {
     _id: jobId,
-    atmId: "64b000000000000000000033",
-    createdBy: employeeUserId,
     assignedEmployeeId: employeeUserId,
     status: "IN_PROGRESS",
     beforePhotos: [],
     afterPhotos: [],
-    async save() {
-      persisted = true;
-      return this;
-    },
   };
   const originals = [
     [Job, "findById", Job.findById],
     [JobPhoto, "countDocuments", JobPhoto.countDocuments],
-    [JobPhoto, "create", JobPhoto.create],
-    [cloudinary.uploader, "upload_stream", cloudinary.uploader.upload_stream],
-    [cloudinary, "url", cloudinary.url],
   ];
 
   Job.findById = async () => job;
-  JobPhoto.countDocuments = async () => 1;
-  JobPhoto.create = async (data) => ({
-    _id: `photo-${++nextPhotoId}`,
-    url: "https://private.invalid/photo.jpg",
-    thumbnailUrl: "https://private.invalid/thumb.jpg",
-    uploadedAt: new Date(),
-    ...data,
-  });
-  cloudinary.uploader.upload_stream = (_options, callback) => ({
-    end() {
-      callback(null, {
-        public_id: "job-photo-public-id",
-        secure_url: "https://private.invalid/photo.jpg",
-        bytes: 10,
-      });
-    },
-  });
-  cloudinary.url = () => "https://private.invalid/thumb.jpg";
+  JobPhoto.countDocuments = async () => 0;
 
   try {
-    const result = await invoke(
-      createUploadPhotosHandler(async (event) => {
-        assert.equal(persisted, true);
-        events.push(event);
-      }),
-      {
-        params: { jobId },
-        body: { photoType: "before", gpsData: '{"latitude":12.5}' },
-        files: [
-          {
-            buffer: Buffer.from("photo"),
-            originalname: "before.jpg",
-            size: 10,
-            mimetype: "image/jpeg",
-          },
-        ],
-        user: { _id: employeeUserId, userType: "employee" },
-      },
-    );
+    const result = await invoke(createUploadPhotosHandler(), {
+      params: { jobId },
+      body: { photoType: "before" },
+      files: [{
+        buffer: Buffer.from([0xff, 0xd8, 0xff]),
+        originalname: "before.jpg",
+        size: 3,
+        mimetype: "image/jpeg",
+      }],
+      user: { _id: employeeUserId, userType: "employee" },
+    });
 
+    assert.match(result.error.message, /clientPhotoId is required/);
+  } finally {
+    for (const [target, key, original] of originals) target[key] = original;
+  }
+});
+
+test("pending-intent retrieval is authorized and excludes security fields", async () => {
+  const job = {
+    _id: jobId,
+    assignedEmployeeId: employeeUserId,
+    isDeleted: false,
+  };
+  const intent = {
+    _id: "64b000000000000000000036",
+    clientPhotoId,
+    ownerUserId: employeeUserId,
+    currentOwnerUserId: employeeUserId,
+    photoType: "before",
+    ownerVersion: 1,
+    state: "uploaded",
+    leaseExpiresAt: new Date(),
+    failureCode: null,
+    failedAt: null,
+  };
+  const originals = [
+    [Job, "findById", Job.findById],
+    [JobPhotoUploadIntent, "find", JobPhotoUploadIntent.find],
+  ];
+  Job.findById = async () => job;
+  JobPhotoUploadIntent.find = () => ({
+    select: async () => [intent],
+  });
+  try {
+    const result = await invoke(getPendingUploadIntents, {
+      params: { jobId },
+      user: { _id: employeeUserId, userType: "employee" },
+    });
     assert.ifError(result.error);
-    assert.equal(result.statusCode, 201);
-    assert.equal(events.length, 1);
-    assert.equal(events[0].event, "domain:job:updated");
-    assert.equal(String(events[0].entityId), jobId);
-    assert.equal(events[0].action, "photos-uploaded");
-    assert.equal("data" in events[0], false);
-    assert.doesNotMatch(JSON.stringify(events[0]), /private\\.invalid|latitude|gps/i);
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.body.data.length, 1);
+    assert.equal(result.body.data[0].clientPhotoId, clientPhotoId);
+    assert.equal("ownerTokenHash" in result.body.data[0], false);
   } finally {
     for (const [target, key, original] of originals) target[key] = original;
   }
