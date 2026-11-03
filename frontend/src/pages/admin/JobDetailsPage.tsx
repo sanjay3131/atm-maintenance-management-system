@@ -27,6 +27,7 @@ import {
 import AssignJobDialog from "@/features/jobs/components/AssignJobDialog";
 import EditJobForm from "@/features/jobs/components/EditJobForm";
 import AdminMaterialUsageSection from "@/features/jobs/components/AdminMaterialUsageSection";
+import AdminAdditionalWorkersSection from "@/features/jobs/components/AdminAdditionalWorkersSection";
 import JobCostReportSection from "@/features/job-cost-reports/components/JobCostReportSection";
 import EmployeeFieldWorkPanel from "@/features/jobs/components/EmployeeFieldWorkPanel";
 import EmployeeMaterialUsageSection from "@/features/jobs/components/EmployeeMaterialUsageSection";
@@ -53,6 +54,7 @@ import {
 } from "@/features/jobs/utils/employeeJobDetails.utils";
 import { useATM } from "@/features/atms/hooks/useATM";
 import { formatHistoryDetailLines } from "@/features/jobs/utils/formatJobHistoryDetails";
+import { isValidAdditionalWorkersVersion } from "@/features/jobs/utils/additionalWorkers.utils";
 import {
   employeeDisplayLabel,
   employeeErrorMessage,
@@ -322,6 +324,13 @@ export default function JobDetailsPage({
     refetch,
     isFetching,
   } = useJob(jobId);
+  const refreshLatestJob = async () => {
+    const refreshed = await refetch();
+    return (
+      refreshed.isSuccess &&
+      isValidAdditionalWorkersVersion(refreshed.data?.__v)
+    );
+  };
   const historyQuery = useJobHistory(jobId);
   const { data: atmDetails, isLoading: isATMDetailsLoading } = useATM(
     getRawATMId(job),
@@ -1503,8 +1512,21 @@ export default function JobDetailsPage({
         </div>
       )}
 
+      {readOnly && (
+        <AdminAdditionalWorkersSection
+          job={job}
+          readOnly
+          onRefreshLatest={refreshLatestJob}
+        />
+      )}
+
       {!readOnly && (
         <>
+          <AdminAdditionalWorkersSection
+            job={job}
+            readOnly={false}
+            onRefreshLatest={refreshLatestJob}
+          />
           <AdminMaterialUsageSection job={job} />
           <JobCostReportSection jobId={job._id} />
           <div className="grid min-w-0 items-start gap-6 [grid-template-columns:minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">

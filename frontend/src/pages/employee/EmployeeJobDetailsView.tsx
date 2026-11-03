@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import EmployeeFieldWorkPanel from "@/features/jobs/components/EmployeeFieldWorkPanel";
+import EmployeeAdditionalWorkersSection from "@/features/jobs/components/EmployeeAdditionalWorkersSection";
 import EmployeeMaterialUsageSection from "@/features/jobs/components/EmployeeMaterialUsageSection";
 import JobPhotoGallery from "@/features/jobs/components/JobPhotoGallery";
 import {
@@ -47,6 +48,7 @@ import {
   canLoadEmployeeMaterialUsage,
 } from "@/features/jobs/utils/employeeJobDetails.utils";
 import { formatHistoryDetailLines } from "@/features/jobs/utils/formatJobHistoryDetails";
+import { isValidAdditionalWorkersVersion } from "@/features/jobs/utils/additionalWorkers.utils";
 import type {
   Job,
   JobHistoryEntry,
@@ -173,6 +175,9 @@ function getHistoryActionLabel(
     closed: "Closed",
     cancelled: "Cancelled",
     note_added: "Note Added",
+    additional_worker_added: "Additional Worker Added",
+    additional_worker_updated: "Additional Worker Updated",
+    additional_worker_removed: "Additional Worker Removed",
   };
   const label = labels[entry.action] ?? entry.action;
   return employeeDisplayLabel(label, t);
@@ -301,6 +306,11 @@ export default function EmployeeJobDetailsView() {
   }
 
   const job = jobQuery.data;
+  const refreshAdditionalWorkersJob = async () => {
+    const refreshed = await jobQuery.refetch();
+    return refreshed.isSuccess &&
+      isValidAdditionalWorkersVersion(refreshed.data.__v);
+  };
   const atm = getATM(job);
   const complaint =
     typeof job.complaintId === "object" && job.complaintId
@@ -465,6 +475,11 @@ export default function EmployeeJobDetailsView() {
           </p>
         )}
       </section>
+
+      <EmployeeAdditionalWorkersSection
+        job={job}
+        onRefreshLatest={refreshAdditionalWorkersJob}
+      />
 
       {screen === "in-progress" && (
         <section aria-labelledby="employee-evidence-progress" className="space-y-2">

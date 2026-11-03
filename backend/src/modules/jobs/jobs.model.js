@@ -39,6 +39,29 @@ const recurringMaintenanceSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const additionalWorkerSchema = new mongoose.Schema(
+  {
+    workerType: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 80,
+    },
+    quantity: {
+      type: Number,
+      required: true,
+      min: 1,
+      validate: Number.isInteger,
+    },
+    notes: {
+      type: String,
+      trim: true,
+      maxlength: 300,
+    },
+  },
+  { timestamps: true },
+);
+
 const jobSchema = new mongoose.Schema(
   {
     jobId: {
@@ -142,6 +165,14 @@ const jobSchema = new mongoose.Schema(
     recurringMaintenance: {
       type: recurringMaintenanceSchema,
       default: undefined,
+    },
+    additionalWorkers: {
+      type: [additionalWorkerSchema],
+      default: [],
+      validate: {
+        validator: (entries) => entries.length <= 20,
+        message: "A Job can have no more than 20 additional worker entries",
+      },
     },
 
     // Timestamps

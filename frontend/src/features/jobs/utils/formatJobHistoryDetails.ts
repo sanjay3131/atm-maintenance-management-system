@@ -4,6 +4,25 @@ function isDetailsRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function formatAdditionalWorkerSnapshot(
+  value: unknown,
+  translateLabel: (label: string) => string,
+): string | null {
+  if (!isDetailsRecord(value)) return null;
+
+  const fields: string[] = [];
+  if (typeof value.workerType === "string" && value.workerType) {
+    fields.push(`${translateLabel("Worker type")}: ${value.workerType}`);
+  }
+  if (typeof value.quantity === "number" && Number.isFinite(value.quantity)) {
+    fields.push(`${translateLabel("Quantity")}: ${value.quantity}`);
+  }
+  if (typeof value.notes === "string" && value.notes.trim()) {
+    fields.push(`${translateLabel("Notes")}: ${value.notes}`);
+  }
+  return fields.length > 0 ? fields.join(", ") : null;
+}
+
 export function formatHistoryDetailLines(
   action: string,
   details: unknown,
@@ -28,6 +47,27 @@ export function formatHistoryDetailLines(
   }
 
   const record = details as Record<string, unknown>;
+  if (
+    action === "additional_worker_added" ||
+    action === "additional_worker_updated" ||
+    action === "additional_worker_removed"
+  ) {
+    const before = formatAdditionalWorkerSnapshot(record.before, translateLabel);
+    const after = formatAdditionalWorkerSnapshot(record.after, translateLabel);
+    const lines: string[] = [];
+    if (action === "additional_worker_added" && after) {
+      lines.push(t("Added: {details}", { details: after }));
+    } else if (action === "additional_worker_updated") {
+      if (before) lines.push(t("Before: {details}", { details: before }));
+      if (after) lines.push(t("After: {details}", { details: after }));
+    } else if (action === "additional_worker_removed" && before) {
+      lines.push(t("Removed: {details}", { details: before }));
+    }
+    return lines.length > 0
+      ? lines
+      : [t("Additional worker details recorded.")];
+  }
+
   if (action === "gps_validated") {
     const gpsLines: string[] = [];
     const distance = record.gpsDistance;

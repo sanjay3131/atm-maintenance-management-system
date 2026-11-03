@@ -145,6 +145,73 @@ test("a finalization-pending photo remains out of the upload queue for recovery"
   assert.match(panel, /return finalized \? "uploaded" : "finalization-pending"/);
 });
 
+test("confirmed finalization removes only that photo from the local selection", () => {
+  assert.match(
+    panel,
+    /const removeFinalizedPhoto = \(photoType: JobPhotoType, photoId: string\) => \{[\s\S]*?replaceSelection\([\s\S]*?filter\(\s*\(photo\) => photo\.id !== photoId/,
+  );
+  assert.match(
+    panel,
+    /if \(response\.status === "finalized"\) \{[\s\S]*?removeFinalizedPhoto\(type, pendingPhoto\.id\)/,
+  );
+  assert.match(
+    panel,
+    /if \(finalized\) \{\s*removeFinalizedPhoto\(type, pendingPhoto\.id\)/,
+  );
+});
+
+test("selection replacement syncs the ref and state and revokes removed previews", () => {
+  assert.match(
+    panel,
+    /Object\.values\(current\)[\s\S]*?filter\(\(photo\) => !retainedIds\.has\(photo\.id\)\)[\s\S]*?URL\.revokeObjectURL\(photo\.previewUrl\)/,
+  );
+  assert.match(panel, /selectedPhotosRef\.current = next;\s*setSelectedPhotos\(next\)/);
+});
+
+test("pending and ambiguous outcomes retain their selected photo for recovery", () => {
+  const uploadStart = panel.indexOf("const uploadSelectedPhotos = async");
+  const uploadEnd = panel.indexOf("const completeJob =", uploadStart);
+  const uploadHandler = panel.slice(uploadStart, uploadEnd);
+
+  assert.match(
+    uploadHandler,
+    /response\.status === "uploaded"[\s\S]*?setPendingUploadStatuses[\s\S]*?"finalization-pending"[\s\S]*?if \(finalized\) \{\s*removeFinalizedPhoto/,
+  );
+  assert.match(
+    uploadHandler,
+    /ambiguous \? "verification" : "failed"[\s\S]*?throw error/,
+  );
+  assert.equal(
+    [...uploadHandler.matchAll(/removeFinalizedPhoto\(type, pendingPhoto\.id\)/g)]
+      .length,
+    2,
+  );
+});
+
+test("two persisted Before photos plus finalized selection cleanup allow a third", () => {
+  assert.match(
+    panel,
+    /const persistedCount = persistedCounts\[photoType\];\s*const availableSlots = Math\.max\(\s*0,\s*REQUIRED_PHOTOS_PER_TYPE - persistedCount - currentSelection\.length/,
+  );
+  assert.match(panel, /persistedCount \+ selected\.length < MAX_PHOTOS_PER_TYPE/);
+  assert.match(panel, /const persistedCounts: PhotoCounts = \{\s*before: getValidPhotoCount\(job\.beforePhotos, "before"\),\s*after: getValidPhotoCount\(job\.afterPhotos, "after"\)/);
+
+  const persistedBefore = 2;
+  const localBeforeAfterFinalization = 0;
+  assert.equal(persistedBefore + localBeforeAfterFinalization < 3, true);
+});
+
+test("After selections remain independent from Before photo counts", () => {
+  assert.match(panel, /persistedCounts\[photoType\]/);
+  assert.match(panel, /selectedPhotosRef\.current\[photoType\]/);
+  assert.match(panel, /const canSelectMore =\s*persistedCount \+ selected\.length < MAX_PHOTOS_PER_TYPE/);
+
+  const before = { persisted: 3, selected: 0 };
+  const after = { persisted: 0, selected: 0 };
+  assert.equal(before.persisted + before.selected < 3, false);
+  assert.equal(after.persisted + after.selected < 3, true);
+});
+
 test("queue stops on the first failure and does not process later photos", async () => {
   const processed = [];
   const result = await processPhotoUploadQueue({

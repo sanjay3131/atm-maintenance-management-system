@@ -3,6 +3,7 @@ import type { AxiosProgressEvent } from "axios";
 import type {
   AssignJobData,
   AdminJobMaterialUsage,
+  AdditionalWorker,
   CancelJobData,
   CreateJobData,
   Job,
@@ -54,6 +55,11 @@ export interface FinalizeJobPhotoResponse {
   ownerVersion: number;
   finalizationPending: false;
   jobPhoto: JobPhoto;
+}
+
+export interface AdditionalWorkersMutationResponse {
+  additionalWorkers: AdditionalWorker[];
+  version: number;
 }
 
 export interface PendingJobPhotoUpload {
@@ -123,6 +129,52 @@ export const getJobHistory = async (
     `/jobs/${jobId}/history`,
   );
 
+  return response.data.data;
+};
+
+export const createAdditionalWorker = async (
+  jobId: string,
+  data: {
+    workerType: string;
+    quantity: number;
+    notes?: string;
+    expectedVersion: number;
+  },
+): Promise<AdditionalWorkersMutationResponse> => {
+  const response = await api.post<{ data: AdditionalWorkersMutationResponse }>(
+    `/jobs/${jobId}/additional-workers`,
+    data,
+  );
+  return response.data.data;
+};
+
+export const updateAdditionalWorker = async (
+  jobId: string,
+  workerId: string,
+  data: {
+    workerType?: string;
+    quantity?: number;
+    notes?: string;
+    expectedVersion: number;
+  },
+): Promise<AdditionalWorkersMutationResponse> => {
+  const response = await api.patch<{ data: AdditionalWorkersMutationResponse }>(
+    `/jobs/${jobId}/additional-workers/${workerId}`,
+    data,
+  );
+  return response.data.data;
+};
+
+export const deleteAdditionalWorker = async (
+  jobId: string,
+  workerId: string,
+  expectedVersion: number,
+): Promise<AdditionalWorkersMutationResponse> => {
+  const response = await api.delete<{
+    data: AdditionalWorkersMutationResponse;
+  }>(`/jobs/${jobId}/additional-workers/${workerId}`, {
+    data: { expectedVersion },
+  });
   return response.data.data;
 };
 

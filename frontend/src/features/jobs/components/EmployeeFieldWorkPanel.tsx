@@ -535,6 +535,21 @@ export default function EmployeeFieldWorkPanel({
     );
   };
 
+  const removeFinalizedPhoto = (photoType: JobPhotoType, photoId: string) => {
+    replaceSelection(
+      photoType,
+      selectedPhotosRef.current[photoType].filter(
+        (photo) => photo.id !== photoId,
+      ),
+    );
+    setPendingUploadStatuses((current) => {
+      if (!(photoId in current)) return current;
+      const next = { ...current };
+      delete next[photoId];
+      return next;
+    });
+  };
+
   const handleFileSelection = async (
     photoType: JobPhotoType,
     event: ChangeEvent<HTMLInputElement>,
@@ -856,6 +871,7 @@ export default function EmployeeFieldWorkPanel({
                         record.uploadIntentId !== response.uploadIntentId,
                     ),
                   );
+                  removeFinalizedPhoto(type, pendingPhoto.id);
                   return "uploaded";
                 }
 
@@ -864,6 +880,9 @@ export default function EmployeeFieldWorkPanel({
                   type,
                   pendingPhoto.id,
                 );
+                if (finalized) {
+                  removeFinalizedPhoto(type, pendingPhoto.id);
+                }
                 return finalized ? "uploaded" : "finalization-pending";
               } catch (error) {
                 const ambiguous =

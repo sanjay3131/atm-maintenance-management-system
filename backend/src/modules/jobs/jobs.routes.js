@@ -19,6 +19,18 @@ import {
 } from "./recurringMaintenance.validation.js";
 import { createJobMaterialUsageSchema } from "./jobMaterialUsage.validation.js";
 import {
+  additionalWorkersEntryParamsSchema,
+  additionalWorkersJobParamsSchema,
+  createAdditionalWorkerSchema,
+  deleteAdditionalWorkerSchema,
+  updateAdditionalWorkerSchema,
+} from "./additionalWorkers.validation.js";
+import {
+  createAdditionalWorker,
+  deleteAdditionalWorker,
+  updateAdditionalWorker,
+} from "./additionalWorkers.controller.js";
+import {
   createJobMaterialUsage,
   deleteJobMaterialUsage,
   getJobMaterialUsage,
@@ -210,6 +222,31 @@ router.get(
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin", "employee"),
   getJobMaterialUsage,
+);
+
+router.post(
+  "/:id/additional-workers",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin", "employee"),
+  validateRequest(additionalWorkersJobParamsSchema, "params"),
+  validateRequest(createAdditionalWorkerSchema),
+  createAdditionalWorker,
+);
+router.patch(
+  "/:id/additional-workers/:workerId",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin", "employee"),
+  validateRequest(additionalWorkersEntryParamsSchema, "params"),
+  validateRequest(updateAdditionalWorkerSchema),
+  updateAdditionalWorker,
+);
+router.delete(
+  "/:id/additional-workers/:workerId",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin", "employee"),
+  validateRequest(additionalWorkersEntryParamsSchema, "params"),
+  validateRequest(deleteAdditionalWorkerSchema),
+  deleteAdditionalWorker,
 );
 
 // Shared routes

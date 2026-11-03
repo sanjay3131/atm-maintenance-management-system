@@ -105,6 +105,15 @@ export interface JobMaterialUsage {
   createdAt?: string;
 }
 
+export interface AdditionalWorker {
+  _id: string;
+  workerType: string;
+  quantity: number;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AdminJobMaterialUsage extends JobMaterialUsage {
   unitCostSnapshot: number;
   lineCostSnapshot: number;
@@ -147,7 +156,10 @@ export type JobHistoryAction =
   | "rejected"
   | "closed"
   | "cancelled"
-  | "note_added";
+  | "note_added"
+  | "additional_worker_added"
+  | "additional_worker_updated"
+  | "additional_worker_removed";
 
 export interface JobHistoryActor {
   _id: string;
@@ -185,6 +197,7 @@ export interface Job {
   acSubType?: AcSubType;
   priority: JobPriority;
   status: JobStatus;
+  __v?: number;
   recurringMaintenance?: RecurringMaintenanceJobMetadata;
   createdAt: string;
   assignedAt?: string | null;
@@ -213,6 +226,7 @@ export interface Job {
   updatedBy?: JobUser | string | null;
   beforePhotos?: Array<JobPhoto | null>;
   afterPhotos?: Array<JobPhoto | null>;
+  additionalWorkers?: AdditionalWorker[];
 }
 
 export interface JobsPagination {
