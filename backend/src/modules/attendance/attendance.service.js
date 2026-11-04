@@ -5,7 +5,10 @@ import AttendanceCorrection from "./attendanceCorrection.model.js";
 import AttendanceEntryAudit from "./attendanceEntryAudit.model.js";
 import AttendanceStatusOverride from "./attendanceStatusOverride.model.js";
 import AttendanceStatusOverrideAudit from "./attendanceStatusOverrideAudit.model.js";
-import { calculateAttendanceStatus } from "./attendanceStatus.js";
+import {
+  calculateAttendanceStatus,
+  resolveAttendanceStatus,
+} from "./attendanceStatus.js";
 import Employee from "../employees/employee.model.js";
 import User from "../users/user.model.js";
 import {
@@ -231,18 +234,15 @@ const getAttendanceOverrides = async (records) => {
 };
 
 const addCalculatedAttendanceStatus = (record, override, asOf) => {
-  const values = calculateAttendanceStatus({
-    checkInAt: record.checkInAt,
-    checkOutAt: record.checkOutAt ?? null,
-    asOf,
-  });
   const source =
     typeof record.toObject === "function" ? record.toObject() : record;
+  const { effectiveStatus, statusOrigin, workedDurationMs } =
+    resolveAttendanceStatus({ record, override, asOf });
   return {
     ...source,
-    effectiveStatus: override?.status ?? values.calculatedStatus,
-    statusOrigin: override ? "admin_override" : "recorded",
-    workedDurationMs: values.workedDurationMs,
+    effectiveStatus,
+    statusOrigin,
+    workedDurationMs,
   };
 };
 

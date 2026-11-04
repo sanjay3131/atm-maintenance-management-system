@@ -151,8 +151,8 @@ export default function AdminLayout() {
           isDesktop && desktopSidebarOpen ? "md:ml-64" : "md:ml-0"
         }`}
       >
-        <header className="flex h-16 items-center justify-between border-b bg-white px-6">
-          <div className="flex items-center gap-3">
+        <header className="flex h-16 items-center justify-between border-b bg-white px-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
             {!isDesktop && (
               <button
                 ref={mobileMenuButtonRef}
@@ -177,12 +177,12 @@ export default function AdminLayout() {
                 <PanelLeftOpen aria-hidden="true" className="size-5" />
               </button>
             )}
-            <h2 className="font-semibold">Admin</h2>
+            <h2 className="truncate font-semibold">Admin</h2>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-4">
             <NotificationBell />
-            <div className="text-right">
+            <div className="hidden text-right sm:block">
               <p className="text-sm font-medium">
                 {user?.firstName} {user?.lastName}
               </p>
@@ -192,7 +192,7 @@ export default function AdminLayout() {
 
             <button
               onClick={logout}
-              className="rounded-md border px-3 py-2 text-sm hover:bg-gray-100"
+              className="min-h-11 rounded-md border px-2 text-sm hover:bg-gray-100 sm:px-3"
             >
               Logout
             </button>

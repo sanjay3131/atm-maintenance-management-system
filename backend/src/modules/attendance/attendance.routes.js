@@ -4,6 +4,16 @@ import { authorizeRoles } from "../../middlewares/role.middleware.js";
 import { validateRequest } from "../../middlewares/validate.middleware.js";
 import { handleAttendanceError } from "./attendanceError.middleware.js";
 import {
+  exportAttendanceReportPdf,
+  exportAttendanceReportXlsx,
+  getAttendanceReportRecords,
+} from "./attendanceReport.controller.js";
+import { handleAttendanceReportError } from "./attendanceReportError.middleware.js";
+import {
+  attendanceReportExportQuerySchema,
+  attendanceReportQuerySchema,
+} from "./attendanceReport.validation.js";
+import {
   adminAttendanceDashboardQuerySchema,
   attendanceCalendarQuerySchema,
   attendanceCorrectionSchema,
@@ -87,6 +97,30 @@ router.get(
   authorizeRoles("admin", "superAdmin"),
   validateRequest(adminAttendanceDashboardQuerySchema, "query"),
   getAdminAttendanceDashboardRecords,
+);
+router.get(
+  "/admin/reports/export.xlsx",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(attendanceReportExportQuerySchema, "query"),
+  exportAttendanceReportXlsx,
+  handleAttendanceReportError,
+);
+router.get(
+  "/admin/reports/export.pdf",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(attendanceReportExportQuerySchema, "query"),
+  exportAttendanceReportPdf,
+  handleAttendanceReportError,
+);
+router.get(
+  "/admin/reports",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(attendanceReportQuerySchema, "query"),
+  getAttendanceReportRecords,
+  handleAttendanceReportError,
 );
 router.get(
   "/records/:id",

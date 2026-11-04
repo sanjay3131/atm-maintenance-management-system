@@ -30,6 +30,7 @@ import notificationRouter from "./modules/notification/notification.routes.js";
 import supervisorRouter from "./modules/supervisor/supervisor.routes.js";
 import itemRouter from "./modules/items/item.routes.js";
 import attendanceRouter from "./modules/attendance/attendance.routes.js";
+import publicHolidayRouter from "./modules/holidays/publicHoliday.routes.js";
 import { initializeItemNameIndex } from "./modules/items/itemIndexReadiness.js";
 
 import { initSocketServer } from "./realtime/socket.js";
@@ -134,6 +135,7 @@ app.use("/api/v1/notifications", notificationRouter);
 app.use("/api/v1/supervisor", supervisorRouter);
 app.use("/api/v1/items", itemRouter);
 app.use("/api/v1/attendance", attendanceRouter);
+app.use("/api/v1/holidays", publicHolidayRouter);
 
 // Health check
 app.get("/health", (req, res) => {

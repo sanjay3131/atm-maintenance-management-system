@@ -43,6 +43,7 @@ import CustomersPage from "@/pages/admin/CustomersPage";
 import CustomerDetailsPage from "@/pages/admin/CustomerDetailsPage";
 import ItemsPage from "@/pages/admin/ItemsPage";
 import AdminAttendancePage from "@/pages/admin/AdminAttendancePage";
+import AdminAttendanceReportPage from "@/pages/admin/AdminAttendanceReportPage";
 import SupervisorsPage from "@/pages/admin/SupervisorsPage";
 import ATMLocationRequestsPage from "@/pages/admin/ATMLocationRequestsPage";
 import ATMLocationRequestDetailsPage from "@/pages/admin/ATMLocationRequestDetailsPage";
@@ -73,6 +74,10 @@ export default function App() {
             <Route
               path="/admin/attendance"
               element={<AdminAttendancePage />}
+            />
+            <Route
+              path="/admin/attendance/reports"
+              element={<AdminAttendanceReportPage />}
             />
             <Route path="/admin/employees" element={<EmployeesPage />} />
             <Route path="/admin/supervisors" element={<SupervisorsPage />} />

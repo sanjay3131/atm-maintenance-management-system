@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  coerceJoiningDateSchema,
+  effectiveExitDateSchema,
+  isExitDateOnOrAfterJoiningDate,
+} from "../employees/employeeDates.js";
 
 const objectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid ID");
 
@@ -19,7 +24,9 @@ const employeeSchema = z.object({
 
   department: z.string().trim().min(2, "Department is required"),
 
-  joiningDate: z.coerce.date(),
+  joiningDate: coerceJoiningDateSchema,
+
+  effectiveExitDate: effectiveExitDateSchema,
 
   employmentType: z.enum(["full-time", "part-time", "contract"]),
 
@@ -32,6 +39,20 @@ const employeeSchema = z.object({
   supervisorId: objectIdSchema.nullable().optional(),
 
   salary: z.number().nonnegative().optional(),
+}).superRefine((values, context) => {
+  if (
+    values.effectiveExitDate &&
+    !isExitDateOnOrAfterJoiningDate(
+      values.joiningDate,
+      values.effectiveExitDate,
+    )
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["effectiveExitDate"],
+      message: "effectiveExitDate must be on or after joiningDate",
+    });
+  }
 });
 
 const customerSchema = z.object({

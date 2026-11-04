@@ -275,7 +275,11 @@ test("admin employee detail populates readable assignment names and preserves re
   const capture = {};
   const employee = {
     _id: employeeDocumentId,
-    userId: { _id: linkedUserId, firstName: "Asha" },
+    userId: {
+      _id: linkedUserId,
+      firstName: "Asha",
+      avatar: { url: "https://images.example.test/asha.png" },
+    },
     districtIds: ["64b000000000000000000010", "64b000000000000000000013"],
     regionIds: ["64b000000000000000000011"],
     assignedAtmIds: ["64b000000000000000000012"],
@@ -316,8 +320,13 @@ test("admin employee detail populates readable assignment names and preserves re
     assert.equal(status, 200);
     assert.equal(capture.id, employeeDocumentId);
     assert.deepEqual(capture.populate, [
-      ["userId", "firstName lastName email userType"],
+      ["userId", "firstName lastName email userType avatar"],
     ]);
+    assert.equal(
+      body.data.userId.avatar.url,
+      "https://images.example.test/asha.png",
+      "employee details includes the avatar URL consumed by Employee Performance",
+    );
     assert.deepEqual(capture.relationPopulate, [
       { path: "districtIds", select: "districtName" },
       { path: "regionIds", select: "name" },

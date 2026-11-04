@@ -449,7 +449,7 @@ export const getATMById = asyncHandler(async (req, res) => {
       select: "employeeCode userId",
       populate: {
         path: "userId",
-        select: "firstName lastName phoneNumber email",
+        select: "firstName lastName phoneNumber email avatar",
       },
     });
   if (!atm || atm.isDeleted) {

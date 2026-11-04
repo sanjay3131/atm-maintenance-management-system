@@ -3,6 +3,7 @@ import {
   assignAtms,
   assignDistricts,
   createEmployee,
+  getEmployeeOptions,
   getMyEmployeeProfile,
   updateEmployee,
   viewAllEmployees,
@@ -12,6 +13,7 @@ import {
   assignATMsSchema,
   assignDistrictsSchema,
   createEmployeeSchema,
+  employeeOptionsQuerySchema,
   employeeIdParamsSchema,
   employeeUserIdParamsSchema,
   updateEmployeeSchema,
@@ -19,6 +21,7 @@ import {
 } from "./employee.validate.js";
 import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
 import { authorizeRoles } from "../../middlewares/role.middleware.js";
+import { validateRequest as validateQuery } from "../../middlewares/validate.middleware.js";
 
 const router = express.Router();
 
@@ -48,6 +51,14 @@ router.get(
   verifyAccessToken,
   authorizeRoles("employee"),
   getMyEmployeeProfile,
+);
+
+router.get(
+  "/options",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateQuery(employeeOptionsQuerySchema, "query"),
+  getEmployeeOptions,
 );
 
 // view employee by id

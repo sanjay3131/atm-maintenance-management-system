@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { isValidAttendanceDate } from "./attendance.validation.js";
 
 const ATTENDANCE_SOURCES = ["employee", "supervisor", "admin", "superAdmin"];
+const CHECKOUT_SOURCES = [...ATTENDANCE_SOURCES, "system"];
 const SUPERVISOR_OPEN_ATTENDANCE_INDEX = "supervisorUserId_1_open_session";
 
 const attendanceSchema = new mongoose.Schema(
@@ -63,7 +64,7 @@ const attendanceSchema = new mongoose.Schema(
     },
     checkOutSource: {
       type: String,
-      enum: ATTENDANCE_SOURCES,
+      enum: CHECKOUT_SOURCES,
       default: null,
     },
   },
@@ -115,13 +116,36 @@ attendanceSchema.pre("validate", function validateCheckoutFields() {
   const hasCheckOutRecorder = this.checkOutRecordedBy != null;
   const hasCheckOutSource = this.checkOutSource != null;
 
-  if (
-    hasCheckOutAt !== hasCheckOutRecorder ||
-    hasCheckOutAt !== hasCheckOutSource
-  ) {
+  if (!hasCheckOutAt && (hasCheckOutRecorder || hasCheckOutSource)) {
     this.invalidate(
       "checkOutAt",
       "checkOutAt, checkOutRecordedBy, and checkOutSource must be set together",
+    );
+    return;
+  }
+
+  if (hasCheckOutAt && !hasCheckOutSource) {
+    this.invalidate(
+      "checkOutSource",
+      "A checkout source is required when checkOutAt is set",
+    );
+    return;
+  }
+
+  if (this.checkOutSource === "system") {
+    if (hasCheckOutRecorder) {
+      this.invalidate(
+        "checkOutRecordedBy",
+        "System checkouts must not have a human recorder",
+      );
+    }
+    return;
+  }
+
+  if (hasCheckOutAt && !hasCheckOutRecorder) {
+    this.invalidate(
+      "checkOutRecordedBy",
+      "Human checkouts require a recorded-by user",
     );
   }
 });

@@ -78,6 +78,7 @@ export const createEmployee = asyncHandler(async (req, res) => {
     designation,
     department,
     joiningDate,
+    effectiveExitDate,
     employmentType,
     districtIds,
     assignedAtmIds,
@@ -94,6 +95,7 @@ export const createEmployee = asyncHandler(async (req, res) => {
     designation,
     department,
     joiningDate,
+    effectiveExitDate,
     employmentType,
     districtIds,
     assignedAtmIds: [],
@@ -134,6 +136,9 @@ export const updateEmployee = asyncHandler(async (req, res) => {
 
   const { employeeId } = req.params;
   const updatePayload = { ...req.body };
+  if (Object.hasOwn(updatePayload, "effectiveExitDate")) {
+    updatePayload.updatedBy = req.user._id;
+  }
   if (Object.hasOwn(updatePayload, "supervisorId")) {
     const currentEmployee = await Employee.findById(employeeId);
     if (!currentEmployee) {
@@ -231,7 +236,7 @@ export const viewEmployeeById = asyncHandler(async (req, res) => {
 
   const employee = await Employee.findById(employeeId).populate(
     "userId",
-    "firstName lastName email userType",
+    "firstName lastName email userType avatar",
   );
 
   if (!employee) {
@@ -374,6 +379,110 @@ export const getMyEmployeeProfile = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, profile, "Employee profile fetched"));
+});
+
+export const getEmployeeOptions = asyncHandler(async (req, res) => {
+  const { search, page, limit } = req.validatedQuery;
+  const skip = (page - 1) * limit;
+  const escapedSearch = escapeRegex(search);
+  const userLookupStages = [
+    {
+      $lookup: {
+        from: User.collection.name,
+        let: { employeeUserId: "$userId" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$_id", "$$employeeUserId"] },
+            },
+          },
+          {
+            $project: {
+              firstName: 1,
+              lastName: 1,
+              "avatar.url": 1,
+            },
+          },
+        ],
+        as: "user",
+      },
+    },
+    { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+  ];
+  const employeeProjection = {
+    $project: {
+      _id: 1,
+      employeeCode: { $ifNull: ["$employeeCode", null] },
+      firstName: { $ifNull: ["$user.firstName", null] },
+      lastName: { $ifNull: ["$user.lastName", null] },
+      avatarUrl: { $ifNull: ["$user.avatar.url", null] },
+    },
+  };
+  const paginationFacet = {
+    $facet: {
+      employees: [
+        { $skip: skip },
+        { $limit: limit },
+        ...userLookupStages,
+        employeeProjection,
+      ],
+      metadata: [{ $count: "total" }],
+    },
+  };
+  const pipeline = search
+    ? [
+        ...userLookupStages,
+        {
+          $match: {
+            $or: [
+              {
+                employeeCode: {
+                  $regex: escapedSearch,
+                  $options: "i",
+                },
+              },
+              {
+                $expr: {
+                  $regexMatch: {
+                    input: {
+                      $concat: [
+                        { $ifNull: ["$user.firstName", ""] },
+                        " ",
+                        { $ifNull: ["$user.lastName", ""] },
+                      ],
+                    },
+                    regex: escapedSearch,
+                    options: "i",
+                  },
+                },
+              },
+            ],
+          },
+        },
+        { $sort: { employeeCode: 1, _id: 1 } },
+        paginationFacet,
+      ]
+    : [{ $sort: { employeeCode: 1, _id: 1 } }, paginationFacet];
+
+  const [result = { employees: [], metadata: [] }] =
+    await Employee.aggregate(pipeline);
+  const total = result.metadata[0]?.total ?? 0;
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        employees: result.employees,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      },
+      "Employee options retrieved successfully",
+    ),
+  );
 });
 
 // view all employees (admin and superAdmin)

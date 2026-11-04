@@ -147,6 +147,66 @@ test("employee assignment schemas accept valid IDs and explicit clearing but rej
     }).success,
     false,
   );
+  assert.equal(
+    createUserWizardSchema.safeParse({
+      user: {
+        firstName: "Employee",
+        lastName: "Test",
+        email: "employee@example.test",
+        password: "password123",
+        phoneNumber: "5550100000",
+      },
+      role: "employee",
+      employee: {
+        ...employeePayload,
+        joiningDate: "2025-01-11T00:15:00+05:30",
+        effectiveExitDate: "2025-01-10",
+      },
+    }).success,
+    false,
+  );
+  const wizardDateFields = {
+    user: {
+      firstName: "Employee",
+      lastName: "Test",
+      email: "employee@example.test",
+      password: "password123",
+      phoneNumber: "5550100000",
+    },
+    role: "employee",
+    employee: {
+      ...employeePayload,
+      effectiveExitDate: "2025-02-28",
+    },
+  };
+  for (const joiningDate of [
+    "2025-02-29",
+    "2025-02-30",
+    "2025-13-01",
+    "2025-02-29 ",
+    " 2025-02-29",
+    "2025-02-30 ",
+  ]) {
+    assert.equal(
+      createUserWizardSchema.safeParse({
+        ...wizardDateFields,
+        employee: { ...wizardDateFields.employee, joiningDate },
+      }).success,
+      false,
+      `wizard accepted ${joiningDate}`,
+    );
+  }
+  assert.equal(
+    createUserWizardSchema.safeParse({
+      ...wizardDateFields,
+      employee: {
+        ...wizardDateFields.employee,
+        joiningDate: "2025-01-11T00:15:00+05:30",
+        effectiveExitDate: "2025-01-11",
+      },
+    }).success,
+    true,
+  );
 });
 
 test("employee assignment routes reject malformed employee and user path IDs", async () => {
@@ -182,10 +242,26 @@ test("admin wizard creates an employee with a valid supervisor assignment", asyn
   const supervisor = { _id: supervisorId };
   const employee = {
     ...employeePayload,
+    effectiveExitDate: "2026-03-05",
     supervisorId,
     assignedAtmIds: [],
     regionIds: [],
   };
+  const parsedBody = createUserWizardSchema.parse({
+    user: {
+      firstName: "Employee",
+      lastName: "Test",
+      email: "employee@example.test",
+      password: "password123",
+      phoneNumber: "5550100000",
+    },
+    role: "employee",
+    employee,
+  });
+  assert.equal(
+    parsedBody.employee.effectiveExitDate.toISOString(),
+    "2026-03-05T00:00:00.000Z",
+  );
 
   await withOverrides(
     [
@@ -221,21 +297,15 @@ test("admin wizard creates an employee with a valid supervisor assignment", asyn
     async () => {
       const result = await invoke(createUserWizard, {
         user: { _id: adminId, userType: "admin" },
-        body: {
-          user: {
-            firstName: "Employee",
-            lastName: "Test",
-            email: "employee@example.test",
-            password: "password123",
-            phoneNumber: "5550100000",
-          },
-          role: "employee",
-          employee,
-        },
+        body: parsedBody,
       });
       assert.equal(result.status, 201);
       assert.equal(createdEmployees[0].supervisorId, supervisorId);
       assert.equal(createdEmployees[0].userId, employeeUserId);
+      assert.equal(
+        createdEmployees[0].effectiveExitDate.toISOString(),
+        "2026-03-05T00:00:00.000Z",
+      );
       assert.equal(result.body.data.role, "employee");
     },
   );

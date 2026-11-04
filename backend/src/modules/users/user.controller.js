@@ -562,6 +562,7 @@ const createUserForRole = async (
         designation: employee.designation,
         department: employee.department,
         joiningDate: employee.joiningDate,
+        effectiveExitDate: employee.effectiveExitDate,
         employmentType: employee.employmentType,
         districtIds: employee.districtIds,
         assignedAtmIds: [],

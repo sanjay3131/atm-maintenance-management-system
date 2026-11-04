@@ -75,6 +75,7 @@ function getCompletionRate(completedJobs: number, totalJobs: number) {
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toLocaleUpperCase();
   return parts
     .slice(0, 2)
     .map((part) => part[0])
@@ -496,6 +497,9 @@ export default function EmployeePerformance({
                         <span className="pointer-events-none absolute inset-y-0 left-3 z-10 flex items-center">
                           <EmployeeAvatar
                             name={selectedPickerRow.name}
+                            avatarUrl={
+                              selectedPickerRow.employee.userId?.avatar?.url
+                            }
                             className="size-8 text-[0.65rem]"
                           />
                         </span>
@@ -542,6 +546,7 @@ export default function EmployeePerformance({
                               >
                                 <EmployeeAvatar
                                   name={row.name}
+                                  avatarUrl={row.employee.userId?.avatar?.url}
                                   className="size-9 text-xs"
                                 />
                                 <span className="min-w-0 flex-1">
@@ -575,6 +580,9 @@ export default function EmployeePerformance({
                       <div className="flex min-w-0 items-center gap-2.5">
                         <EmployeeAvatar
                           name={selectedPickerRow.name}
+                          avatarUrl={
+                            selectedPickerRow.employee.userId?.avatar?.url
+                          }
                           className="size-8 text-[0.65rem]"
                         />
                         <div className="min-w-0">
@@ -738,6 +746,9 @@ export default function EmployeePerformance({
                         <div className="flex min-w-0 items-center gap-3">
                           <EmployeeAvatar
                             name={employee.name}
+                            avatarUrl={
+                              employee.employee.userId?.avatar?.url
+                            }
                             className="size-9 text-xs"
                           />
                           <div className="min-w-0">

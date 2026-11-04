@@ -1,11 +1,42 @@
 import { z } from "zod";
 import ApiError from "../../utils/ApiError.js";
 import asyncHandler from "../../utils/asyncHandler.js";
+import {
+  effectiveExitDateSchema,
+  isExitDateOnOrAfterJoiningDate,
+  joiningDateSchema,
+} from "./employeeDates.js";
 
 const objectIdSchema = z
   .string()
   .trim()
   .regex(/^[a-fA-F0-9]{24}$/, "Invalid MongoDB ObjectId");
+
+const positiveQueryInteger = (fallback, maximum = Number.MAX_SAFE_INTEGER) =>
+  z
+    .string()
+    .regex(/^\d+$/, "Must be a positive integer")
+    .transform(Number)
+    .pipe(z.number().int().min(1).max(maximum))
+    .optional()
+    .transform((value) => value ?? fallback);
+
+export const employeeOptionsQuerySchema = z
+  .object({
+    search: z.string().trim().max(100, "Search is too long").optional().default(""),
+    page: positiveQueryInteger(1),
+    limit: positiveQueryInteger(20, 50),
+  })
+  .strict()
+  .superRefine(({ page, limit }, context) => {
+    if (!Number.isSafeInteger((page - 1) * limit)) {
+      context.addIssue({
+        code: "custom",
+        path: ["page"],
+        message: "Page offset is outside the supported range",
+      });
+    }
+  });
 
 const employeeUserIdParamsSchema = z.object({ userId: objectIdSchema });
 const employeeIdParamsSchema = z.object({ employeeId: objectIdSchema });
@@ -13,15 +44,8 @@ const employeeIdParamsSchema = z.object({ employeeId: objectIdSchema });
 const createEmployeeSchema = z.object({
   designation: z.string().trim().min(2, "Designation is required"),
   department: z.string().trim().min(2, "Department is required"),
-  joiningDate: z.preprocess(
-    (value) => {
-      if (typeof value === "string" && value.trim() !== "") {
-        return new Date(value);
-      }
-      return value;
-    },
-    z.date({ invalid_type_error: "Joining date must be a valid date" }),
-  ),
+  joiningDate: joiningDateSchema,
+  effectiveExitDate: effectiveExitDateSchema,
   employmentType: z.enum(["full-time", "part-time", "contract"], {
     errorMap: () => ({
       message: "Employment type must be 'full-time', 'part-time' or 'contract'",
@@ -35,6 +59,21 @@ const createEmployeeSchema = z.object({
     .number({ invalid_type_error: "Salary must be a number" })
     .nonnegative("Salary must be zero or greater")
     .optional(),
+}).superRefine((values, context) => {
+  if (
+    values.effectiveExitDate &&
+    values.joiningDate &&
+    !isExitDateOnOrAfterJoiningDate(
+      values.joiningDate,
+      values.effectiveExitDate,
+    )
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["effectiveExitDate"],
+      message: "effectiveExitDate must be on or after joiningDate",
+    });
+  }
 });
 
 const validateRequest = (schema, source = "body") => {
@@ -60,17 +99,8 @@ const updateEmployeeSchema = z
   .object({
     designation: z.string().trim().min(2, "Designation is required").optional(),
     department: z.string().trim().min(2, "Department is required").optional(),
-    joiningDate: z.preprocess(
-      (value) => {
-        if (typeof value === "string" && value.trim() !== "") {
-          return new Date(value);
-        }
-        return value;
-      },
-      z
-        .date({ invalid_type_error: "Joining date must be a valid date" })
-        .optional(),
-    ),
+    joiningDate: joiningDateSchema.optional(),
+    effectiveExitDate: effectiveExitDateSchema,
     employmentType: z
       .enum(["full-time", "part-time", "contract"], {
         errorMap: () => ({
@@ -96,7 +126,23 @@ const updateEmployeeSchema = z
       .nonnegative("Salary must be zero or greater")
       .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((values, context) => {
+    if (
+      values.effectiveExitDate &&
+      values.joiningDate &&
+      !isExitDateOnOrAfterJoiningDate(
+        values.joiningDate,
+        values.effectiveExitDate,
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["effectiveExitDate"],
+        message: "effectiveExitDate must be on or after joiningDate",
+      });
+    }
+  });
 
 const assignATMsSchema = z.object({
   assignedAtmIds: z

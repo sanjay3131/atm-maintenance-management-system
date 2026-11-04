@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { isAxiosError } from "axios";
-import { CalendarDays, Pencil, Search, Users } from "lucide-react";
+import {
+  CalendarDays,
+  ChartNoAxesCombined,
+  Pencil,
+  Search,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -494,9 +500,18 @@ export default function AdminAttendancePage() {
             remain available for employees.
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <CalendarDays aria-hidden="true" className="size-4" />
-          Times shown in {BUSINESS_TIME_ZONE}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <CalendarDays aria-hidden="true" className="size-4" />
+            Times shown in {BUSINESS_TIME_ZONE}
+          </div>
+          <a
+            href="/admin/attendance/reports"
+            className="inline-flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ChartNoAxesCombined aria-hidden="true" className="size-4" />
+            Reports
+          </a>
         </div>
       </header>
 
@@ -520,7 +535,9 @@ export default function AdminAttendancePage() {
               label={`Total ${role === "employee" ? "Employees" : "Supervisors"}`}
               value={summary.total}
               description={
-                role === "employee" ? "Active Employee profiles" : "Supervisor accounts"
+                role === "employee"
+                  ? "Active Employee profiles"
+                  : "Supervisor accounts"
               }
             />
             <SummaryCard
@@ -580,9 +597,7 @@ export default function AdminAttendancePage() {
               id="attendance-role"
               value={role}
               onChange={(event) =>
-                updateFilters(() =>
-                  setRole(event.target.value as typeof role),
-                )
+                updateFilters(() => setRole(event.target.value as typeof role))
               }
               className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
             >
@@ -607,7 +622,9 @@ export default function AdminAttendancePage() {
                   updateFilters(() => setSearch(event.target.value))
                 }
                 placeholder={
-                  role === "employee" ? "Employee code or name" : "Supervisor name"
+                  role === "employee"
+                    ? "Employee code or name"
+                    : "Supervisor name"
                 }
                 className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm"
               />
@@ -665,7 +682,9 @@ export default function AdminAttendancePage() {
         <CardHeader className="flex-row items-center justify-between">
           <div>
             <CardTitle>
-              {role === "employee" ? "Employee attendance" : "Supervisor attendance"}
+              {role === "employee"
+                ? "Employee attendance"
+                : "Supervisor attendance"}
             </CardTitle>
             <p className="mt-2 text-sm text-muted-foreground">
               Selected business date: {date}
@@ -735,8 +754,8 @@ export default function AdminAttendancePage() {
               <div className="overflow-x-auto rounded-lg border">
                 <table className="w-full min-w-[1120px] text-left text-sm">
                   <caption className="sr-only">
-                    {role === "employee" ? "Employee" : "Supervisor"} attendance for {date}; {pagination?.total ?? 0}{" "}
-                    matching records
+                    {role === "employee" ? "Employee" : "Supervisor"} attendance
+                    for {date}; {pagination?.total ?? 0} matching records
                   </caption>
                   <thead className="bg-muted/50 text-muted-foreground">
                     <tr>
@@ -773,7 +792,7 @@ export default function AdminAttendancePage() {
                           <div className="flex items-center gap-3">
                             <Avatar record={record} />
                             <div className="min-w-0">
-                              <p className="truncate font-medium">
+                              <p className="truncate font-medium capitalize">
                                 {record.employee.name}
                               </p>
                               {record.employee.role === "employee" && (
@@ -782,12 +801,7 @@ export default function AdminAttendancePage() {
                                     "Employee code unavailable"}
                                 </p>
                               )}
-                              <p className="text-xs text-muted-foreground">
-                                {record.employee.role === "employee"
-                                  ? "Employee ID"
-                                  : "Supervisor User ID"}
-                                : {record.employee.id}
-                              </p>
+
                               {((record.employee.role === "employee" &&
                                 record.employee.employeeStatus !== "active") ||
                                 (record.employee.userStatus &&

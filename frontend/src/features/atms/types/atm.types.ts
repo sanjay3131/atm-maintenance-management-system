@@ -9,6 +9,9 @@ export interface ATMEmployee {
   userId?: {
     firstName?: string;
     lastName?: string;
+    avatar?: {
+      url?: string | null;
+    } | null;
     status?: string;
     userType?: string;
   } | null;

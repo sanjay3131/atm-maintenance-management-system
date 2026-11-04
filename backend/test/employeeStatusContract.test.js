@@ -10,7 +10,10 @@ import { updateEmployee } from "../src/modules/employees/employee.controller.js"
 import User from "../src/modules/users/user.model.js";
 import { changeUserStatus } from "../src/modules/users/user.controller.js";
 import { changeUserStatusSchema } from "../src/modules/users/user.validate.js";
-import { updateEmployeeSchema } from "../src/modules/employees/employee.validate.js";
+import {
+  createEmployeeSchema,
+  updateEmployeeSchema,
+} from "../src/modules/employees/employee.validate.js";
 
 const userId = "64b000000000000000000001";
 const employeeId = "64b000000000000000000002";
@@ -178,6 +181,172 @@ test("Employee and User statuses are separate validated fields", () => {
       .success,
     false,
   );
+});
+
+test("effective exit date accepts inclusive dates and explicit clearing", () => {
+  const createResult = createEmployeeSchema.safeParse({
+    designation: "Technician",
+    department: "Maintenance",
+    joiningDate: "2025-01-10",
+    effectiveExitDate: "2025-01-10",
+    employmentType: "full-time",
+    districtIds: [],
+  });
+  assert.equal(createResult.success, true);
+  assert.equal(
+    createResult.data.effectiveExitDate.toISOString(),
+    "2025-01-10T00:00:00.000Z",
+  );
+  assert.equal(
+    updateEmployeeSchema.safeParse({ effectiveExitDate: null }).success,
+    true,
+  );
+  assert.equal(
+    updateEmployeeSchema.safeParse({ effectiveExitDate: "2025-02-29" })
+      .success,
+    false,
+  );
+  assert.equal(
+    createEmployeeSchema.safeParse({
+      designation: "Technician",
+      department: "Maintenance",
+      joiningDate: "2025-01-10",
+      effectiveExitDate: "2025-01-09",
+      employmentType: "full-time",
+      districtIds: [],
+    }).success,
+    false,
+  );
+  assert.equal(
+    updateEmployeeSchema.safeParse({
+      joiningDate: "2025-01-10",
+      effectiveExitDate: "2025-01-09",
+    }).success,
+    false,
+  );
+});
+
+test("employee creation and update reject impossible date-only joining dates", () => {
+  const requiredValues = {
+    designation: "Technician",
+    department: "Maintenance",
+    employmentType: "full-time",
+    districtIds: [],
+  };
+  for (const joiningDate of [
+    "2025-02-29",
+    "2025-02-30",
+    "2025-2-29",
+    "2025-02-3",
+    "2025-02-29 ",
+    " 2025-02-29",
+    "2025-02-30 ",
+    "2025-13-01",
+    "2025-00-10",
+    "2025-01-00",
+    "2025-04-31",
+  ]) {
+    assert.equal(
+      createEmployeeSchema.safeParse({ ...requiredValues, joiningDate })
+        .success,
+      false,
+      `create accepted ${joiningDate}`,
+    );
+    assert.equal(
+      updateEmployeeSchema.safeParse({ joiningDate }).success,
+      false,
+      `update accepted ${joiningDate}`,
+    );
+  }
+  assert.equal(
+    createEmployeeSchema.safeParse({
+      ...requiredValues,
+      joiningDate: " 2025-02-28 ",
+    }).success,
+    true,
+  );
+  assert.equal(
+    createEmployeeSchema.safeParse({
+      ...requiredValues,
+      joiningDate: "2025-01-11T00:15:00+05:30",
+    }).success,
+    true,
+  );
+});
+
+test("exit-date validation compares joining and exit dates in Asia/Kolkata", () => {
+  const employeeValues = {
+    designation: "Technician",
+    department: "Maintenance",
+    employmentType: "full-time",
+    districtIds: [],
+    joiningDate: "2025-01-11T00:15:00+05:30",
+  };
+  assert.equal(
+    createEmployeeSchema.safeParse({
+      ...employeeValues,
+      effectiveExitDate: "2025-01-10",
+    }).success,
+    false,
+  );
+  assert.equal(
+    createEmployeeSchema.safeParse({
+      ...employeeValues,
+      effectiveExitDate: "2025-01-11",
+    }).success,
+    true,
+  );
+  assert.equal(
+    updateEmployeeSchema.safeParse({
+      joiningDate: employeeValues.joiningDate,
+      effectiveExitDate: "2025-01-10",
+    }).success,
+    false,
+  );
+});
+
+test("employee model rejects an exit date before joining and accepts the joining date", async () => {
+  const employee = new Employee({
+    userId,
+    employeeCode: "E-EXIT-DATE",
+    designation: "Technician",
+    department: "Maintenance",
+    joiningDate: new Date("2025-01-10T00:00:00.000Z"),
+    effectiveExitDate: new Date("2025-01-09T00:00:00.000Z"),
+    employmentType: "full-time",
+    createdBy: adminId,
+  });
+
+  await assert.rejects(employee.validate(), /effectiveExitDate/);
+  employee.effectiveExitDate = new Date("2025-01-10T00:00:00.000Z");
+  await employee.validate();
+
+  employee.joiningDate = new Date("2025-01-10T18:45:00.000Z");
+  employee.effectiveExitDate = new Date("2025-01-10T00:00:00.000Z");
+  await assert.rejects(employee.validate(), /effectiveExitDate/);
+  employee.effectiveExitDate = new Date("2025-01-11T00:00:00.000Z");
+  await employee.validate();
+});
+
+test("employee effective exit date can be updated and explicitly cleared", async () => {
+  const records = makeRecords();
+  await withStatusMocks(records, async () => {
+    const newExitDate = new Date("2025-01-10T00:00:00.000Z");
+    const updateResult = await invoke(
+      updateEmployee,
+      adminRequest(employeeId, { effectiveExitDate: newExitDate }),
+    );
+    assert.equal(updateResult.status, 200);
+    assert.equal(records.employee.effectiveExitDate, newExitDate);
+    assert.equal(records.employee.updatedBy, adminId);
+
+    await invoke(
+      updateEmployee,
+      adminRequest(employeeId, { effectiveExitDate: null }),
+    );
+    assert.equal(records.employee.effectiveExitDate, null);
+    assert.equal(records.employee.updatedBy, adminId);
+  });
 });
 
 test("Admin and SuperAdmin are the only roles authorized by Employee status route middleware", () => {

@@ -35,3 +35,22 @@ records, replaces the employee/date uniqueness index with an equivalent
 partial index, and adds supervisor/date and one-open-session uniqueness
 indexes; it does not modify or delete attendance records. Run it in a
 maintenance window before deploying the updated backend.
+
+## Attendance report exports
+
+Admin and Super Admin users can export complete filtered reports as XLSX or
+PDF. Exports retain the report's `asOf` cutoff and use the same attendance
+calculator as the paginated report API. Date ranges are limited to 366 days,
+exports to 1,000 employees, and employee calculations are fetched in batches
+of 100. Generated files are limited to 64 MiB; PDF working data is limited to
+128 MiB of temporary storage. Report generation has a 120-second deadline.
+Database queries are capped by the remaining deadline. The deadline is
+cooperative: synchronous CPU work cannot be interrupted mid-operation, so it
+is not a hard wall-clock guarantee.
+
+Only one export may run at a time per backend process; this limit is not
+shared across multiple backend instances. Export files use unique temporary
+directories and are removed after delivery or failure. On a later export run,
+cleanup checks only application-prefixed directories older than seven days
+whose recorded process is no longer running. PDF exports bundle the SIL Open
+Font License Noto Sans Tamil font for Tamil names.

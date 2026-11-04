@@ -32,3 +32,25 @@ export const calculateAttendanceStatus = ({
     workedDurationMs,
   };
 };
+
+export const resolveAttendanceStatus = ({ record, override, asOf }) => {
+  if (!record) {
+    return {
+      calculatedStatus: null,
+      effectiveStatus: override?.status ?? "unrecorded",
+      statusOrigin: override ? "admin_override" : "no_record",
+      workedDurationMs: null,
+    };
+  }
+
+  const calculated = calculateAttendanceStatus({
+    checkInAt: record.checkInAt,
+    checkOutAt: record.checkOutAt ?? null,
+    asOf,
+  });
+  return {
+    ...calculated,
+    effectiveStatus: override?.status ?? calculated.calculatedStatus,
+    statusOrigin: override ? "admin_override" : "recorded",
+  };
+};

@@ -60,6 +60,24 @@ export interface Employee {
   updatedAt: string;
 }
 
+export interface EmployeeOption {
+  _id: string;
+  employeeCode: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  avatarUrl: string | null;
+}
+
+export interface EmployeeOptionsResponse {
+  employees: EmployeeOption[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
 export interface MyEmployeeProfile {
   employeeCode?: string;
   designation?: string;
@@ -170,6 +188,21 @@ export interface UpdateEmployeePayload {
 export const getEmployees = async (): Promise<Employee[]> => {
   const response = await api.get("/employees");
 
+  return response.data.data;
+};
+
+export const getEmployeeOptions = async (
+  search: string,
+  page = 1,
+  signal?: AbortSignal,
+): Promise<EmployeeOptionsResponse> => {
+  const response = await api.get<{ data: EmployeeOptionsResponse }>(
+    "/employees/options",
+    {
+      params: { search, page, limit: 20 },
+      signal,
+    },
+  );
   return response.data.data;
 };
 

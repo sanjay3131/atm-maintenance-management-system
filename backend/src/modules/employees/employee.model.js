@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { EMPLOYEE_USER_ID_INDEX } from "./employeeUserIdIndex.js";
+import { isExitDateOnOrAfterJoiningDate } from "./employeeDates.js";
 
 const employeeSchema = new mongoose.Schema(
   {
@@ -27,6 +28,10 @@ const employeeSchema = new mongoose.Schema(
     joiningDate: {
       type: Date,
       required: true,
+    },
+    effectiveExitDate: {
+      type: Date,
+      default: null,
     },
     employmentType: {
       type: String,
@@ -90,6 +95,18 @@ employeeSchema.index(
 employeeSchema.index({ status: 1 });
 
 employeeSchema.index({ supervisorId: 1 });
+
+employeeSchema.pre("validate", function validateEffectiveExitDate() {
+  if (
+    this.effectiveExitDate &&
+    !isExitDateOnOrAfterJoiningDate(this.joiningDate, this.effectiveExitDate)
+  ) {
+    this.invalidate(
+      "effectiveExitDate",
+      "effectiveExitDate must be on or after joiningDate",
+    );
+  }
+});
 
 const Employee = mongoose.model("Employee", employeeSchema);
 

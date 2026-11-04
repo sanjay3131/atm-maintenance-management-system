@@ -8,7 +8,7 @@ export interface AttendanceRecord {
   checkInAt: string;
   checkOutAt: string | null;
   checkInSource: "employee" | "supervisor" | "admin" | "superAdmin";
-  checkOutSource: "employee" | "supervisor" | "admin" | "superAdmin" | null;
+  checkOutSource: "employee" | "supervisor" | "admin" | "superAdmin" | "system" | null;
   checkInRecordedBy: string;
   checkOutRecordedBy: string | null;
   createdAt?: string;
@@ -122,6 +122,88 @@ export interface AdminAttendanceDashboardResponse {
   pagination: AttendancePagination;
 }
 
+export type AttendanceReportStatus =
+  | "present"
+  | "incomplete"
+  | "absent"
+  | "not_recorded";
+
+export type AttendanceReportStatusOrigin =
+  | "recorded"
+  | "admin_override"
+  | "no_record";
+
+export type AttendanceReportCheckoutSource =
+  | "employee"
+  | "supervisor"
+  | "admin"
+  | "superAdmin"
+  | "system";
+
+export interface AttendanceReportSummary {
+  eligibleWorkingDays: number;
+  presentDays: number;
+  incompleteDays: number;
+  absentDays: number;
+  notRecordedDays: number;
+  attendancePercentage: number | null;
+  workedDurationMs: number;
+  finalizedWorkedDurationMs: number;
+  provisionalWorkedDurationMs: number;
+}
+
+export interface AttendanceReportDailyDetail {
+  attendanceDate: string;
+  status: AttendanceReportStatus;
+  calculatedStatus: "present" | "incomplete" | null;
+  statusOrigin: AttendanceReportStatusOrigin;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  checkoutState: "not_checked_out" | "checked_out" | "no_record";
+  checkOutSource: AttendanceReportCheckoutSource | null;
+  workedDurationMs: number | null;
+  durationIsProvisional: boolean;
+}
+
+export interface AttendanceReportQuery {
+  fromDate: string;
+  toDate: string;
+  page?: number;
+  limit?: number;
+  employeeId?: string;
+  asOf?: string;
+}
+
+export interface AttendanceReportExportQuery {
+  fromDate: string;
+  toDate: string;
+  periodType: "week" | "month" | "year" | "custom";
+  employeeId?: string;
+  asOf: string;
+}
+
+export interface AttendanceReportResponse {
+  timeZone: "Asia/Kolkata";
+  asOf: string | null;
+  period: {
+    fromDate: string;
+    toDate: string;
+    calculatedThroughDate: string | null;
+  };
+  pagination: {
+    page: number;
+    limit: number;
+    totalEmployees: number;
+    totalPages: number;
+  };
+  employees: Array<{
+    employeeId: string;
+    employeeCode: string | null;
+    summary: AttendanceReportSummary;
+    dailyDetails: AttendanceReportDailyDetail[];
+  }>;
+}
+
 export interface AttendanceEffectiveValues {
   status: AdminAttendanceStatus;
   checkInAt: string | null;
@@ -186,6 +268,50 @@ export const getAdminAttendanceDashboard = async (
     { params },
   );
   return response.data.data;
+};
+
+export const getAttendanceReport = async (
+  params: AttendanceReportQuery,
+): Promise<AttendanceReportResponse> => {
+  const response = await api.get<{ data: AttendanceReportResponse }>(
+    "/attendance/admin/reports",
+    {
+      params: {
+        fromDate: params.fromDate,
+        toDate: params.toDate,
+        page: params.page ?? 1,
+        limit: params.limit ?? 25,
+        ...(params.employeeId !== undefined
+          ? { employeeId: params.employeeId }
+          : {}),
+        ...(params.asOf !== undefined ? { asOf: params.asOf } : {}),
+      },
+    },
+  );
+  return response.data.data;
+};
+
+export const downloadAttendanceReportExport = async (
+  format: "xlsx" | "pdf",
+  params: AttendanceReportExportQuery,
+): Promise<{ blob: Blob; filename: string }> => {
+  const response = await api.get<Blob>(
+    `/attendance/admin/reports/export.${format}`,
+    {
+      params,
+      responseType: "blob",
+    },
+  );
+  const disposition = response.headers["content-disposition"] ?? "";
+  const filename = disposition.match(
+    /filename="(attendance-report-\d{4}-\d{2}-\d{2}\.(?:xlsx|pdf))"/,
+  )?.[1];
+  return {
+    blob: response.data,
+    filename:
+      filename ??
+      `attendance-report-${params.fromDate}.${format}`,
+  };
 };
 
 export const getEmployeeAttendanceCalendar = async (

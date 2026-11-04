@@ -61,6 +61,7 @@ function getStatusVariant(status?: ATMStatus) {
 
 function getEmployeeName(employee: ATMEmployee) {
   const name = [employee.userId?.firstName, employee.userId?.lastName]
+    .map((part) => part?.trim())
     .filter(Boolean)
     .join(" ");
 
@@ -71,12 +72,43 @@ function getEmployeeInitials(employee: ATMEmployee) {
   const name = getEmployeeName(employee);
   if (name === NOT_AVAILABLE) return "?";
 
-  return name
-    .split(" ")
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return parts
     .map((part) => part.charAt(0))
     .join("")
     .slice(0, 2)
     .toUpperCase();
+}
+
+function AssignedEmployeeAvatar({
+  employee,
+}: {
+  employee: ATMEmployee | string;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const avatarUrl =
+    typeof employee === "string" ? null : employee.userId?.avatar?.url;
+  const initials =
+    typeof employee === "string" ? "?" : getEmployeeInitials(employee);
+
+  return (
+    <span
+      aria-hidden="true"
+      className="relative inline-flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-xs font-semibold text-primary"
+    >
+      {initials}
+      {avatarUrl && !imageFailed && (
+        <img
+          src={avatarUrl}
+          alt=""
+          className="absolute inset-0 size-full object-cover"
+          onError={() => setImageFailed(true)}
+        />
+      )}
+    </span>
+  );
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {
@@ -681,11 +713,7 @@ export default function ATMDetailsPage() {
                       className="flex items-center justify-between gap-3 rounded-md border p-3"
                     >
                       <div className="flex min-w-0 items-center gap-3">
-                        <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                          {typeof employee === "string"
-                            ? "?"
-                            : getEmployeeInitials(employee)}
-                        </div>
+                        <AssignedEmployeeAvatar employee={employee} />
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">
                             {typeof employee === "string"
