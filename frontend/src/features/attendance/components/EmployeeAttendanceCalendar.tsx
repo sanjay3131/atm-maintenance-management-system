@@ -3,6 +3,7 @@ import { isAxiosError } from "axios";
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatWorkedDuration } from "@/features/attendance/attendance.utils";
 import { useEmployeeAttendanceCalendar } from "@/features/attendance/hooks/useEmployeeAttendanceCalendar";
 import type {
   AttendanceCalendarDay,
@@ -258,6 +259,26 @@ export default function EmployeeAttendanceCalendar({
                   <dt className="text-muted-foreground">Check-out</dt>
                   <dd className="font-medium">
                     {formatTimestamp(selectedAttendance?.checkOutAt ?? null)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Session</dt>
+                  <dd className="font-medium">
+                    {!selectedAttendance
+                      ? "No session"
+                      : selectedAttendance.checkOutAt
+                        ? "Closed"
+                        : "Open"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Worked duration</dt>
+                  <dd className="font-medium">
+                    {selectedAttendance?.workedDurationMs == null
+                      ? "—"
+                      : formatWorkedDuration(
+                          selectedAttendance.workedDurationMs,
+                        )}
                   </dd>
                 </div>
               </dl>

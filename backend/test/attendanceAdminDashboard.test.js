@@ -30,11 +30,11 @@ const makeEmployee = (number, overrides = {}) => ({
   ...overrides,
 });
 
-const makeAttendance = (employee, checkOut = checkOutAt) => ({
+const makeAttendance = (employee, checkOut = checkOutAt, checkIn = checkInAt) => ({
   _id: id(Number(employee._id.slice(-1)) + 40),
   employeeId: employee._id,
   attendanceDate: today,
-  checkInAt,
+  checkInAt: checkIn,
   checkOutAt: checkOut,
   checkInSource: "employee",
   checkOutSource: checkOut ? "employee" : null,
@@ -215,7 +215,7 @@ test("dashboard computes status precedence and summary independently of list fil
   });
   const records = [
     makeAttendance(completed),
-    makeAttendance(incomplete, null),
+    makeAttendance(incomplete, null, new Date("2026-10-12T07:00:00.000Z")),
     makeAttendance(markedAbsent),
   ];
   const overrides = [
@@ -273,7 +273,13 @@ test("dashboard distinguishes incomplete, recorded, and unrecorded attendance", 
   await withMocks(
     {
       employees: [incomplete, unrecorded],
-      records: [makeAttendance(incomplete, null)],
+      records: [
+        makeAttendance(
+          incomplete,
+          null,
+          new Date("2026-10-12T07:00:00.000Z"),
+        ),
+      ],
       overrides: [],
     },
     async () => {
@@ -293,6 +299,65 @@ test("dashboard distinguishes incomplete, recorded, and unrecorded attendance", 
       assert.equal(unrecordedRow.attendance.effectiveStatus, "unrecorded");
       assert.equal(unrecordedRow.attendance.statusOrigin, "no_record");
       assert.equal(unrecordedRow.attendance.id, null);
+    },
+  );
+});
+
+test("dashboard derives open status and counts at the six-hour boundary", async () => {
+  const belowThreshold = makeEmployee(1);
+  const atThreshold = makeEmployee(2);
+  const closedBelowThreshold = makeEmployee(3);
+  const closedAtThreshold = makeEmployee(4);
+  const atSixHours = new Date("2026-10-12T12:00:00.000Z");
+  await withMocks(
+    {
+      employees: [
+        belowThreshold,
+        atThreshold,
+        closedBelowThreshold,
+        closedAtThreshold,
+      ],
+      records: [
+        makeAttendance(
+          belowThreshold,
+          null,
+          new Date("2026-10-12T06:00:00.001Z"),
+        ),
+        makeAttendance(atThreshold, null, new Date("2026-10-12T06:00:00.000Z")),
+        makeAttendance(
+          closedBelowThreshold,
+          new Date("2026-10-12T11:59:59.999Z"),
+          new Date("2026-10-12T06:00:00.000Z"),
+        ),
+        makeAttendance(
+          closedAtThreshold,
+          new Date("2026-10-12T12:00:00.000Z"),
+          new Date("2026-10-12T06:00:00.000Z"),
+        ),
+      ],
+      overrides: [],
+    },
+    async () => {
+      const result = await getAdminAttendanceDashboard(
+        admin,
+        { date: today, status: "present" },
+        atSixHours,
+      );
+      assert.deepEqual(result.summary.employees, {
+        total: 4,
+        present: 2,
+        absent: 0,
+        incomplete: 2,
+        unrecorded: 0,
+      });
+      assert.deepEqual(
+        result.records.map((record) => record.employee.id),
+        [atThreshold._id, closedAtThreshold._id],
+      );
+      assert.deepEqual(
+        result.records.map((record) => record.attendance.workedDurationMs),
+        [6 * 60 * 60 * 1000, 6 * 60 * 60 * 1000],
+      );
     },
   );
 });

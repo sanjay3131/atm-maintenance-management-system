@@ -7,6 +7,7 @@ import ATM from "../atms/atm.model.js";
 import Job from "../jobs/jobs.model.js";
 import JobPhoto from "../jobPhotos/jobPhotos.model.js";
 import Attendance from "../attendance/attendance.model.js";
+import { calculateAttendanceStatus } from "../attendance/attendanceStatus.js";
 import AMC from "../amc/amc.model.js";
 import { AMC_STATUS } from "../amc/amc.config.js";
 import AMCPhoto from "../amcPhotos/amcPhoto.model.js";
@@ -463,6 +464,7 @@ export const getSupervisorEmployeeAttendance = asyncHandler(async (req, res) => 
     if (query.fromDate) filter.attendanceDate.$gte = query.fromDate;
     if (query.toDate) filter.attendanceDate.$lte = query.toDate;
   }
+  const asOf = new Date();
   const [records, total] = await Promise.all([
     Attendance.find(filter)
       .select("employeeId attendanceDate checkInAt checkOutAt checkInSource checkOutSource")
@@ -471,11 +473,26 @@ export const getSupervisorEmployeeAttendance = asyncHandler(async (req, res) => 
       .limit(query.limit),
     Attendance.countDocuments(filter),
   ]);
+  const recordsWithStatus = records.map((record) => {
+    const { calculatedStatus, workedDurationMs } = calculateAttendanceStatus({
+      checkInAt: record.checkInAt,
+      checkOutAt: record.checkOutAt,
+      asOf,
+    });
+    const source =
+      typeof record.toObject === "function" ? record.toObject() : record;
+    return {
+      ...source,
+      effectiveStatus: calculatedStatus,
+      workedDurationMs,
+      statusOrigin: "recorded",
+    };
+  });
   return res.status(200).json(
     new ApiResponse(
       200,
       {
-        records,
+        records: recordsWithStatus,
         pagination: {
           page: query.page,
           limit: query.limit,

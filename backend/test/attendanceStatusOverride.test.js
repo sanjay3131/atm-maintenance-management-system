@@ -57,7 +57,12 @@ const runMiddleware = (middleware, req) =>
   });
 
 async function withMocks(
-  { attendance = null, auditInsertError = null, employeeExists = true } = {},
+  {
+    attendance = null,
+    existingOverride = null,
+    auditInsertError = null,
+    employeeExists = true,
+  } = {},
   callback,
 ) {
   const originals = [
@@ -80,7 +85,7 @@ async function withMocks(
   ];
   const state = {
     attendance: attendance ? { ...attendance } : null,
-    overrides: [],
+    overrides: existingOverride ? [{ ...existingOverride }] : [],
     audits: [],
   };
   const query = (resolve) => ({
@@ -261,6 +266,53 @@ test("status overrides work both with an Attendance record and without one", asy
     });
     assert.equal(state.overrides.length, 1);
   });
+});
+
+test("override audit uses six-hour status and preserves an existing override as prior status", async () => {
+  const shortAttendance = {
+    _id: attendanceId,
+    employeeId,
+    attendanceDate,
+    checkInAt,
+    checkOutAt: new Date("2026-10-10T06:59:59.999Z"),
+  };
+  await withMocks({ attendance: shortAttendance }, async (state) => {
+    const result = await setAttendanceStatusOverride({
+      employeeId,
+      attendanceDate,
+      status: "present",
+      reason: "Approved exception",
+      actor: makeActor("admin"),
+      now: new Date("2026-10-10T07:00:00.000Z"),
+    });
+    assert.equal(result.audit.previousEffectiveValues.status, "incomplete");
+    assert.equal(state.attendance.checkOutAt.getTime(), shortAttendance.checkOutAt.getTime());
+  });
+
+  await withMocks(
+    {
+      attendance: shortAttendance,
+      existingOverride: {
+        _id: new mongoose.Types.ObjectId(),
+        employeeId,
+        attendanceDate,
+        status: "absent",
+        changedBy: adminId,
+        changedAt: new Date("2026-10-10T06:00:00.000Z"),
+      },
+    },
+    async () => {
+      const result = await setAttendanceStatusOverride({
+        employeeId,
+        attendanceDate,
+        status: "present",
+        reason: "Override changed",
+        actor: makeActor("admin"),
+        now: new Date("2026-10-10T07:00:00.000Z"),
+      });
+      assert.equal(result.audit.previousEffectiveValues.status, "absent");
+    },
+  );
 });
 
 test("marking an Employee absent preserves recorded attendance and does not write Jobs", async () => {
@@ -463,7 +515,7 @@ test("each override appends actor-bound before/after audit values and preserves 
     });
 
     assert.equal(state.audits.length, 2);
-    assert.equal(state.audits[0].previousEffectiveValues.status, "incomplete");
+    assert.equal(state.audits[0].previousEffectiveValues.status, "present");
     assert.equal(state.audits[0].newEffectiveValues.status, "absent");
     assert.equal(state.audits[0].actorId, adminId);
     assert.equal(state.audits[1].previousEffectiveValues.status, "absent");

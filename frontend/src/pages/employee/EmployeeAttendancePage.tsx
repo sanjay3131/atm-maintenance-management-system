@@ -17,7 +17,8 @@ import {
   useMyAttendance,
   useRecentMyAttendance,
 } from "@/features/attendance/hooks/useEmployeeAttendance";
-import type { AttendanceRecord } from "@/services/attendance.service";
+import { formatWorkedDuration } from "@/features/attendance/attendance.utils";
+import type { AttendanceReadRecord } from "@/services/attendance.service";
 import {
   employeeErrorMessage,
   useEmployeeLanguage,
@@ -87,10 +88,19 @@ function getErrorMessage(
 }
 
 function getRecordStatus(
-  record: AttendanceRecord,
+  record: AttendanceReadRecord,
   t: ReturnType<typeof useEmployeeLanguage>["t"],
 ) {
-  return record.checkOutAt ? t("Complete") : t("Open");
+  return record.checkOutAt ? t("Closed") : t("Open");
+}
+
+function getAttendanceStatusLabel(
+  status: AttendanceReadRecord["effectiveStatus"],
+  t: ReturnType<typeof useEmployeeLanguage>["t"],
+) {
+  if (status === "present") return t("Present");
+  if (status === "absent") return t("Absent");
+  return t("Incomplete");
 }
 
 function AttendanceTable({
@@ -98,7 +108,7 @@ function AttendanceTable({
   t,
   language,
 }: {
-  records: AttendanceRecord[];
+  records: AttendanceReadRecord[];
   t: ReturnType<typeof useEmployeeLanguage>["t"];
   language: "ta" | "en";
 }) {
@@ -119,9 +129,22 @@ function AttendanceTable({
               <p className="font-semibold">
                 {formatBusinessDate(record.attendanceDate, language)}
               </p>
-              <Badge variant={record.checkOutAt ? "secondary" : "outline"}>
-                {getRecordStatus(record, t)}
-              </Badge>
+              <div className="flex flex-wrap justify-end gap-1">
+                <Badge variant={record.checkOutAt ? "secondary" : "outline"}>
+                  {getRecordStatus(record, t)}
+                </Badge>
+                <Badge
+                  variant={
+                    record.effectiveStatus === "present"
+                      ? "default"
+                      : record.effectiveStatus === "absent"
+                        ? "destructive"
+                        : "outline"
+                  }
+                >
+                  {getAttendanceStatusLabel(record.effectiveStatus, t)}
+                </Badge>
+              </div>
             </div>
             <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
               <div>
@@ -134,6 +157,12 @@ function AttendanceTable({
                 <dt className="text-muted-foreground">{t("Check out")}</dt>
                 <dd className="mt-1 font-medium">
                   {formatBusinessTime(record.checkOutAt, language)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">{t("Worked duration")}</dt>
+                <dd className="mt-1 font-medium">
+                  {formatWorkedDuration(record.workedDurationMs)}
                 </dd>
               </div>
             </dl>
@@ -157,6 +186,12 @@ function AttendanceTable({
               <th scope="col" className="px-4 py-3 font-medium">
                 {t("Status")}
               </th>
+              <th scope="col" className="px-4 py-3 font-medium">
+                {t("Session")}
+              </th>
+              <th scope="col" className="px-4 py-3 font-medium">
+                {t("Worked duration")}
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -172,9 +207,25 @@ function AttendanceTable({
                   {formatBusinessTime(record.checkOutAt, language)}
                 </td>
                 <td className="px-4 py-3">
+                  <Badge
+                    variant={
+                      record.effectiveStatus === "present"
+                        ? "default"
+                        : record.effectiveStatus === "absent"
+                          ? "destructive"
+                          : "outline"
+                    }
+                  >
+                    {getAttendanceStatusLabel(record.effectiveStatus, t)}
+                  </Badge>
+                </td>
+                <td className="px-4 py-3">
                   <Badge variant={record.checkOutAt ? "secondary" : "outline"}>
                     {getRecordStatus(record, t)}
                   </Badge>
+                </td>
+                <td className="whitespace-nowrap px-4 py-3">
+                  {formatWorkedDuration(record.workedDurationMs)}
                 </td>
               </tr>
             ))}
@@ -293,17 +344,30 @@ export default function EmployeeAttendancePage() {
                             ),
                           })
                         : todayRecord
-                          ? t("Today's attendance is complete.")
+                          ? t("Today's attendance session is closed.")
                           : statusUnknown
                             ? t("No open session found in the latest 100 records.")
                             : t("No open attendance session.")}
               </p>
               {openRecords.length === 1 && (
-                <p className="mt-1 text-sm font-medium">
-                  {t("Check-in: {time}", {
-                    time: formatBusinessTime(openRecords[0].checkInAt, language),
-                  })}
-                </p>
+                <>
+                  <p className="mt-1 text-sm font-medium">
+                    {t("Check-in: {time}", {
+                      time: formatBusinessTime(openRecords[0].checkInAt, language),
+                    })}
+                  </p>
+                  <p className="mt-1 text-sm">
+                    {t("Attendance status")}:{" "}
+                    <span className="font-medium">
+                      {getAttendanceStatusLabel(openRecords[0].effectiveStatus, t)}
+                    </span>
+                    {" · "}
+                    {t("Worked duration")}:{" "}
+                    <span className="font-medium">
+                      {formatWorkedDuration(openRecords[0].workedDurationMs)}
+                    </span>
+                  </p>
+                </>
               )}
               {statusUnknown && (
                 <p className="mt-1 text-xs text-muted-foreground">

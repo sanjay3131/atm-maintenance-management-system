@@ -19,6 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { formatWorkedDuration } from "@/features/attendance/attendance.utils";
 import { SkeletonBlock } from "@/features/dashboard/components/DashboardSkeleton";
 import { useSupervisorEmployeeDetails } from "@/features/supervisor/hooks/useSupervisorEmployeeDetails";
 import {
@@ -234,6 +235,23 @@ function AttendanceList({
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
             <span>Check-in: {formatDateTime(record.checkInAt)}</span>
             <span>Check-out: {formatDateTime(record.checkOutAt)}</span>
+            <span>
+              Attendance status:{" "}
+              {record.effectiveStatus === "present"
+                ? "Present"
+                : record.effectiveStatus === "absent"
+                  ? "Absent"
+                  : "Incomplete"}
+            </span>
+            <span>{record.checkOutAt === null ? "Open" : "Closed"}</span>
+            <span>
+              Worked duration:{" "}
+              {typeof record.workedDurationMs === "number" &&
+              Number.isFinite(record.workedDurationMs) &&
+              record.workedDurationMs >= 0
+                ? formatWorkedDuration(record.workedDurationMs)
+                : "—"}
+            </span>
           </div>
         </li>
       ))}

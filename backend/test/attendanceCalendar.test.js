@@ -66,7 +66,7 @@ test("attendance calendar batches a month and applies only explicit overrides", 
       ],
       overrides: [
         { attendanceDate: "2026-10-12", status: "absent" },
-        { attendanceDate: "2026-10-10", status: "incomplete" },
+        { attendanceDate: "2026-10-10", status: "absent" },
       ],
     },
     async (filters) => {
@@ -74,6 +74,7 @@ test("attendance calendar batches a month and applies only explicit overrides", 
         employeeId,
         month: "2026-10",
         actor: { _id: "64b000000000000000000042", userType: "admin" },
+        asOf: new Date("2026-10-10T00:00:00.000Z"),
       });
       assert.equal(filters.employeeId, employeeId);
       assert.deepEqual(filters.records, {
@@ -91,7 +92,7 @@ test("attendance calendar batches a month and applies only explicit overrides", 
         [
           {
             attendanceDate: "2026-10-10",
-            status: "incomplete",
+            status: "absent",
             statusOrigin: "admin_override",
           },
           {
@@ -108,6 +109,12 @@ test("attendance calendar batches a month and applies only explicit overrides", 
       );
       assert.equal(calendar.days[0].checkInAt, checkInAt);
       assert.equal(calendar.days[0].checkOutAt, checkOutAt);
+      assert.equal(
+        calendar.days[0].workedDurationMs,
+        checkOutAt.getTime() - checkInAt.getTime(),
+      );
+      assert.equal(calendar.days[1].workedDurationMs, 5 * 60 * 60 * 1000 + 15 * 60 * 1000);
+      assert.equal(calendar.days[2].workedDurationMs, null);
     },
   );
 });
@@ -118,6 +125,7 @@ test("attendance calendar does not convert missing records to absent", async () 
       employeeId,
       month: "2026-02",
       actor: { _id: "64b000000000000000000042", userType: "superAdmin" },
+      asOf: new Date("2026-02-01T00:00:00.000Z"),
     });
     assert.deepEqual(calendar.days, []);
   });

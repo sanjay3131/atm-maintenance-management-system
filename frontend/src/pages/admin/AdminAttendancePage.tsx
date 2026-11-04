@@ -16,6 +16,7 @@ import {
   useAttendanceStatusOverrideAudit,
   useSetAttendanceStatusOverride,
 } from "@/features/attendance/hooks/useAdminAttendance";
+import { formatWorkedDuration } from "@/features/attendance/attendance.utils";
 import type {
   AdminAttendanceDashboardRecord,
   AdminAttendanceStatus,
@@ -539,7 +540,7 @@ export default function AdminAttendancePage() {
             <SummaryCard
               label="Incomplete"
               value={summary.incomplete}
-              description="Checked in, no check-out"
+              description="Under six hours; session may be open or closed"
             />
             <SummaryCard
               label="Unrecorded"
@@ -732,7 +733,7 @@ export default function AdminAttendancePage() {
           ) : dashboardQuery.data ? (
             <>
               <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full min-w-[900px] text-left text-sm">
+                <table className="w-full min-w-[1120px] text-left text-sm">
                   <caption className="sr-only">
                     {role === "employee" ? "Employee" : "Supervisor"} attendance for {date}; {pagination?.total ?? 0}{" "}
                     matching records
@@ -749,7 +750,13 @@ export default function AdminAttendancePage() {
                         Check-out
                       </th>
                       <th scope="col" className="px-4 py-3 font-medium">
+                        Session
+                      </th>
+                      <th scope="col" className="px-4 py-3 font-medium">
                         Effective status
+                      </th>
+                      <th scope="col" className="px-4 py-3 font-medium">
+                        Worked duration
                       </th>
                       <th scope="col" className="px-4 py-3 font-medium">
                         Origin
@@ -812,12 +819,34 @@ export default function AdminAttendancePage() {
                         </td>
                         <td className="px-4 py-3">
                           <Badge
+                            variant={
+                              record.attendance.actualCheckOutAt
+                                ? "secondary"
+                                : "outline"
+                            }
+                          >
+                            {record.attendance.actualCheckOutAt
+                              ? "Closed"
+                              : record.attendance.actualCheckInAt
+                                ? "Open"
+                                : "No session"}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge
                             variant={getStatusVariant(
                               record.attendance.effectiveStatus,
                             )}
                           >
                             {getStatusLabel(record.attendance.effectiveStatus)}
                           </Badge>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          {record.attendance.workedDurationMs === null
+                            ? "—"
+                            : formatWorkedDuration(
+                                record.attendance.workedDurationMs,
+                              )}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {getOriginLabel(record.attendance.statusOrigin)}

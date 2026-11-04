@@ -12,7 +12,8 @@ import {
   useMyOpenAttendance,
   useRecentMyAttendance,
 } from "@/features/attendance/hooks/useEmployeeAttendance";
-import type { AttendanceRecord } from "@/services/attendance.service";
+import { formatWorkedDuration } from "@/features/attendance/attendance.utils";
+import type { AttendanceReadRecord } from "@/services/attendance.service";
 
 const BUSINESS_TIME_ZONE = "Asia/Kolkata";
 const PAGE_SIZE = 10;
@@ -61,7 +62,11 @@ function getErrorMessage(error: unknown) {
     : "The attendance request could not be completed. Please try again.";
 }
 
-function AttendanceHistory({ records }: { records: AttendanceRecord[] }) {
+function AttendanceHistory({
+  records,
+}: {
+  records: AttendanceReadRecord[];
+}) {
   if (records.length === 0) {
     return (
       <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
@@ -79,7 +84,9 @@ function AttendanceHistory({ records }: { records: AttendanceRecord[] }) {
             <th scope="col" className="px-4 py-3 font-medium">Date</th>
             <th scope="col" className="px-4 py-3 font-medium">Check-in</th>
             <th scope="col" className="px-4 py-3 font-medium">Check-out</th>
-            <th scope="col" className="px-4 py-3 font-medium">Status</th>
+            <th scope="col" className="px-4 py-3 font-medium">Attendance status</th>
+            <th scope="col" className="px-4 py-3 font-medium">Session</th>
+            <th scope="col" className="px-4 py-3 font-medium">Worked duration</th>
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -95,9 +102,29 @@ function AttendanceHistory({ records }: { records: AttendanceRecord[] }) {
                 {formatTime(record.checkOutAt)}
               </td>
               <td className="px-4 py-3">
-                <Badge variant={record.checkOutAt ? "secondary" : "outline"}>
-                  {record.checkOutAt ? "Complete" : "Open"}
+                <Badge
+                  variant={
+                    record.effectiveStatus === "present"
+                      ? "default"
+                      : record.effectiveStatus === "absent"
+                        ? "destructive"
+                        : "outline"
+                  }
+                >
+                  {record.effectiveStatus === "present"
+                    ? "Present"
+                    : record.effectiveStatus === "absent"
+                      ? "Absent"
+                      : "Incomplete"}
                 </Badge>
+              </td>
+              <td className="px-4 py-3">
+                <Badge variant={record.checkOutAt ? "secondary" : "outline"}>
+                  {record.checkOutAt ? "Closed" : "Open"}
+                </Badge>
+              </td>
+              <td className="whitespace-nowrap px-4 py-3">
+                {formatWorkedDuration(record.workedDurationMs)}
               </td>
             </tr>
           ))}
@@ -167,24 +194,54 @@ export default function SupervisorAttendancePage() {
                     : openRecord
                       ? `Checked in for ${formatDate(openRecord.attendanceDate)}`
                       : todayRecord
-                        ? "Today's attendance is complete."
+                        ? "Today's attendance session is closed."
                         : "You are currently checked out."}
               </p>
+              {openRecord && (
+                <p className="mt-2 text-sm">
+                  Attendance status:{" "}
+                  <span className="font-medium">
+                    {openRecord.effectiveStatus === "present"
+                      ? "Present"
+                      : "Incomplete"}
+                  </span>
+                  {" · "}Worked duration:{" "}
+                  <span className="font-medium">
+                    {formatWorkedDuration(openRecord.workedDurationMs)}
+                  </span>
+                </p>
+              )}
               {todayRecord && (
-                <dl className="mt-3 grid max-w-md grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <dt className="text-muted-foreground">Today's check-in</dt>
-                    <dd className="mt-1 font-medium">
-                      {formatTime(todayRecord.checkInAt)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted-foreground">Today's check-out</dt>
-                    <dd className="mt-1 font-medium">
-                      {formatTime(todayRecord.checkOutAt)}
-                    </dd>
-                  </div>
-                </dl>
+                <>
+                  <dl className="mt-3 grid max-w-md grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <dt className="text-muted-foreground">Today's check-in</dt>
+                      <dd className="mt-1 font-medium">
+                        {formatTime(todayRecord.checkInAt)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">Today's check-out</dt>
+                      <dd className="mt-1 font-medium">
+                        {formatTime(todayRecord.checkOutAt)}
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className="mt-2 text-sm">
+                    Attendance status:{" "}
+                    <span className="font-medium">
+                      {todayRecord.effectiveStatus === "present"
+                        ? "Present"
+                        : todayRecord.effectiveStatus === "absent"
+                          ? "Absent"
+                          : "Incomplete"}
+                    </span>
+                    {" · "}Worked duration:{" "}
+                    <span className="font-medium">
+                      {formatWorkedDuration(todayRecord.workedDurationMs)}
+                    </span>
+                  </p>
+                </>
               )}
               {recentQuery.isError && (
                 <Button

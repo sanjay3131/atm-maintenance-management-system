@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import Attendance from "../src/modules/attendance/attendance.model.js";
 import AttendanceCorrection from "../src/modules/attendance/attendanceCorrection.model.js";
 import AttendanceEntryAudit from "../src/modules/attendance/attendanceEntryAudit.model.js";
+import AttendanceStatusOverride from "../src/modules/attendance/attendanceStatusOverride.model.js";
 import Employee from "../src/modules/employees/employee.model.js";
 import {
   checkInForEmployee,
@@ -63,6 +64,7 @@ async function withMocks(
   {
     employee = makeEmployee(),
     records = [],
+    attendanceOverrides = [],
     supervisedEmployees = [],
     correctionInsertError = null,
     entryAuditInsertError = null,
@@ -80,6 +82,7 @@ async function withMocks(
     [Attendance, "create", Attendance.create],
     [Attendance, "findOneAndUpdate", Attendance.findOneAndUpdate],
     [Attendance, "findById", Attendance.findById],
+    [AttendanceStatusOverride, "find", AttendanceStatusOverride.find],
     [AttendanceCorrection, "create", AttendanceCorrection.create],
     [AttendanceEntryAudit, "create", AttendanceEntryAudit.create],
     [mongoose, "startSession", mongoose.startSession],
@@ -88,6 +91,7 @@ async function withMocks(
     employeeQueries: [],
     employeeIdQueries: [],
     records: records.map((record) => ({ ...record })),
+    attendanceOverrides,
     corrections: [],
     entryAudits: [],
     updateFilters: [],
@@ -288,6 +292,19 @@ async function withMocks(
       },
     };
   };
+  AttendanceStatusOverride.find = (filter) => ({
+    select: async () => {
+      state.attendanceOverrideQueries ??= [];
+      state.attendanceOverrideQueries.push(filter);
+      return state.attendanceOverrides.filter((override) =>
+        filter.$or.some(
+          (clause) =>
+            sameId(override.employeeId, clause.employeeId) &&
+            override.attendanceDate === clause.attendanceDate,
+        ),
+      );
+    },
+  });
   AttendanceCorrection.create = async (documents) => {
     state.auditPayloads.push(documents);
     if (correctionInsertError) throw correctionInsertError;
@@ -366,6 +383,135 @@ test("self attendance listing is scoped to the authenticated User's Employee", a
       assert.equal(state.attendanceListFilters[0].employeeId, employeeId);
       assert.equal(result.pagination.total, 2);
       assert.equal(result.records.length, 1);
+    },
+  );
+});
+
+test("attendance read endpoints add calculated status and batch employee overrides", async () => {
+  const shortClosedRecord = makeAttendance({
+    checkInAt: new Date("2026-10-10T03:00:00.000Z"),
+    checkOutAt: new Date("2026-10-10T07:00:00.000Z"),
+  });
+  const secondRecord = makeAttendance({
+    _id: "64b000000000000000000006",
+    attendanceDate: "2026-10-09",
+    checkInAt: new Date("2026-10-09T03:00:00.000Z"),
+    checkOutAt: new Date("2026-10-09T07:00:00.000Z"),
+  });
+  const attendanceOverrides = [
+    {
+      employeeId,
+      attendanceDate: "2026-10-10",
+      status: "present",
+    },
+    {
+      employeeId,
+      attendanceDate: "2026-10-09",
+      status: "absent",
+    },
+  ];
+  await withMocks(
+    {
+      records: [shortClosedRecord, secondRecord],
+      attendanceOverrides,
+    },
+    async (state) => {
+      const result = await listAttendanceRecords(actor(adminId, "admin"), {
+        page: 1,
+        limit: 20,
+      });
+      assert.equal(state.attendanceOverrideQueries.length, 1);
+      assert.equal(state.attendanceOverrideQueries[0].$or.length, 2);
+      assert.deepEqual(
+        result.records.map(({ effectiveStatus, statusOrigin, workedDurationMs }) => ({
+          effectiveStatus,
+          statusOrigin,
+          workedDurationMs,
+        })),
+        [
+          {
+            effectiveStatus: "present",
+            statusOrigin: "admin_override",
+            workedDurationMs: 4 * 60 * 60 * 1000,
+          },
+          {
+            effectiveStatus: "absent",
+            statusOrigin: "admin_override",
+            workedDurationMs: 4 * 60 * 60 * 1000,
+          },
+        ],
+      );
+
+      const detail = await getAttendanceRecord(
+        attendanceId,
+        actor(adminId, "admin"),
+        new Date("2026-10-10T08:00:00.000Z"),
+      );
+      assert.equal(detail.effectiveStatus, "present");
+      assert.equal(detail.statusOrigin, "admin_override");
+      assert.equal(detail.workedDurationMs, 4 * 60 * 60 * 1000);
+    },
+  );
+});
+
+test("employee and supervisor history return status and duration separately from session state", async () => {
+  const asOf = new Date("2026-10-10T06:00:00.000Z");
+  const employeeOpen = makeAttendance({
+    checkInAt: new Date("2026-10-10T00:01:00.000Z"),
+  });
+  const employeeClosed = makeAttendance({
+    _id: "64b000000000000000000006",
+    attendanceDate: "2026-10-09",
+    checkInAt: new Date("2026-10-09T00:00:00.000Z"),
+    checkOutAt: new Date("2026-10-09T05:59:00.000Z"),
+  });
+  const supervisorOpen = {
+    _id: "64b000000000000000000007",
+    supervisorUserId: supervisorId,
+    attendanceDate: "2026-10-10",
+    checkInAt: new Date("2026-10-10T00:00:00.000Z"),
+    checkOutAt: null,
+  };
+  await withMocks(
+    { records: [employeeOpen, employeeClosed, supervisorOpen] },
+    async () => {
+      const employeeHistory = await listMyAttendance(
+        actor(employeeUserId, "employee"),
+        { page: 1, limit: 20 },
+        asOf,
+      );
+      const employeeRowsByDate = new Map(
+        employeeHistory.records.map((record) => [
+          record.attendanceDate,
+          record,
+        ]),
+      );
+      assert.equal(
+        employeeRowsByDate.get("2026-10-10").effectiveStatus,
+        "incomplete",
+      );
+      assert.equal(
+        employeeRowsByDate.get("2026-10-10").workedDurationMs,
+        5 * 60 * 60 * 1000 + 59 * 60 * 1000,
+      );
+      assert.equal(employeeRowsByDate.get("2026-10-10").checkOutAt, null);
+      assert.equal(
+        employeeRowsByDate.get("2026-10-09").effectiveStatus,
+        "incomplete",
+      );
+
+      const supervisorHistory = await listMyAttendance(
+        { ...actor(supervisorId, "supervisor"), status: "active" },
+        { page: 1, limit: 20 },
+        asOf,
+      );
+      assert.equal(supervisorHistory.records.length, 1);
+      assert.equal(supervisorHistory.records[0].effectiveStatus, "present");
+      assert.equal(
+        supervisorHistory.records[0].workedDurationMs,
+        6 * 60 * 60 * 1000,
+      );
+      assert.equal(supervisorHistory.records[0].checkOutAt, null);
     },
   );
 });
@@ -649,8 +795,16 @@ test("Supervisor attendance history is scoped to the authenticated supervisor", 
       const result = await listMyAttendance(
         { _id: supervisorId, userType: "supervisor", status: "active" },
         { page: 1, limit: 20 },
+        new Date("2026-10-10T05:00:00.000Z"),
       );
-      assert.deepEqual(result.records, [supervisorRecord]);
+      assert.deepEqual(result.records, [
+        {
+          ...supervisorRecord,
+          effectiveStatus: "incomplete",
+          statusOrigin: "recorded",
+          workedDurationMs: 2 * 60 * 60 * 1000,
+        },
+      ]);
       assert.equal(
         state.attendanceListFilters[0].supervisorUserId,
         supervisorId,

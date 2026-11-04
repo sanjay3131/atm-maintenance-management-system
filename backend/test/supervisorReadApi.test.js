@@ -3,12 +3,14 @@ import assert from "node:assert/strict";
 import Employee from "../src/modules/employees/employee.model.js";
 import User from "../src/modules/users/user.model.js";
 import Attendance from "../src/modules/attendance/attendance.model.js";
+import AttendanceStatusOverride from "../src/modules/attendance/attendanceStatusOverride.model.js";
 import Job from "../src/modules/jobs/jobs.model.js";
 import AMC from "../src/modules/amc/amc.model.js";
 import ATM from "../src/modules/atms/atm.model.js";
 import {
   getSupervisorDashboard,
   getSupervisorEmployeeDetails,
+  getSupervisorEmployeeAttendance,
 } from "../src/modules/supervisor/supervisor.controller.js";
 import {
   supervisorJobQuerySchema,
@@ -106,6 +108,196 @@ test("supervisor employee detail verifies live assignment and both ATM assignmen
     Employee.findOne = originals[0];
     User.findOne = originals[1];
     ATM.find = originals[2];
+  }
+});
+
+test("supervisor employee attendance adds calculated status while preserving response and pagination", async () => {
+  const originals = [
+    Employee.findOne,
+    User.findOne,
+    Attendance.find,
+    Attendance.countDocuments,
+    AttendanceStatusOverride.find,
+    globalThis.Date,
+  ];
+  const fixedAsOf = new Date("2026-11-04T06:00:00.000Z");
+  let noArgumentDateCalls = 0;
+  let employeeFilter;
+  let attendanceFilter;
+  let selectedFields;
+  let sortFields;
+  let skipped;
+  let limited;
+  let overrideQueries = 0;
+  let records;
+  class FixedDate extends originals[5] {
+    constructor(...args) {
+      if (args.length === 0) {
+        noArgumentDateCalls += 1;
+        super(fixedAsOf);
+      } else {
+        super(...args);
+      }
+    }
+  }
+  globalThis.Date = FixedDate;
+  records = [
+    {
+      _id: "64b000000000000000000011",
+      employeeId,
+      attendanceDate: "2026-11-04",
+      checkInAt: new Date("2026-11-04T00:00:00.001Z"),
+      checkOutAt: null,
+      checkInSource: "employee",
+      checkOutSource: null,
+    },
+    {
+      _id: "64b000000000000000000012",
+      employeeId,
+      attendanceDate: "2026-11-03",
+      checkInAt: new Date("2026-11-04T00:00:00.000Z"),
+      checkOutAt: null,
+      checkInSource: "employee",
+      checkOutSource: null,
+    },
+    {
+      _id: "64b000000000000000000013",
+      employeeId,
+      attendanceDate: "2026-11-02",
+      checkInAt: new Date("2026-11-02T00:00:00.000Z"),
+      checkOutAt: new Date("2026-11-02T05:30:00.000Z"),
+      checkInSource: "employee",
+      checkOutSource: "employee",
+    },
+  ];
+  const employee = { _id: employeeId, userId };
+  Employee.findOne = (filter) => {
+    employeeFilter = filter;
+    return query(filter.supervisorId === supervisorId ? employee : null);
+  };
+  User.findOne = () => query({ _id: userId, userType: "employee" });
+  Attendance.find = (filter) => {
+    attendanceFilter = filter;
+    return {
+      select(fields) {
+        selectedFields = fields;
+        return this;
+      },
+      sort(fields) {
+        sortFields = fields;
+        return this;
+      },
+      skip(value) {
+        skipped = value;
+        return this;
+      },
+      limit(value) {
+        limited = value;
+        return Promise.resolve(records);
+      },
+    };
+  };
+  Attendance.countDocuments = (filter) => {
+    assert.deepEqual(filter, attendanceFilter);
+    return Promise.resolve(8);
+  };
+  AttendanceStatusOverride.find = () => {
+    overrideQueries += 1;
+    throw new Error("Supervisor attendance must not query employee overrides");
+  };
+  try {
+    const result = await invoke(getSupervisorEmployeeAttendance, {
+      validatedParams: { employeeId },
+      validatedQuery: {
+        page: 2,
+        limit: 3,
+        fromDate: "2026-11-01",
+        toDate: "2026-11-04",
+      },
+      user: { _id: supervisorId, userType: "supervisor" },
+    });
+
+    assert.equal(result.status, 200);
+    assert.deepEqual(employeeFilter, {
+      _id: employeeId,
+      supervisorId,
+    });
+    assert.deepEqual(attendanceFilter, {
+      employeeId,
+      attendanceDate: {
+        $gte: "2026-11-01",
+        $lte: "2026-11-04",
+      },
+    });
+    assert.equal(
+      selectedFields,
+      "employeeId attendanceDate checkInAt checkOutAt checkInSource checkOutSource",
+    );
+    assert.deepEqual(sortFields, { attendanceDate: -1, _id: -1 });
+    assert.equal(skipped, 3);
+    assert.equal(limited, 3);
+    assert.equal(noArgumentDateCalls, 1);
+    assert.equal(overrideQueries, 0);
+
+    const { records: responseRecords, pagination } = result.body.data;
+    assert.deepEqual(pagination, {
+      page: 2,
+      limit: 3,
+      total: 8,
+      totalPages: 3,
+    });
+    assert.deepEqual(
+      responseRecords.map(
+        ({ _id, employeeId: recordEmployeeId, attendanceDate, checkInAt, checkOutAt, checkInSource, checkOutSource, effectiveStatus, workedDurationMs, statusOrigin }) => ({
+          _id,
+          employeeId: recordEmployeeId,
+          attendanceDate,
+          checkInAt,
+          checkOutAt,
+          checkInSource,
+          checkOutSource,
+          effectiveStatus,
+          workedDurationMs,
+          statusOrigin,
+        }),
+      ),
+      [
+        {
+          ...records[0],
+          effectiveStatus: "incomplete",
+          workedDurationMs: 6 * 60 * 60 * 1000 - 1,
+          statusOrigin: "recorded",
+        },
+        {
+          ...records[1],
+          effectiveStatus: "present",
+          workedDurationMs: 6 * 60 * 60 * 1000,
+          statusOrigin: "recorded",
+        },
+        {
+          ...records[2],
+          effectiveStatus: "incomplete",
+          workedDurationMs: 5 * 60 * 60 * 1000 + 30 * 60 * 1000,
+          statusOrigin: "recorded",
+        },
+      ],
+    );
+
+    await assert.rejects(
+      invoke(getSupervisorEmployeeAttendance, {
+        validatedParams: { employeeId },
+        validatedQuery: { page: 1, limit: 10 },
+        user: { _id: otherSupervisorId, userType: "supervisor" },
+      }),
+      (error) => error.statusCode === 404,
+    );
+  } finally {
+    Employee.findOne = originals[0];
+    User.findOne = originals[1];
+    Attendance.find = originals[2];
+    Attendance.countDocuments = originals[3];
+    AttendanceStatusOverride.find = originals[4];
+    globalThis.Date = originals[5];
   }
 });
 

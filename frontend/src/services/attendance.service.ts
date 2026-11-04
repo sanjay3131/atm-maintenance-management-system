@@ -15,6 +15,12 @@ export interface AttendanceRecord {
   updatedAt?: string;
 }
 
+export interface AttendanceReadRecord extends AttendanceRecord {
+  effectiveStatus: "present" | "absent" | "incomplete";
+  statusOrigin: "recorded" | "admin_override";
+  workedDurationMs: number;
+}
+
 export interface AttendancePagination {
   page: number;
   limit: number;
@@ -23,7 +29,7 @@ export interface AttendancePagination {
 }
 
 export interface AttendanceListResponse {
-  records: AttendanceRecord[];
+  records: AttendanceReadRecord[];
   pagination: AttendancePagination;
 }
 
@@ -38,6 +44,7 @@ export interface AttendanceCalendarDay {
   statusOrigin: "recorded" | "admin_override";
   checkInAt: string | null;
   checkOutAt: string | null;
+  workedDurationMs: number | null;
 }
 
 export interface AttendanceCalendarResponse {
@@ -88,6 +95,7 @@ export interface AdminAttendanceDashboardRecord {
     effectiveCheckOutAt: string | null;
     effectiveStatus: AdminAttendanceStatus;
     statusOrigin: "recorded" | "admin_override" | "no_record";
+    workedDurationMs: number | null;
   };
 }
 

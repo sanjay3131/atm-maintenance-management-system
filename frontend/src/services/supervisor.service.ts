@@ -103,6 +103,9 @@ export interface SupervisorAttendanceRecord {
   checkOutAt: string | null;
   checkInSource?: string | null;
   checkOutSource?: string | null;
+  effectiveStatus: "present" | "incomplete" | "absent";
+  statusOrigin: "recorded" | "admin_override";
+  workedDurationMs?: number | null;
 }
 
 export interface SupervisorAttendanceResponse {

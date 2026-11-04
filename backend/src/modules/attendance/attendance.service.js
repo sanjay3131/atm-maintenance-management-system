@@ -5,6 +5,7 @@ import AttendanceCorrection from "./attendanceCorrection.model.js";
 import AttendanceEntryAudit from "./attendanceEntryAudit.model.js";
 import AttendanceStatusOverride from "./attendanceStatusOverride.model.js";
 import AttendanceStatusOverrideAudit from "./attendanceStatusOverrideAudit.model.js";
+import { calculateAttendanceStatus } from "./attendanceStatus.js";
 import Employee from "../employees/employee.model.js";
 import User from "../users/user.model.js";
 import {
@@ -205,7 +206,61 @@ const buildAttendanceFilter = ({ employeeId, fromDate, toDate, openOnly }) => ({
     : {}),
 });
 
-const getPaginatedAttendance = async (filter, { page, limit }) => {
+const getAttendanceOverrides = async (records) => {
+  const clauses = new Map();
+  for (const record of records) {
+    if (!record.employeeId || !record.attendanceDate) continue;
+    const employeeId = String(toId(record.employeeId));
+    const key = `${employeeId}:${record.attendanceDate}`;
+    clauses.set(key, {
+      employeeId: record.employeeId,
+      attendanceDate: record.attendanceDate,
+    });
+  }
+  if (clauses.size === 0) return new Map();
+
+  const overrides = await AttendanceStatusOverride.find({
+    $or: [...clauses.values()],
+  }).select("employeeId attendanceDate status");
+  return new Map(
+    overrides.map((override) => [
+      `${String(toId(override.employeeId))}:${override.attendanceDate}`,
+      override,
+    ]),
+  );
+};
+
+const addCalculatedAttendanceStatus = (record, override, asOf) => {
+  const values = calculateAttendanceStatus({
+    checkInAt: record.checkInAt,
+    checkOutAt: record.checkOutAt ?? null,
+    asOf,
+  });
+  const source =
+    typeof record.toObject === "function" ? record.toObject() : record;
+  return {
+    ...source,
+    effectiveStatus: override?.status ?? values.calculatedStatus,
+    statusOrigin: override ? "admin_override" : "recorded",
+    workedDurationMs: values.workedDurationMs,
+  };
+};
+
+const addCalculatedStatuses = async (records, asOf) => {
+  const overrides = await getAttendanceOverrides(records);
+  return records.map((record) => {
+    const key = record.employeeId
+      ? `${String(toId(record.employeeId))}:${record.attendanceDate}`
+      : "";
+    return addCalculatedAttendanceStatus(record, overrides.get(key), asOf);
+  });
+};
+
+const getPaginatedAttendance = async (
+  filter,
+  { page, limit },
+  asOf = new Date(),
+) => {
   const skip = (page - 1) * limit;
   const [records, total] = await Promise.all([
     Attendance.find(filter)
@@ -215,7 +270,7 @@ const getPaginatedAttendance = async (filter, { page, limit }) => {
     Attendance.countDocuments(filter),
   ]);
   return {
-    records,
+    records: await addCalculatedStatuses(records, asOf),
     pagination: {
       page,
       limit,
@@ -225,7 +280,11 @@ const getPaginatedAttendance = async (filter, { page, limit }) => {
   };
 };
 
-export const listMyAttendance = async (authenticatedUser, filters) => {
+export const listMyAttendance = async (
+  authenticatedUser,
+  filters,
+  asOf = new Date(),
+) => {
   if (!["employee", "supervisor"].includes(authenticatedUser?.userType)) {
     throw new ApiError(403, "Only employees and supervisors can access their attendance");
   }
@@ -237,6 +296,7 @@ export const listMyAttendance = async (authenticatedUser, filters) => {
         ...buildAttendanceFilter(filters),
       },
       filters,
+      asOf,
     );
   }
   const employee = await getEmployeeForUser(authenticatedUser._id);
@@ -246,10 +306,15 @@ export const listMyAttendance = async (authenticatedUser, filters) => {
       ...buildAttendanceFilter(filters),
     },
     filters,
+    asOf,
   );
 };
 
-export const listAttendanceRecords = async (actor, filters) => {
+export const listAttendanceRecords = async (
+  actor,
+  filters,
+  asOf = new Date(),
+) => {
   requireActor(actor, ON_BEHALF_ROLES);
   const filter = buildAttendanceFilter(filters);
   if (actor.userType === "supervisor") {
@@ -280,13 +345,14 @@ export const listAttendanceRecords = async (actor, filters) => {
   } else if (filters.employeeId) {
     requireObjectId(filters.employeeId, "Employee ID");
   }
-  return getPaginatedAttendance(filter, filters);
+  return getPaginatedAttendance(filter, filters, asOf);
 };
 
 export const getEmployeeAttendanceCalendar = async ({
   employeeId,
   month,
   actor,
+  asOf = new Date(),
 }) => {
   requireActor(actor, ADMIN_ROLES);
   requireObjectId(employeeId, "Employee ID");
@@ -311,12 +377,18 @@ export const getEmployeeAttendanceCalendar = async ({
 
   const daysByDate = new Map();
   records.forEach((record) => {
+    const calculated = calculateAttendanceStatus({
+      checkInAt: record.checkInAt,
+      checkOutAt: record.checkOutAt,
+      asOf,
+    });
     daysByDate.set(record.attendanceDate, {
       attendanceDate: record.attendanceDate,
-      status: record.checkOutAt ? "present" : "incomplete",
+      status: calculated.calculatedStatus,
       statusOrigin: "recorded",
       checkInAt: record.checkInAt,
       checkOutAt: record.checkOutAt,
+      workedDurationMs: calculated.workedDurationMs,
     });
   });
   overrides.forEach((override) => {
@@ -327,6 +399,7 @@ export const getEmployeeAttendanceCalendar = async ({
       statusOrigin: "admin_override",
       checkInAt: record?.checkInAt ?? null,
       checkOutAt: record?.checkOutAt ?? null,
+      workedDurationMs: record?.workedDurationMs ?? null,
     });
   });
 
@@ -420,13 +493,16 @@ export const getAdminAttendanceDashboard = async (
           : null;
       const attendance = attendanceByEmployee.get(String(employee._id)) ?? null;
       const override = overrideByEmployee.get(String(employee._id)) ?? null;
+      const calculated = attendance
+        ? calculateAttendanceStatus({
+            checkInAt: attendance.checkInAt,
+            checkOutAt: attendance.checkOutAt,
+            asOf: now,
+          })
+        : null;
       const effectiveStatus = override
         ? override.status
-        : attendance
-          ? attendance.checkOutAt
-            ? "present"
-            : "incomplete"
-          : "unrecorded";
+        : calculated?.calculatedStatus ?? "unrecorded";
       const displayName = getEmployeeDisplayName(user);
       const row = {
         employee: {
@@ -446,6 +522,7 @@ export const getAdminAttendanceDashboard = async (
           effectiveCheckInAt: attendance?.checkInAt ?? null,
           effectiveCheckOutAt: attendance?.checkOutAt ?? null,
           effectiveStatus,
+          workedDurationMs: calculated?.workedDurationMs ?? null,
           statusOrigin: override
             ? "admin_override"
             : attendance
@@ -464,6 +541,13 @@ export const getAdminAttendanceDashboard = async (
   );
   const supervisorRows = supervisorUsers.map((supervisor) => {
     const attendance = attendanceBySupervisor.get(String(supervisor._id)) ?? null;
+    const calculated = attendance
+      ? calculateAttendanceStatus({
+          checkInAt: attendance.checkInAt,
+          checkOutAt: attendance.checkOutAt,
+          asOf: now,
+        })
+      : null;
     return {
       employee: {
         id: String(supervisor._id),
@@ -481,11 +565,8 @@ export const getAdminAttendanceDashboard = async (
         actualCheckOutAt: attendance?.checkOutAt ?? null,
         effectiveCheckInAt: attendance?.checkInAt ?? null,
         effectiveCheckOutAt: attendance?.checkOutAt ?? null,
-        effectiveStatus: attendance
-          ? attendance.checkOutAt
-            ? "present"
-            : "incomplete"
-          : "unrecorded",
+        effectiveStatus: calculated?.calculatedStatus ?? "unrecorded",
+        workedDurationMs: calculated?.workedDurationMs ?? null,
         statusOrigin: attendance ? "recorded" : "no_record",
       },
     };
@@ -544,7 +625,11 @@ export const getAdminAttendanceDashboard = async (
   };
 };
 
-export const getAttendanceRecord = async (attendanceId, actor) => {
+export const getAttendanceRecord = async (
+  attendanceId,
+  actor,
+  asOf = new Date(),
+) => {
   requireActor(actor, ON_BEHALF_ROLES);
   requireObjectId(attendanceId, "Attendance ID");
   const attendance = await Attendance.findById(attendanceId);
@@ -555,13 +640,17 @@ export const getAttendanceRecord = async (attendanceId, actor) => {
       if (!sameId(attendance.supervisorUserId, actor._id)) {
         throw new ApiError(404, "Attendance not found");
       }
-      return attendance;
+    } else {
+      const employee = await Employee.findById(attendance.employeeId);
+      if (!employee) throw new ApiError(404, "Employee not found");
+      requireSupervisorScope(employee, actor);
     }
-    const employee = await Employee.findById(attendance.employeeId);
-    if (!employee) throw new ApiError(404, "Employee not found");
-    requireSupervisorScope(employee, actor);
   }
-  return attendance;
+  const overrides = await getAttendanceOverrides([attendance]);
+  const key = attendance.employeeId
+    ? `${String(toId(attendance.employeeId))}:${attendance.attendanceDate}`
+    : "";
+  return addCalculatedAttendanceStatus(attendance, overrides.get(key), asOf);
 };
 
 export const setAttendanceStatusOverride = async ({
@@ -598,9 +687,11 @@ export const setAttendanceStatusOverride = async ({
     const previousStatus =
       currentOverride?.status ??
       (attendance
-        ? attendance.checkOutAt
-          ? "present"
-          : "incomplete"
+        ? calculateAttendanceStatus({
+            checkInAt: attendance.checkInAt,
+            checkOutAt: attendance.checkOutAt,
+            asOf: now,
+          }).calculatedStatus
         : "unrecorded");
     const previousTimestamps = attendance
       ? {
