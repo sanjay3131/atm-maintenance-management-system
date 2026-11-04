@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
 import {
   ChevronLeft,
   ChevronRight,
@@ -233,14 +234,18 @@ export default function JobsPage() {
     navigationContext,
   ]);
 
-  const { data, isLoading, isError, refetch, isFetching } = useJobs({
-    page,
-    limit: PAGE_SIZE,
-    ...(debouncedSearch ? { search: debouncedSearch } : {}),
-    ...(status !== ALL ? { status } : {}),
-    ...(priority !== ALL ? { priority } : {}),
-    ...(workType !== ALL ? { workType } : {}),
-  });
+  const { data, isLoading, isError, refetch, isFetching } = useJobs(
+    {
+      page,
+      limit: PAGE_SIZE,
+      ...(debouncedSearch ? { search: debouncedSearch } : {}),
+      ...(status !== ALL ? { status } : {}),
+      ...(priority !== ALL ? { priority } : {}),
+      ...(workType !== ALL ? { workType } : {}),
+    },
+    true,
+    { placeholderData: keepPreviousData },
+  );
 
   const jobs = data?.jobs ?? [];
   const pagination = data?.pagination;
@@ -264,7 +269,7 @@ export default function JobsPage() {
     resetPage();
   };
 
-  if (isLoading) {
+  if (isLoading && !data) {
     return (
       <div className="space-y-6 p-6" role="status">
         <div>
@@ -306,6 +311,11 @@ export default function JobsPage() {
           <h1 className="text-2xl font-bold">Jobs</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {pagination?.total ?? 0} total jobs
+            {isFetching && (
+              <span className="ml-2" role="status">
+                Updating...
+              </span>
+            )}
           </p>
         </div>
         <Button
