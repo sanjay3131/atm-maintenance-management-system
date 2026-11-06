@@ -26,6 +26,7 @@ export const employeeOptionsQuerySchema = z
     search: z.string().trim().max(100, "Search is too long").optional().default(""),
     page: positiveQueryInteger(1),
     limit: positiveQueryInteger(20, 50),
+    activeOnly: z.enum(["true", "false"]).optional(),
   })
   .strict()
   .superRefine(({ page, limit }, context) => {

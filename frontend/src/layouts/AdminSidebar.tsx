@@ -14,6 +14,7 @@ import {
   CalendarCheck2,
   MapPinCheck,
   UserCog,
+  Bike,
 } from "lucide-react";
 
 const navItems = [
@@ -36,6 +37,11 @@ const navItems = [
     label: "Attendance",
     path: "/admin/attendance",
     icon: CalendarCheck2,
+  },
+  {
+    label: "Vehicles",
+    path: "/admin/vehicles",
+    icon: Bike,
   },
   {
     label: "Customers",

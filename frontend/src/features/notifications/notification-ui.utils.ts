@@ -19,6 +19,25 @@ export const notificationButtonLabel = (unreadCount: number) =>
     ? `Notifications, ${unreadCount} unread`
     : "Notifications";
 
+export const getVehicleServiceNotificationHref = (
+  notification: { type?: unknown; data?: Record<string, unknown> },
+  userType?: string,
+) => {
+  if (
+    notification.type !== "system" ||
+    notification.data?.serviceType !== "OIL_CHANGE"
+  ) return null;
+  const vehicleId = notification.data?.vehicleId;
+  if (typeof vehicleId !== "string" || !/^[a-fA-F0-9]{24}$/.test(vehicleId)) {
+    return null;
+  }
+  if (userType === "admin" || userType === "superAdmin") {
+    return `/admin/vehicles/${vehicleId}`;
+  }
+  if (userType === "employee") return "/employee/mileage";
+  return null;
+};
+
 export const formatNotificationTimestamp = (
   value: string,
   locale?: string,

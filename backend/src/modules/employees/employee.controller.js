@@ -383,6 +383,7 @@ export const getMyEmployeeProfile = asyncHandler(async (req, res) => {
 
 export const getEmployeeOptions = asyncHandler(async (req, res) => {
   const { search, page, limit } = req.validatedQuery;
+  const activeOnly = req.validatedQuery.activeOnly === "true";
   const skip = (page - 1) * limit;
   const escapedSearch = escapeRegex(search);
   const userLookupStages = [
@@ -401,6 +402,7 @@ export const getEmployeeOptions = asyncHandler(async (req, res) => {
               firstName: 1,
               lastName: 1,
               "avatar.url": 1,
+              ...(activeOnly ? { userType: 1, status: 1 } : {}),
             },
           },
         ],
@@ -429,40 +431,51 @@ export const getEmployeeOptions = asyncHandler(async (req, res) => {
       metadata: [{ $count: "total" }],
     },
   };
-  const pipeline = search
-    ? [
-        ...userLookupStages,
-        {
-          $match: {
-            $or: [
-              {
-                employeeCode: {
-                  $regex: escapedSearch,
-                  $options: "i",
-                },
-              },
-              {
-                $expr: {
-                  $regexMatch: {
-                    input: {
-                      $concat: [
-                        { $ifNull: ["$user.firstName", ""] },
-                        " ",
-                        { $ifNull: ["$user.lastName", ""] },
-                      ],
-                    },
-                    regex: escapedSearch,
-                    options: "i",
+  const searchMatch = search
+    ? {
+        $match: {
+          $or: [
+            { employeeCode: { $regex: escapedSearch, $options: "i" } },
+            {
+              $expr: {
+                $regexMatch: {
+                  input: {
+                    $concat: [
+                      { $ifNull: ["$user.firstName", ""] },
+                      " ",
+                      { $ifNull: ["$user.lastName", ""] },
+                    ],
                   },
+                  regex: escapedSearch,
+                  options: "i",
                 },
               },
-            ],
-          },
+            },
+          ],
         },
-        { $sort: { employeeCode: 1, _id: 1 } },
-        paginationFacet,
-      ]
-    : [{ $sort: { employeeCode: 1, _id: 1 } }, paginationFacet];
+      }
+    : null;
+  const needsUserLookupBeforePaging = activeOnly || Boolean(search);
+  const pipeline = [
+    ...(activeOnly ? [{ $match: { status: "active" } }] : []),
+    ...(needsUserLookupBeforePaging ? userLookupStages : []),
+    ...(activeOnly
+      ? [{ $match: { "user.status": "active", "user.userType": "employee" } }]
+      : []),
+    ...(searchMatch ? [searchMatch] : []),
+    { $sort: { employeeCode: 1, _id: 1 } },
+    {
+      $facet: {
+        employees: [
+          { $skip: skip },
+          { $limit: limit },
+          ...(!needsUserLookupBeforePaging ? userLookupStages : []),
+          employeeProjection,
+        ],
+        metadata: [{ $count: "total" }],
+      },
+    },
+  ];
 
   const [result = { employees: [], metadata: [] }] =
     await Employee.aggregate(pipeline);

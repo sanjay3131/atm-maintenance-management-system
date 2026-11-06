@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Bell, Check, CheckCheck, LoaderCircle, X } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/features/auth/auth-context";
 import { useNotifications } from "./use-notifications";
 import {
   formatNotificationTimestamp,
   formatUnreadCount,
+  getVehicleServiceNotificationHref,
   getNotificationPanelState,
   isOutsideNotificationPanel,
   notificationButtonLabel,
@@ -16,10 +18,10 @@ const INITIAL_VISIBLE_COUNT = 6;
 
 export default function NotificationBell() {
   const { user } = useAuth();
-  return <NotificationBellForUser key={user?._id ?? "anonymous"} />;
+  return <NotificationBellForUser key={user?._id ?? "anonymous"} userType={user?.userType} />;
 }
 
-function NotificationBellForUser() {
+function NotificationBellForUser({ userType }: { userType?: string }) {
   const {
     notifications,
     unreadCount,
@@ -218,8 +220,9 @@ function NotificationBellForUser() {
             ) : (
               <>
                 <ul aria-label="Recent notifications" className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {visibleNotifications.map((notification) => (
-                    <li
+                  {visibleNotifications.map((notification) => {
+                    const vehicleHref = getVehicleServiceNotificationHref(notification, userType);
+                    return <li
                       key={notification.id}
                       className={`flex gap-3 px-4 py-3 ${
                         notification.isRead
@@ -243,7 +246,7 @@ function NotificationBellForUser() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-2">
-                          <h3 className="break-words text-sm font-semibold">
+                          <h3 className="wrap-break-word text-sm font-semibold">
                             {notification.title}
                           </h3>
                           {!notification.isRead && (
@@ -270,9 +273,18 @@ function NotificationBellForUser() {
                             </button>
                           )}
                         </div>
-                        <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-slate-600 dark:text-slate-300">
+                        <p className="mt-0.5 whitespace-pre-wrap wrap-break-word text-sm text-slate-600 dark:text-slate-300">
                           {notification.message}
                         </p>
+                        {vehicleHref && (
+                          <Link
+                            to={vehicleHref}
+                            onClick={() => setIsOpen(false)}
+                            className="mt-2 inline-flex min-h-8 items-center text-sm font-semibold text-blue-700 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 dark:text-blue-300"
+                          >
+                            View bike and service status
+                          </Link>
+                        )}
                         <time
                           dateTime={notification.createdAt}
                           className="mt-1 block text-xs text-slate-500 dark:text-slate-400"
@@ -281,7 +293,7 @@ function NotificationBellForUser() {
                         </time>
                       </div>
                     </li>
-                  ))}
+                  })}
                 </ul>
                 {remainingCount > 0 && (
                   <button

@@ -1,7 +1,4 @@
-import {
-  createContext,
-  useContext,
-} from "react";
+import { createContext, useContext } from "react";
 
 export const employeeEnglish = {
   "Employee portal": "Employee portal",
@@ -11,15 +8,17 @@ export const employeeEnglish = {
   "My AMC Visits": "My AMC Visits",
   "AMC Visit Details": "AMC Visit Details",
   "View AMC visits": "View AMC visits",
-  "Monthly maintenance tasks assigned to you.": "Monthly maintenance tasks assigned to you.",
+  "Monthly maintenance tasks assigned to you.":
+    "Monthly maintenance tasks assigned to you.",
   "{count} assigned for this period": "{count} assigned for this period",
   "ATM unavailable": "ATM unavailable",
-  "Deadline": "Deadline",
+  Deadline: "Deadline",
   "Loading AMC visits...": "Loading AMC visits...",
   "Could not load AMC visits.": "Could not load AMC visits.",
   "No AMC visits with status {status}.": "No AMC visits with status {status}.",
   "No AMC visits for this period.": "No AMC visits for this period.",
-  "Assigned monthly visits will appear here.": "Assigned monthly visits will appear here.",
+  "Assigned monthly visits will appear here.":
+    "Assigned monthly visits will appear here.",
   "AMC visit tasks": "AMC visit tasks",
   "View visit": "View visit",
   "Open visit": "Open visit",
@@ -29,54 +28,76 @@ export const employeeEnglish = {
   "{item} response": "{item} response",
   "{item} remarks": "{item} remarks",
   "Visit started": "Visit started",
-  "Photo evidence: {count}/{required} uploaded": "Photo evidence: {count}/{required} uploaded",
-  "Period": "Period",
+  "Photo evidence: {count}/{required} uploaded":
+    "Photo evidence: {count}/{required} uploaded",
+  Period: "Period",
   ATM: "ATM",
-  "This visit is overdue. If it has not been started, you can start it now. An already-started visit can still be completed.": "This visit is overdue. If it has not been started, you can start it now. An already-started visit can still be completed.",
-  "Visit started. Complete the checklist and upload six photos.": "Visit started. Complete the checklist and upload six photos.",
-  "Complete all 11 checklist responses using the allowed options.": "Complete all 11 checklist responses using the allowed options.",
+  "This visit is overdue. If it has not been started, you can start it now. An already-started visit can still be completed.":
+    "This visit is overdue. If it has not been started, you can start it now. An already-started visit can still be completed.",
+  "Visit started. Complete the checklist and upload six photos.":
+    "Visit started. Complete the checklist and upload six photos.",
+  "Complete all 11 checklist responses using the allowed options.":
+    "Complete all 11 checklist responses using the allowed options.",
   "Checklist saved.": "Checklist saved.",
-  "Photo upload partially succeeded: {uploaded} of {selected} selected photos were saved. Refresh the visit and check the remaining photo count before selecting more.": "Photo upload partially succeeded: {uploaded} of {selected} selected photos were saved. Refresh the visit and check the remaining photo count before selecting more.",
-  "{count} photo(s) uploaded successfully.": "{count} photo(s) uploaded successfully.",
-  "Selected files were cleared to avoid duplicate uploads; refresh the visit and verify the saved photo count before trying again.": "Selected files were cleared to avoid duplicate uploads; refresh the visit and verify the saved photo count before trying again.",
+  "Photo upload partially succeeded: {uploaded} of {selected} selected photos were saved. Refresh the visit and check the remaining photo count before selecting more.":
+    "Photo upload partially succeeded: {uploaded} of {selected} selected photos were saved. Refresh the visit and check the remaining photo count before selecting more.",
+  "{count} photo(s) uploaded successfully.":
+    "{count} photo(s) uploaded successfully.",
+  "Selected files were cleared to avoid duplicate uploads; refresh the visit and verify the saved photo count before trying again.":
+    "Selected files were cleared to avoid duplicate uploads; refresh the visit and verify the saved photo count before trying again.",
   "AMC visit completed.": "AMC visit completed.",
   "AMC visit completed successfully.": "AMC visit completed successfully.",
-  "Location permission is required to complete this visit.": "Location permission is required to complete this visit.",
-  "Could not get your location. Check location services and try again.": "Could not get your location. Check location services and try again.",
+  "Location permission is required to complete this visit.":
+    "Location permission is required to complete this visit.",
+  "Could not get your location. Check location services and try again.":
+    "Could not get your location. Check location services and try again.",
   "Ready to begin the ATM visit?": "Ready to begin the ATM visit?",
-  "Starting requires the ATM location to be configured.": "Starting requires the ATM location to be configured.",
+  "Starting requires the ATM location to be configured.":
+    "Starting requires the ATM location to be configured.",
   "Starting...": "Starting...",
   "Start visit": "Start visit",
-  "Start the visit first. The checklist and photo upload will become available after the backend confirms the visit start.": "Start the visit first. The checklist and photo upload will become available after the backend confirms the visit start.",
+  "Start the visit first. The checklist and photo upload will become available after the backend confirms the visit start.":
+    "Start the visit first. The checklist and photo upload will become available after the backend confirms the visit start.",
   "Maintenance checklist": "Maintenance checklist",
   Saved: "Saved",
   "Remarks (optional)": "Remarks (optional)",
   "Saving checklist...": "Saving checklist...",
   "Save checklist": "Save checklist",
-  "Select an allowed response for all 11 items before saving.": "Select an allowed response for all 11 items before saving.",
+  "Select an allowed response for all 11 items before saving.":
+    "Select an allowed response for all 11 items before saving.",
   "Photo evidence": "Photo evidence",
-  "Upload six JPEG, PNG, or WebP photos, up to 5 MB each. Existing photo URLs are not rendered in this workflow.": "Upload six JPEG, PNG, or WebP photos, up to 5 MB each. Existing photo URLs are not rendered in this workflow.",
-  "Choose photos ({count}/6 selected or uploaded)": "Choose photos ({count}/6 selected or uploaded)",
+  "Upload six JPEG, PNG, or WebP photos, up to 5 MB each. Existing photo URLs are not rendered in this workflow.":
+    "Upload six JPEG, PNG, or WebP photos, up to 5 MB each. Existing photo URLs are not rendered in this workflow.",
+  "Choose photos ({count}/6 selected or uploaded)":
+    "Choose photos ({count}/6 selected or uploaded)",
   "Selected photo {number}: {filename}": "Selected photo {number}: {filename}",
-  "Maximum of six photos reached. Remove a selected photo to choose another.": "Maximum of six photos reached. Remove a selected photo to choose another.",
+  "Maximum of six photos reached. Remove a selected photo to choose another.":
+    "Maximum of six photos reached. Remove a selected photo to choose another.",
   "Uploading photos: {progress}%": "Uploading photos: {progress}%",
   "Photo upload progress": "Photo upload progress",
   "Uploading...": "Uploading...",
   "Uploading {progress}%": "Uploading {progress}%",
   "Upload selected photos": "Upload selected photos",
-  "Required photo evidence is uploaded.": "Required photo evidence is uploaded.",
+  "Required photo evidence is uploaded.":
+    "Required photo evidence is uploaded.",
   "This completed AMC is read-only.": "This completed AMC is read-only.",
   "Complete visit": "Complete visit",
   "Visit remarks (optional)": "Visit remarks (optional)",
-  "Completion requires browser location permission and the server validates proximity to the configured ATM location.": "Completion requires browser location permission and the server validates proximity to the configured ATM location.",
+  "Completion requires browser location permission and the server validates proximity to the configured ATM location.":
+    "Completion requires browser location permission and the server validates proximity to the configured ATM location.",
   "Completing visit...": "Completing visit...",
   "Complete AMC visit": "Complete AMC visit",
-  "Start the visit before completing it.": "Start the visit before completing it.",
-  "Save a valid checklist and upload all six required photos before completing.": "Save a valid checklist and upload all six required photos before completing.",
-  "The AMC request could not be completed. Please try again.": "The AMC request could not be completed. Please try again.",
+  "Start the visit before completing it.":
+    "Start the visit before completing it.",
+  "Save a valid checklist and upload all six required photos before completing.":
+    "Save a valid checklist and upload all six required photos before completing.",
+  "The AMC request could not be completed. Please try again.":
+    "The AMC request could not be completed. Please try again.",
   "Choose at least one photo.": "Choose at least one photo.",
-  "You can upload {count} more photo(s).": "You can upload {count} more photo(s).",
-  "Only JPEG, PNG, and WebP images are allowed.": "Only JPEG, PNG, and WebP images are allowed.",
+  "You can upload {count} more photo(s).":
+    "You can upload {count} more photo(s).",
+  "Only JPEG, PNG, and WebP images are allowed.":
+    "Only JPEG, PNG, and WebP images are allowed.",
   "Each photo must be 5 MB or smaller.": "Each photo must be 5 MB or smaller.",
   Door: "Door",
   "Fixed Glass": "Fixed Glass",
@@ -95,6 +116,36 @@ export const employeeEnglish = {
   Done: "Done",
   "Not Done": "Not Done",
   "My Attendance": "My Attendance",
+  "Bike mileage": "Bike mileage",
+  "Loading available bikes...": "Loading available bikes...",
+  "Could not load eligible bikes.": "Could not load eligible bikes.",
+  "No active bikes are available right now.":
+    "No active bikes are available right now.",
+  "Your active mileage session": "Your active mileage session",
+  "Starting odometer (KM)": "Starting odometer (KM)",
+  "Ending odometer (KM)": "Ending odometer (KM)",
+  "Start mileage session": "Start mileage session",
+  "Return bike": "Return bike",
+  "Distance travelled": "Distance travelled",
+  "Recent mileage": "Recent mileage",
+  "Refresh bike state": "Refresh bike state",
+  "Mileage session started.": "Mileage session started.",
+  "Mileage session completed.": "Mileage session completed.",
+  "Could not save mileage. Refresh and review the current bike state.":
+    "Could not save mileage. Refresh and review the current bike state.",
+  "Enter a valid whole-kilometre reading.":
+    "Enter a valid whole-kilometre reading.",
+  "Ending reading cannot be below the starting reading.":
+    "Ending reading cannot be below the starting reading.",
+  "Choose a bike": "Choose a bike",
+  "No active mileage session": "No active mileage session",
+  "The employee identity is taken from your signed-in account.":
+    "The employee identity is taken from your signed-in account.",
+  "Bike unavailable": "Bike unavailable",
+  KM: "KM",
+  "Open mileage entry": "Open mileage entry",
+  "No mileage history": "No mileage history",
+  "Could not load mileage history.": "Could not load mileage history.",
   "My Location Tasks": "Location Tasks",
   "Location Tasks navigation": "Location tasks",
   "Loading location tasks...": "Loading location tasks...",
@@ -105,7 +156,8 @@ export const employeeEnglish = {
   "Continue task": "Continue task",
   "Collapse workflow": "Collapse workflow",
   "Completed date": "Completed date",
-  "Assigned ATM location collection and correction tasks will appear here.": "Assigned ATM location collection and correction tasks will appear here.",
+  "Assigned ATM location collection and correction tasks will appear here.":
+    "Assigned ATM location collection and correction tasks will appear here.",
   "Initial location collection": "Initial location collection",
   "Location correction": "Location correction",
   "Assigned date": "Assigned date",
@@ -122,45 +174,65 @@ export const employeeEnglish = {
   "Held date": "Held date",
   "Resumed date": "Resumed date",
   "ATM bank unavailable": "Bank unavailable",
-  "GPS": "GPS",
-  "Manual": "Manual",
+  GPS: "GPS",
+  Manual: "Manual",
   "Submission source: {source}": "Submission source: {source}",
-  "Task status could not be refreshed. Refresh the task list.": "Task status could not be refreshed. Refresh the task list.",
+  "Task status could not be refreshed. Refresh the task list.":
+    "Task status could not be refreshed. Refresh the task list.",
   "Start task": "Start task",
   "Starting task...": "Starting task...",
   "Task started.": "Task started.",
   "Location proposal": "Location proposal",
-  "Submit a proposal only after visiting this ATM.": "Submit a proposal only after visiting this ATM.",
-  "This task is awaiting admin review. Do not submit another proposal.": "This task is awaiting admin review. Do not submit another proposal.",
-  "Start this task before submitting a location proposal.": "Start this task before submitting a location proposal.",
+  "Submit a proposal only after visiting this ATM.":
+    "Submit a proposal only after visiting this ATM.",
+  "This task is awaiting admin review. Do not submit another proposal.":
+    "This task is awaiting admin review. Do not submit another proposal.",
+  "Start this task before submitting a location proposal.":
+    "Start this task before submitting a location proposal.",
   "Use current GPS": "Use current GPS",
   "Capturing GPS...": "Capturing GPS...",
   "Enter coordinates manually": "Enter coordinates manually",
   "Use GPS coordinates": "Use GPS coordinates",
   "GPS accuracy: {accuracy} m": "GPS accuracy: {accuracy} m",
-  "GPS accuracy must be a finite value from 0 to 50 metres.": "GPS accuracy must be a finite value from 0 to 50 metres.",
-  "GPS accuracy is above the 50 metre limit. Capture again or enter coordinates manually.": "GPS accuracy is above the 50 metre limit. Capture again or enter coordinates manually.",
-  "Manual coordinates will be submitted as manual, without GPS accuracy.": "Manual coordinates will be submitted as manual, without GPS accuracy.",
-  "This browser does not support GPS location capture.": "This browser does not support GPS location capture.",
-  "GPS permission was denied. Allow location access and try again.": "GPS permission was denied. Allow location access and try again.",
-  "Your current location is unavailable. Check device location settings and retry.": "Your current location is unavailable. Check device location settings and retry.",
-  "GPS capture timed out. Move to an area with a clear signal and retry.": "GPS capture timed out. Move to an area with a clear signal and retry.",
+  "GPS accuracy must be a finite value from 0 to 50 metres.":
+    "GPS accuracy must be a finite value from 0 to 50 metres.",
+  "GPS accuracy is above the 50 metre limit. Capture again or enter coordinates manually.":
+    "GPS accuracy is above the 50 metre limit. Capture again or enter coordinates manually.",
+  "Manual coordinates will be submitted as manual, without GPS accuracy.":
+    "Manual coordinates will be submitted as manual, without GPS accuracy.",
+  "This browser does not support GPS location capture.":
+    "This browser does not support GPS location capture.",
+  "GPS permission was denied. Allow location access and try again.":
+    "GPS permission was denied. Allow location access and try again.",
+  "Your current location is unavailable. Check device location settings and retry.":
+    "Your current location is unavailable. Check device location settings and retry.",
+  "GPS capture timed out. Move to an area with a clear signal and retry.":
+    "GPS capture timed out. Move to an area with a clear signal and retry.",
   "Submit for admin review": "Submit for admin review",
   "Submitting proposal...": "Submitting proposal...",
   "Awaiting admin review": "Awaiting admin review",
-  "Location proposal submitted for admin review.": "Location proposal submitted for admin review.",
-  "Proposal submitted, but task status could not be refreshed. Refresh the task list.": "Proposal submitted, but task status could not be refreshed. Refresh the task list.",
-  "This task was rejected. Contact an admin to reopen or reassign it before submitting again.": "This task was rejected. Contact an admin to reopen or reassign it before submitting again.",
-  "The task is no longer available or assigned to you. Refresh the task list.": "The task is no longer available or assigned to you. Refresh the task list.",
-  "Location proposal submission failed.": "Location proposal submission failed.",
+  "Location proposal submitted for admin review.":
+    "Location proposal submitted for admin review.",
+  "Proposal submitted, but task status could not be refreshed. Refresh the task list.":
+    "Proposal submitted, but task status could not be refreshed. Refresh the task list.",
+  "This task was rejected. Contact an admin to reopen or reassign it before submitting again.":
+    "This task was rejected. Contact an admin to reopen or reassign it before submitting again.",
+  "The task is no longer available or assigned to you. Refresh the task list.":
+    "The task is no longer available or assigned to you. Refresh the task list.",
+  "Location proposal submission failed.":
+    "Location proposal submission failed.",
   "Enter both latitude and longitude.": "Enter both latitude and longitude.",
-  "Coordinates must be valid finite numbers.": "Coordinates must be valid finite numbers.",
-  "Latitude must be between -90 and 90.": "Latitude must be between -90 and 90.",
-  "Longitude must be between -180 and 180.": "Longitude must be between -180 and 180.",
+  "Coordinates must be valid finite numbers.":
+    "Coordinates must be valid finite numbers.",
+  "Latitude must be between -90 and 90.":
+    "Latitude must be between -90 and 90.",
+  "Longitude must be between -180 and 180.":
+    "Longitude must be between -180 and 180.",
   "Dashboard navigation": "Dashboard",
   "My Jobs navigation": "My Jobs",
   "My AMC visits navigation": "My AMC visits",
   "Attendance navigation": "Attendance",
+  "Mileage navigation": "Mileage",
   "Main menu": "Main menu",
   Attendance: "Attendance",
   "Employee navigation": "Employee navigation",
@@ -177,12 +249,15 @@ export const employeeEnglish = {
   "Completed jobs": "Completed",
   "Completion progress": "Completion progress",
   "{percent}% completed": "{percent}% completed",
-  "{completed} of {eligible} eligible jobs completed": "{completed} of {eligible} eligible jobs completed",
+  "{completed} of {eligible} eligible jobs completed":
+    "{completed} of {eligible} eligible jobs completed",
   "No eligible assigned jobs yet.": "No eligible assigned jobs yet.",
   "Assigned vs completed": "Assigned vs completed",
   "Last seven days in Asia/Kolkata": "Last seven days in Asia/Kolkata",
-  "No job activity in the last seven days.": "No job activity in the last seven days.",
-  "Assigned and completed jobs for the last seven days": "Assigned and completed jobs for the last seven days",
+  "No job activity in the last seven days.":
+    "No job activity in the last seven days.",
+  "Assigned and completed jobs for the last seven days":
+    "Assigned and completed jobs for the last seven days",
   "Assigned jobs": "Assigned jobs",
   "Completed job count": "Completed jobs",
   Resumed: "Resumed",
@@ -194,8 +269,10 @@ export const employeeEnglish = {
   "Details: {details}": "Details: {details}",
   "GPS Distance: {distance} m": "GPS Distance: {distance} m",
   "GPS Accuracy: {accuracy} m": "GPS Accuracy: {accuracy} m",
-  "Employee Location: {latitude}, {longitude}": "Employee Location: {latitude}, {longitude}",
-  "ATM Location: {latitude}, {longitude}": "ATM Location: {latitude}, {longitude}",
+  "Employee Location: {latitude}, {longitude}":
+    "Employee Location: {latitude}, {longitude}",
+  "ATM Location: {latitude}, {longitude}":
+    "ATM Location: {latitude}, {longitude}",
   "Admin Remarks": "Admin Remarks",
   "Assigned employee updated": "Assigned employee updated",
   "Previous employee updated": "Previous employee updated",
@@ -205,9 +282,9 @@ export const employeeEnglish = {
   "Reassignment Reason": "Reassignment Reason",
   "New employee assigned": "New employee assigned",
   "details recorded": "details recorded",
-  "தமிழ்": "தமிழ்",
+  தமிழ்: "தமிழ்",
   English: "English",
-  "Language": "Language",
+  Language: "Language",
   "Language preference": "Language preference",
   "Welcome, {name}": "Welcome, {name}",
   "Employee code: {code}": "Employee code: {code}",
@@ -222,11 +299,14 @@ export const employeeEnglish = {
   "Total currently assigned": "Total currently assigned",
   "View jobs with status: {status}": "View jobs with status: {status}",
   "View all assigned jobs": "View all assigned jobs",
-  "No jobs are currently assigned to you.": "No jobs are currently assigned to you.",
-  "Assigned-job information is not available.": "Assigned-job information is not available.",
+  "No jobs are currently assigned to you.":
+    "No jobs are currently assigned to you.",
+  "Assigned-job information is not available.":
+    "Assigned-job information is not available.",
   "Currently assigned jobs by status": "Currently assigned jobs by status",
   "Job Performance": "Job Performance",
-  "Completion submissions are events; rework may count more than once.": "Completion submissions are events; rework may count more than once.",
+  "Completion submissions are events; rework may count more than once.":
+    "Completion submissions are events; rework may count more than once.",
   "Performance period": "Performance period",
   "This week": "This week",
   "This month": "This month",
@@ -235,16 +315,20 @@ export const employeeEnglish = {
   "Could not load job performance.": "Could not load job performance.",
   "Completion events": "Completion events",
   "Average current-attempt duration": "Average current-attempt duration",
-  "Based on {count} currently assigned completed job(s) with valid timestamps.": "Based on {count} currently assigned completed job(s) with valid timestamps.",
-  "Performance information is not available.": "Performance information is not available.",
+  "Based on {count} currently assigned completed job(s) with valid timestamps.":
+    "Based on {count} currently assigned completed job(s) with valid timestamps.",
+  "Performance information is not available.":
+    "Performance information is not available.",
   "AMC Progress": "AMC Progress",
-  "Monthly AMC records assigned to you.": "Monthly AMC records assigned to you.",
+  "Monthly AMC records assigned to you.":
+    "Monthly AMC records assigned to you.",
   Month: "Month",
   Year: "Year",
   "Loading AMC progress...": "Loading AMC progress...",
   "Could not load your AMC progress.": "Could not load your AMC progress.",
   "No AMC records for this period.": "No AMC records for this period.",
-  "There are no monthly AMC visits assigned to you for {period}.": "There are no monthly AMC visits assigned to you for {period}.",
+  "There are no monthly AMC visits assigned to you for {period}.":
+    "There are no monthly AMC visits assigned to you for {period}.",
   Completed: "Completed",
   Pending: "Pending",
   Assigned: "Assigned",
@@ -275,8 +359,10 @@ export const employeeEnglish = {
   Status: "Status",
   "All statuses": "All statuses",
   "Clear status filter": "Clear status filter",
-  "The requested status filter is invalid.": "The requested status filter is invalid.",
-  "No jobs on this page match your search.": "No jobs on this page match your search.",
+  "The requested status filter is invalid.":
+    "The requested status filter is invalid.",
+  "No jobs on this page match your search.":
+    "No jobs on this page match your search.",
   "Clear search": "Clear search",
   "No jobs assigned yet.": "No jobs assigned yet.",
   "No jobs found for this status.": "No jobs found for this status.",
@@ -297,18 +383,24 @@ export const employeeEnglish = {
   "Assigned jobs: {count}": "Assigned jobs: {count}",
   Previous: "Previous",
   Next: "Next",
-  "Record your workday and review attendance history.": "Record your workday and review attendance history.",
+  "Record your workday and review attendance history.":
+    "Record your workday and review attendance history.",
   "Back to Dashboard": "Back to Dashboard",
   "Current attendance": "Current attendance",
   "Checking your current status...": "Checking your current status...",
-  "Current attendance status is unavailable.": "Current attendance status is unavailable.",
-  "Multiple open records need administrator attention.": "Multiple open records need administrator attention.",
+  "Current attendance status is unavailable.":
+    "Current attendance status is unavailable.",
+  "Multiple open records need administrator attention.":
+    "Multiple open records need administrator attention.",
   "Checked in for {date}": "Checked in for {date}",
-  "Today's attendance session is closed.": "Today's attendance session is closed.",
-  "No open session found in the latest 100 records.": "No open session found in the latest 100 records.",
+  "Today's attendance session is closed.":
+    "Today's attendance session is closed.",
+  "No open session found in the latest 100 records.":
+    "No open session found in the latest 100 records.",
   "No open attendance session.": "No open attendance session.",
   "Check-in: {time}": "Check-in: {time}",
-  "Older history was not scanned. Use Check Out if you need to close an earlier overnight session.": "Older history was not scanned. Use Check Out if you need to close an earlier overnight session.",
+  "Older history was not scanned. Use Check Out if you need to close an earlier overnight session.":
+    "Older history was not scanned. Use Check Out if you need to close an earlier overnight session.",
   "Retry status": "Retry status",
   "Check In": "Check In",
   "Checking in...": "Checking in...",
@@ -322,11 +414,13 @@ export const employeeEnglish = {
   "From date": "From date",
   "To date": "To date",
   "Clear dates": "Clear dates",
-  "From date must be on or before to date.": "From date must be on or before to date.",
+  "From date must be on or before to date.":
+    "From date must be on or before to date.",
   "Loading attendance history...": "Loading attendance history...",
   "Could not load attendance history.": "Could not load attendance history.",
   "No attendance records": "No attendance records",
-  "Showing {from}–{to} of {total} records": "Showing {from}–{to} of {total} records",
+  "Showing {from}–{to} of {total} records":
+    "Showing {from}–{to} of {total} records",
   Date: "Date",
   "Check in": "Check in",
   "Check out": "Check out",
@@ -338,8 +432,10 @@ export const employeeEnglish = {
   Absent: "Absent",
   Complete: "Complete",
   Open: "Open",
-  "No attendance records match the selected dates.": "No attendance records match the selected dates.",
-  "The attendance request could not be completed. Please try again.": "The attendance request could not be completed. Please try again.",
+  "No attendance records match the selected dates.":
+    "No attendance records match the selected dates.",
+  "The attendance request could not be completed. Please try again.":
+    "The attendance request could not be completed. Please try again.",
   "Accept Job": "Accept Job",
   "Start Job": "Start Job",
   "Resume Job": "Resume Job",
@@ -347,10 +443,14 @@ export const employeeEnglish = {
   "Put Job On Hold": "Put Job On Hold",
   "Put this job on hold?": "Put this job on hold?",
   "Hold reason (optional)": "Hold reason (optional)",
-  "Saved before photos, work details, and materials will be preserved. Resume the job when you are ready to continue.": "Saved before photos, work details, and materials will be preserved. Resume the job when you are ready to continue.",
-  "Selected photos have not been uploaded and will be discarded when this job is put on hold.": "Selected photos have not been uploaded and will be discarded when this job is put on hold.",
-  "You have selected photos that have not been uploaded. Leave this job and discard them?": "You have selected photos that have not been uploaded. Leave this job and discard them?",
-  "Upload all 3 Before photos to enable putting this job on hold.": "Upload all 3 Before photos to enable putting this job on hold.",
+  "Saved before photos, work details, and materials will be preserved. Resume the job when you are ready to continue.":
+    "Saved before photos, work details, and materials will be preserved. Resume the job when you are ready to continue.",
+  "Selected photos have not been uploaded and will be discarded when this job is put on hold.":
+    "Selected photos have not been uploaded and will be discarded when this job is put on hold.",
+  "You have selected photos that have not been uploaded. Leave this job and discard them?":
+    "You have selected photos that have not been uploaded. Leave this job and discard them?",
+  "Upload all 3 Before photos to enable putting this job on hold.":
+    "Upload all 3 Before photos to enable putting this job on hold.",
   "Complete Job": "Complete Job",
   "No hold reason was recorded.": "No hold reason was recorded.",
   "Remaining work": "Remaining work",
@@ -364,7 +464,8 @@ export const employeeEnglish = {
   "Job not found": "Job not found",
   "Job details unavailable": "Job details unavailable",
   "This job may have been removed.": "This job may have been removed.",
-  "The job could not be loaded. Please try again.": "The job could not be loaded. Please try again.",
+  "The job could not be loaded. Please try again.":
+    "The job could not be loaded. Please try again.",
   "Back to Jobs": "Back to Jobs",
   "Job Information": "Job Information",
   "Job ID": "Job ID",
@@ -383,7 +484,7 @@ export const employeeEnglish = {
   Region: "Region",
   "ATM status": "ATM status",
   "Installation type": "Installation type",
-  "Assignment": "Assignment",
+  Assignment: "Assignment",
   Employee: "Employee",
   "Employee code": "Employee code",
   Phone: "Phone",
@@ -407,41 +508,58 @@ export const employeeEnglish = {
   "Material usage recorded.": "Material usage recorded.",
   "Material usage removed.": "Material usage removed.",
   "Recorded materials": "Recorded materials",
-  "Could not load material history. Check your connection and retry.": "Could not load material history. Check your connection and retry.",
-  "This Job is no longer assigned to you, so its material history is unavailable.": "This Job is no longer assigned to you, so its material history is unavailable.",
+  "Could not load material history. Check your connection and retry.":
+    "Could not load material history. Check your connection and retry.",
+  "This Job is no longer assigned to you, so its material history is unavailable.":
+    "This Job is no longer assigned to you, so its material history is unavailable.",
   "This Job is no longer available.": "This Job is no longer available.",
   "Field Work": "Field Work",
   "Continue fieldwork": "Continue fieldwork",
   "Fieldwork progress": "Fieldwork progress",
-  "{count} of {required} photos uploaded": "{count} of {required} photos uploaded",
+  "{count} of {required} photos uploaded":
+    "{count} of {required} photos uploaded",
   "GPS location": "GPS location",
-  "The server checks your submitted location against the ATM before completing the job.": "The server checks your submitted location against the ATM before completing the job.",
+  "The server checks your submitted location against the ATM before completing the job.":
+    "The server checks your submitted location against the ATM before completing the job.",
   "Getting location...": "Getting location...",
   "Refresh location": "Refresh location",
   "Get current location": "Get current location",
-  "Location permission is required to continue. Allow location access in your browser and try again.": "Location permission is required to continue. Allow location access in your browser and try again.",
-  "Your current location is unavailable. Check your device location settings and retry.": "Your current location is unavailable. Check your device location settings and retry.",
-  "Getting your location took too long. Move to an area with a clear GPS signal and retry.": "Getting your location took too long. Move to an area with a clear GPS signal and retry.",
-  "Could not get your location. Please retry.": "Could not get your location. Please retry.",
-  "This browser does not support location services.": "This browser does not support location services.",
-  "ATM location is not configured. Acquire your current location and set it as the ATM location before completing this job.": "ATM location is not configured. Acquire your current location and set it as the ATM location before completing this job.",
-  "ATM location is not configured. Acquire your current location and submit it for Admin or SuperAdmin approval before completing this job.": "ATM location is not configured. Acquire your current location and submit it for Admin or SuperAdmin approval before completing this job.",
+  "Location permission is required to continue. Allow location access in your browser and try again.":
+    "Location permission is required to continue. Allow location access in your browser and try again.",
+  "Your current location is unavailable. Check your device location settings and retry.":
+    "Your current location is unavailable. Check your device location settings and retry.",
+  "Getting your location took too long. Move to an area with a clear GPS signal and retry.":
+    "Getting your location took too long. Move to an area with a clear GPS signal and retry.",
+  "Could not get your location. Please retry.":
+    "Could not get your location. Please retry.",
+  "This browser does not support location services.":
+    "This browser does not support location services.",
+  "ATM location is not configured. Acquire your current location and set it as the ATM location before completing this job.":
+    "ATM location is not configured. Acquire your current location and set it as the ATM location before completing this job.",
+  "ATM location is not configured. Acquire your current location and submit it for Admin or SuperAdmin approval before completing this job.":
+    "ATM location is not configured. Acquire your current location and submit it for Admin or SuperAdmin approval before completing this job.",
   "Within 20 m": "Within 20 m",
   "Outside 20 m": "Outside 20 m",
-  "Set Current Location as ATM Location": "Set Current Location as ATM Location",
+  "Set Current Location as ATM Location":
+    "Set Current Location as ATM Location",
   "Setting ATM location...": "Setting ATM location...",
-  "ATM location configured successfully.": "ATM location configured successfully.",
-  "ATM location request submitted for review.": "ATM location request submitted for review.",
+  "ATM location configured successfully.":
+    "ATM location configured successfully.",
+  "ATM location request submitted for review.":
+    "ATM location request submitted for review.",
   "Submitting location request...": "Submitting location request...",
-  "Submit Current Location for ATM Review": "Submit Current Location for ATM Review",
+  "Submit Current Location for ATM Review":
+    "Submit Current Location for ATM Review",
   "Cleaning photos": "Cleaning photos",
   "Before photos": "Before photos",
   "After photos": "After photos",
   "Missing photo evidence": "Missing photo evidence",
   "{count}/{required} saved": "{count}/{required} saved",
   "{count} selected": "{count} selected",
-  "{type}: {count}/{required} saved; {remaining} remaining": "{type}: {count}/{required} saved; {remaining} remaining",
-  "Selected photos are previews only. Upload them to save.": "Selected photos are previews only. Upload them to save.",
+  "{type}: {count}/{required} saved; {remaining} remaining":
+    "{type}: {count}/{required} saved; {remaining} remaining",
+  "Selected photos are previews only. Upload them to save.":
+    "Selected photos are previews only. Upload them to save.",
   Before: "Before",
   After: "After",
   Replace: "Replace",
@@ -454,34 +572,52 @@ export const employeeEnglish = {
   "Uploading photos...": "Uploading photos...",
   "Uploading {type} photos...": "Uploading {type} photos...",
   "Preparing {type} photos...": "Preparing {type} photos...",
-  "The selected image could not be prepared for upload.": "The selected image could not be prepared for upload.",
-  "Photo upload requires verification before retrying.": "Photo upload requires verification before retrying.",
+  "The selected image could not be prepared for upload.":
+    "The selected image could not be prepared for upload.",
+  "Photo upload requires verification before retrying.":
+    "Photo upload requires verification before retrying.",
   "Waiting to upload": "Waiting to upload",
-  "The server could not confirm the uploaded {type} photo. Verify the saved photo before retrying.": "The server could not confirm the uploaded {type} photo. Verify the saved photo before retrying.",
-  "The server could not confirm the uploaded {type} photo. Verify the upload before retrying.": "The server could not confirm the uploaded {type} photo. Verify the upload before retrying.",
+  "The server could not confirm the uploaded {type} photo. Verify the saved photo before retrying.":
+    "The server could not confirm the uploaded {type} photo. Verify the saved photo before retrying.",
+  "The server could not confirm the uploaded {type} photo. Verify the upload before retrying.":
+    "The server could not confirm the uploaded {type} photo. Verify the upload before retrying.",
   "Uploaded; finalization is pending.": "Uploaded; finalization is pending.",
-  "Some uploaded photos are awaiting finalization.": "Some uploaded photos are awaiting finalization.",
-  "Verification requires administrator attention.": "Verification requires administrator attention.",
+  "Some uploaded photos are awaiting finalization.":
+    "Some uploaded photos are awaiting finalization.",
+  "Verification requires administrator attention.":
+    "Verification requires administrator attention.",
   "Upload failed and can be retried.": "Upload failed and can be retried.",
   "Upload is being processed.": "Upload is being processed.",
-  "{type} photo uploaded; finalization is pending.": "{type} photo uploaded; finalization is pending.",
+  "{type} photo uploaded; finalization is pending.":
+    "{type} photo uploaded; finalization is pending.",
   "{type} photo uploaded and saved.": "{type} photo uploaded and saved.",
-  "Photo upload response was not confirmed. Verify the saved photo before retrying.": "Photo upload response was not confirmed. Verify the saved photo before retrying.",
+  "Photo upload response was not confirmed. Verify the saved photo before retrying.":
+    "Photo upload response was not confirmed. Verify the saved photo before retrying.",
   "{type} photos uploaded and saved.": "{type} photos uploaded and saved.",
-  "The server could not confirm the uploaded {type} photos. Refresh the job before retrying.": "The server could not confirm the uploaded {type} photos. Refresh the job before retrying.",
-  "The upload was accepted, but the saved {type} photo count could not be confirmed after refreshing. Reload the job before continuing.": "The upload was accepted, but the saved {type} photo count could not be confirmed after refreshing. Reload the job before continuing.",
-  "Photos were saved, but the job could not be refreshed. Reload before continuing.": "Photos were saved, but the job could not be refreshed. Reload before continuing.",
-  "{saved} selected {type} photo(s) were saved; the remaining selection is ready to retry.": "{saved} selected {type} photo(s) were saved; the remaining selection is ready to retry.",
-  "All required Before and After photos are uploaded.": "All required Before and After photos are uploaded.",
-  "Acquire your GPS location to complete the job.": "Acquire your GPS location to complete the job.",
-  "Get your current location to complete this job.": "Get your current location to complete this job.",
-  "Move within 20 m of the ATM and refresh your location to continue.": "Move within 20 m of the ATM and refresh your location to continue.",
+  "The server could not confirm the uploaded {type} photos. Refresh the job before retrying.":
+    "The server could not confirm the uploaded {type} photos. Refresh the job before retrying.",
+  "The upload was accepted, but the saved {type} photo count could not be confirmed after refreshing. Reload the job before continuing.":
+    "The upload was accepted, but the saved {type} photo count could not be confirmed after refreshing. Reload the job before continuing.",
+  "Photos were saved, but the job could not be refreshed. Reload before continuing.":
+    "Photos were saved, but the job could not be refreshed. Reload before continuing.",
+  "{saved} selected {type} photo(s) were saved; the remaining selection is ready to retry.":
+    "{saved} selected {type} photo(s) were saved; the remaining selection is ready to retry.",
+  "All required Before and After photos are uploaded.":
+    "All required Before and After photos are uploaded.",
+  "Acquire your GPS location to complete the job.":
+    "Acquire your GPS location to complete the job.",
+  "Get your current location to complete this job.":
+    "Get your current location to complete this job.",
+  "Move within 20 m of the ATM and refresh your location to continue.":
+    "Move within 20 m of the ATM and refresh your location to continue.",
   "Complete this job?": "Complete this job?",
-  "The server will validate your GPS coordinates. Once completed, you cannot continue working on this job unless an authorized user changes its status.": "The server will validate your GPS coordinates. Once completed, you cannot continue working on this job unless an authorized user changes its status.",
+  "The server will validate your GPS coordinates. Once completed, you cannot continue working on this job unless an authorized user changes its status.":
+    "The server will validate your GPS coordinates. Once completed, you cannot continue working on this job unless an authorized user changes its status.",
   Cancel: "Cancel",
   "Confirm completion": "Confirm completion",
   "Job Photos": "Job Photos",
-  "Before and after photos for this job.": "Before and after photos for this job.",
+  "Before and after photos for this job.":
+    "Before and after photos for this job.",
   "No photos uploaded.": "No photos uploaded.",
   "Full-size photo": "Full-size photo",
   "Close photo review": "Close photo review",
@@ -490,28 +626,45 @@ export const employeeEnglish = {
   "The request could not be completed.": "The request could not be completed.",
   "Preview of {type} photo: {filename}": "Preview of {type} photo: {filename}",
   "Remove {filename}": "Remove {filename}",
-  "{filename}: use a JPEG, PNG, or WebP image.": "{filename}: use a JPEG, PNG, or WebP image.",
-  "{filename}: maximum file size is 5 MB.": "{filename}: maximum file size is 5 MB.",
-  "Only the first valid image was used to replace this photo.": "Only the first valid image was used to replace this photo.",
-  "{filename}: this file is already selected.": "{filename}: this file is already selected.",
-  "{count} selected {type} photo(s) were not added; only {slots} more can be selected.": "{count} selected {type} photo(s) were not added; only {slots} more can be selected.",
-  "You are not assigned to this ATM. Ask an administrator to assign this ATM to you.": "You are not assigned to this ATM. Ask an administrator to assign this ATM to you.",
-  "Select {count} more {type} photo(s) before uploading.": "Select {count} more {type} photo(s) before uploading.",
-  "The server did not confirm all required {type} photos. Refresh the job and retry any missing photos.": "The server did not confirm all required {type} photos. Refresh the job and retry any missing photos.",
-  "The uploaded photos could not be confirmed. Refresh the job before retrying.": "The uploaded photos could not be confirmed. Refresh the job before retrying.",
-  "{message} The saved photo status could not be refreshed; reload the job before retrying.": "{message} The saved photo status could not be refreshed; reload the job before retrying.",
-  "Location acquired · accuracy ±{accuracy} m": "Location acquired · accuracy ±{accuracy} m",
-  "GPS accuracy is low. Retry from a location with a clearer signal if possible.": "GPS accuracy is low. Retry from a location with a clearer signal if possible.",
-  "GPS accuracy must be 50 meters or better. Retry GPS capture in a clearer area before submitting the location request.": "GPS accuracy must be 50 meters or better. Retry GPS capture in a clearer area before submitting the location request.",
+  "{filename}: use a JPEG, PNG, or WebP image.":
+    "{filename}: use a JPEG, PNG, or WebP image.",
+  "{filename}: maximum file size is 5 MB.":
+    "{filename}: maximum file size is 5 MB.",
+  "Only the first valid image was used to replace this photo.":
+    "Only the first valid image was used to replace this photo.",
+  "{filename}: this file is already selected.":
+    "{filename}: this file is already selected.",
+  "{count} selected {type} photo(s) were not added; only {slots} more can be selected.":
+    "{count} selected {type} photo(s) were not added; only {slots} more can be selected.",
+  "You are not assigned to this ATM. Ask an administrator to assign this ATM to you.":
+    "You are not assigned to this ATM. Ask an administrator to assign this ATM to you.",
+  "Select {count} more {type} photo(s) before uploading.":
+    "Select {count} more {type} photo(s) before uploading.",
+  "The server did not confirm all required {type} photos. Refresh the job and retry any missing photos.":
+    "The server did not confirm all required {type} photos. Refresh the job and retry any missing photos.",
+  "The uploaded photos could not be confirmed. Refresh the job before retrying.":
+    "The uploaded photos could not be confirmed. Refresh the job before retrying.",
+  "{message} The saved photo status could not be refreshed; reload the job before retrying.":
+    "{message} The saved photo status could not be refreshed; reload the job before retrying.",
+  "Location acquired · accuracy ±{accuracy} m":
+    "Location acquired · accuracy ±{accuracy} m",
+  "GPS accuracy is low. Retry from a location with a clearer signal if possible.":
+    "GPS accuracy is low. Retry from a location with a clearer signal if possible.",
+  "GPS accuracy must be 50 meters or better. Retry GPS capture in a clearer area before submitting the location request.":
+    "GPS accuracy must be 50 meters or better. Retry GPS capture in a clearer area before submitting the location request.",
   "{type}: {count}/": "{type}: {count}/",
   "Take photo": "Take photo",
   "Choose photos": "Choose photos",
-  "{count} photo(s) already uploaded and saved.": "{count} photo(s) already uploaded and saved.",
-  "{type} photos uploaded successfully.": "{type} photos uploaded successfully.",
+  "{count} photo(s) already uploaded and saved.":
+    "{count} photo(s) already uploaded and saved.",
+  "{type} photos uploaded successfully.":
+    "{type} photos uploaded successfully.",
   "Uploading {type} photos: {count}/": "Uploading {type} photos: {count}/",
-  "All 3 Before and 3 After photos are uploaded.": "All 3 Before and 3 After photos are uploaded.",
+  "All 3 Before and 3 After photos are uploaded.":
+    "All 3 Before and 3 After photos are uploaded.",
   "AMC progress is not available.": "AMC progress is not available.",
-  "{completed} completed of {total} assigned AMC record(s)": "{completed} completed of {total} assigned AMC record(s)",
+  "{completed} completed of {total} assigned AMC record(s)":
+    "{completed} completed of {total} assigned AMC record(s)",
   "Loading...": "Loading...",
   "Additional ATM information": "Additional ATM information",
   Name: "Name",
@@ -571,42 +724,60 @@ export const employeeEnglish = {
   "Job cancelled.": "Job cancelled.",
   "Stop (Put On Hold)": "Stop (Put On Hold)",
   "Reject Job": "Reject Job",
-  "This job will move to Rejected. You may optionally provide a reason.": "This job will move to Rejected. You may optionally provide a reason.",
+  "This job will move to Rejected. You may optionally provide a reason.":
+    "This job will move to Rejected. You may optionally provide a reason.",
   "Confirm Reject": "Confirm Reject",
-  "Cancel {job}? This job will remain in history with its material and cost records intact. Any linked complaint will retain this job in its history; an active complaint will reopen for replacement work.": "Cancel {job}? This job will remain in history with its material and cost records intact. Any linked complaint will retain this job in its history; an active complaint will reopen for replacement work.",
+  "Cancel {job}? This job will remain in history with its material and cost records intact. Any linked complaint will retain this job in its history; an active complaint will reopen for replacement work.":
+    "Cancel {job}? This job will remain in history with its material and cost records intact. Any linked complaint will retain this job in its history; an active complaint will reopen for replacement work.",
   "Keep Job": "Keep Job",
   "Confirm Cancellation": "Confirm Cancellation",
   "Remove material usage?": "Remove material usage?",
-  "This removes the recorded {item} entry from this Job only. It will not change the Item Master.": "This removes the recorded {item} entry from this Job only. It will not change the Item Master.",
+  "This removes the recorded {item} entry from this Job only. It will not change the Item Master.":
+    "This removes the recorded {item} entry from this Job only. It will not change the Item Master.",
   "Keep entry": "Keep entry",
   "Remove entry": "Remove entry",
   material: "material",
   "Remove {item} usage": "Remove {item} usage",
-  "This Job is no longer assigned to you. Refresh the Job before trying again.": "This Job is no longer assigned to you. Refresh the Job before trying again.",
-  "The Job or selected Item is no longer available. Refresh and choose an active Item.": "The Job or selected Item is no longer available. Refresh and choose an active Item.",
-  "This Job is no longer in progress. Refresh the Job to see its current status.": "This Job is no longer in progress. Refresh the Job to see its current status.",
-  "Check the selected Item and quantity, then try again.": "Check the selected Item and quantity, then try again.",
-  "Could not record material usage. Check your connection and try again.": "Could not record material usage. Check your connection and try again.",
-  "Material usage can only be removed while the Job is in progress.": "Material usage can only be removed while the Job is in progress.",
-  "This Job is no longer assigned to you.": "This Job is no longer assigned to you.",
-  "Could not remove material usage. Refresh and try again.": "Could not remove material usage. Refresh and try again.",
+  "This Job is no longer assigned to you. Refresh the Job before trying again.":
+    "This Job is no longer assigned to you. Refresh the Job before trying again.",
+  "The Job or selected Item is no longer available. Refresh and choose an active Item.":
+    "The Job or selected Item is no longer available. Refresh and choose an active Item.",
+  "This Job is no longer in progress. Refresh the Job to see its current status.":
+    "This Job is no longer in progress. Refresh the Job to see its current status.",
+  "Check the selected Item and quantity, then try again.":
+    "Check the selected Item and quantity, then try again.",
+  "Could not record material usage. Check your connection and try again.":
+    "Could not record material usage. Check your connection and try again.",
+  "Material usage can only be removed while the Job is in progress.":
+    "Material usage can only be removed while the Job is in progress.",
+  "This Job is no longer assigned to you.":
+    "This Job is no longer assigned to you.",
+  "Could not remove material usage. Refresh and try again.":
+    "Could not remove material usage. Refresh and try again.",
   "Select an Item.": "Select an Item.",
-  "Quantity must be a finite number greater than zero.": "Quantity must be a finite number greater than zero.",
-  "New material usage can only be recorded while the Job is in progress.": "New material usage can only be recorded while the Job is in progress.",
+  "Quantity must be a finite number greater than zero.":
+    "Quantity must be a finite number greater than zero.",
+  "New material usage can only be recorded while the Job is in progress.":
+    "New material usage can only be recorded while the Job is in progress.",
   "Loading material history...": "Loading material history...",
-  "No materials have been recorded for this Job.": "No materials have been recorded for this Job.",
+  "No materials have been recorded for this Job.":
+    "No materials have been recorded for this Job.",
   "Review {type} photo {number}": "Review {type} photo {number}",
   "{type} photo {number}": "{type} photo {number}",
   "{count} / 3 required": "{count} / 3 required",
-  "Open {type} photo {number} full size": "Open {type} photo {number} full size",
+  "Open {type} photo {number} full size":
+    "Open {type} photo {number} full size",
   "No photo available": "No photo available",
-  "Select three Before and three After photos. Review the previews, then upload both groups.": "Select three Before and three After photos. Review the previews, then upload both groups.",
+  "Select three Before and three After photos. Review the previews, then upload both groups.":
+    "Select three Before and three After photos. Review the previews, then upload both groups.",
   "Replace a selected {type} photo": "Replace a selected {type} photo",
   "ATM ID": "ATM ID",
   "Loading job details...": "Loading job details...",
   "Additional Workers": "Additional Workers",
-  "External workers who accompanied you on this Job.": "External workers who accompanied you on this Job.",
-  "No additional workers have been recorded.": "No additional workers have been recorded.",
+  "External workers who accompanied you on this Job.":
+    "External workers who accompanied you on this Job.",
+  "No additional workers have been recorded.":
+    "No additional workers have been recorded.",
   "Add worker": "Add worker",
   "Edit worker": "Edit worker",
   "Remove worker": "Remove worker",
@@ -615,31 +786,44 @@ export const employeeEnglish = {
   "Worker type / name": "Worker type / name",
   "Notes (optional)": "Notes (optional)",
   "Enter the worker type or name.": "Enter the worker type or name.",
-  "Worker type must be 80 characters or fewer.": "Worker type must be 80 characters or fewer.",
-  "Quantity must be a positive whole number.": "Quantity must be a positive whole number.",
-  "Notes must be 300 characters or fewer.": "Notes must be 300 characters or fewer.",
+  "Worker type must be 80 characters or fewer.":
+    "Worker type must be 80 characters or fewer.",
+  "Quantity must be a positive whole number.":
+    "Quantity must be a positive whole number.",
+  "Notes must be 300 characters or fewer.":
+    "Notes must be 300 characters or fewer.",
   "Saving...": "Saving...",
   "Update worker": "Update worker",
   "Add worker entry": "Add worker entry",
-  "Maximum of 20 worker entries reached.": "Maximum of 20 worker entries reached.",
-  "Additional workers can only be changed on an assigned Job in progress.": "Additional workers can only be changed on an assigned Job in progress.",
-  "Job version unavailable. Refresh before managing additional workers.": "Job version unavailable. Refresh before managing additional workers.",
+  "Maximum of 20 worker entries reached.":
+    "Maximum of 20 worker entries reached.",
+  "Additional workers can only be changed on an assigned Job in progress.":
+    "Additional workers can only be changed on an assigned Job in progress.",
+  "Job version unavailable. Refresh before managing additional workers.":
+    "Job version unavailable. Refresh before managing additional workers.",
   "Refresh Job": "Refresh Job",
   "Refreshing...": "Refreshing...",
-  "Could not refresh the latest Job data. Your draft is still here.": "Could not refresh the latest Job data. Your draft is still here.",
-  "This Job changed elsewhere. Refresh the latest data before saving again. Your draft has been kept.": "This Job changed elsewhere. Refresh the latest data before saving again. Your draft has been kept.",
-  "This Job is no longer assigned to you or cannot be changed in its current status. Refresh the Job.": "This Job is no longer assigned to you or cannot be changed in its current status. Refresh the Job.",
-  "Job or worker entry no longer exists. Refresh the Job.": "Job or worker entry no longer exists. Refresh the Job.",
-  "Check worker type, quantity, and notes, then try again.": "Check worker type, quantity, and notes, then try again.",
-  "Could not save worker details. Check your connection and try again.": "Could not save worker details. Check your connection and try again.",
+  "Could not refresh the latest Job data. Your draft is still here.":
+    "Could not refresh the latest Job data. Your draft is still here.",
+  "This Job changed elsewhere. Refresh the latest data before saving again. Your draft has been kept.":
+    "This Job changed elsewhere. Refresh the latest data before saving again. Your draft has been kept.",
+  "This Job is no longer assigned to you or cannot be changed in its current status. Refresh the Job.":
+    "This Job is no longer assigned to you or cannot be changed in its current status. Refresh the Job.",
+  "Job or worker entry no longer exists. Refresh the Job.":
+    "Job or worker entry no longer exists. Refresh the Job.",
+  "Check worker type, quantity, and notes, then try again.":
+    "Check worker type, quantity, and notes, then try again.",
+  "Could not save worker details. Check your connection and try again.":
+    "Could not save worker details. Check your connection and try again.",
   "Worker added.": "Worker added.",
   "Worker updated.": "Worker updated.",
   "Worker removed.": "Worker removed.",
   "Remove additional worker?": "Remove additional worker?",
-  "Remove {workerType} from this Job? This cannot be undone.": "Remove {workerType} from this Job? This cannot be undone.",
+  "Remove {workerType} from this Job? This cannot be undone.":
+    "Remove {workerType} from this Job? This cannot be undone.",
   "Keep worker": "Keep worker",
   "Worker type": "Worker type",
-  "Notes": "Notes",
+  Notes: "Notes",
   "Added: {details}": "Added: {details}",
   "Before: {details}": "Before: {details}",
   "After: {details}": "After: {details}",
@@ -648,7 +832,8 @@ export const employeeEnglish = {
   "Additional Worker Added": "Additional Worker Added",
   "Additional Worker Updated": "Additional Worker Updated",
   "Additional Worker Removed": "Additional Worker Removed",
-  "Worker entries are separate from materials and job costs.": "Worker entries are separate from materials and job costs.",
+  "Worker entries are separate from materials and job costs.":
+    "Worker entries are separate from materials and job costs.",
   to: "to",
 } as const;
 
@@ -663,15 +848,19 @@ const employeeTamil: Dictionary = {
   "My AMC Visits": "எனது AMC வருகைகள்",
   "AMC Visit Details": "AMC வருகை விவரங்கள்",
   "View AMC visits": "AMC வருகைகளைப் பார்க்கவும்",
-  "Monthly maintenance tasks assigned to you.": "மாதாந்திர பராமரிப்புப் பணிகள் உங்களுக்கு ஒதுக்கப்பட்டுள்ளன.",
-  "{count} assigned for this period": "இந்தக் காலத்திற்கு {count} ஒதுக்கப்பட்டுள்ளது",
+  "Monthly maintenance tasks assigned to you.":
+    "மாதாந்திர பராமரிப்புப் பணிகள் உங்களுக்கு ஒதுக்கப்பட்டுள்ளன.",
+  "{count} assigned for this period":
+    "இந்தக் காலத்திற்கு {count} ஒதுக்கப்பட்டுள்ளது",
   "ATM unavailable": "ATM விவரம் இல்லை",
-  "Deadline": "கடைசி நாள்",
+  Deadline: "கடைசி நாள்",
   "Loading AMC visits...": "AMC வருகைகள் ஏற்றப்படுகின்றன...",
   "Could not load AMC visits.": "AMC வருகைகளைப் பெற முடியவில்லை.",
-  "No AMC visits with status {status}.": "{status} நிலையில் AMC வருகைகள் இல்லை.",
+  "No AMC visits with status {status}.":
+    "{status} நிலையில் AMC வருகைகள் இல்லை.",
   "No AMC visits for this period.": "இந்தக் காலத்திற்கு AMC வருகைகள் இல்லை.",
-  "Assigned monthly visits will appear here.": "ஒதுக்கப்பட்ட மாதாந்திர வருகைகள் இங்கே தோன்றும்.",
+  "Assigned monthly visits will appear here.":
+    "ஒதுக்கப்பட்ட மாதாந்திர வருகைகள் இங்கே தோன்றும்.",
   "AMC visit tasks": "AMC வருகைப் பணிகள்",
   "View visit": "வருகையைப் பார்க்கவும்",
   "Open visit": "வருகையைத் திறக்கவும்",
@@ -681,55 +870,80 @@ const employeeTamil: Dictionary = {
   "{item} response": "{item} பதில்",
   "{item} remarks": "{item} குறிப்புகள்",
   "Visit started": "வருகை தொடங்கியது",
-  "Photo evidence: {count}/{required} uploaded": "புகைப்படச் சான்று: {required}-இல் {count} பதிவேற்றம்",
-  "Period": "காலம்",
+  "Photo evidence: {count}/{required} uploaded":
+    "புகைப்படச் சான்று: {required}-இல் {count} பதிவேற்றம்",
+  Period: "காலம்",
   ATM: "ATM",
-  "This visit is overdue. If it has not been started, you can start it now. An already-started visit can still be completed.": "இந்த வருகை காலதாமதமானது. இன்னும் தொடங்கவில்லை என்றால் இப்போது தொடங்கலாம். ஏற்கெனவே தொடங்கிய வருகையை முடிக்கலாம்.",
-  "Visit started. Complete the checklist and upload six photos.": "வருகை தொடங்கியது. சரிபார்ப்புப் பட்டியலை முடித்து ஆறு புகைப்படங்களைப் பதிவேற்றவும்.",
-  "Complete all 11 checklist responses using the allowed options.": "அனுமதிக்கப்பட்ட விருப்பங்களைப் பயன்படுத்தி 11 சரிபார்ப்புப் பதில்களையும் நிரப்பவும்.",
+  "This visit is overdue. If it has not been started, you can start it now. An already-started visit can still be completed.":
+    "இந்த வருகை காலதாமதமானது. இன்னும் தொடங்கவில்லை என்றால் இப்போது தொடங்கலாம். ஏற்கெனவே தொடங்கிய வருகையை முடிக்கலாம்.",
+  "Visit started. Complete the checklist and upload six photos.":
+    "வருகை தொடங்கியது. சரிபார்ப்புப் பட்டியலை முடித்து ஆறு புகைப்படங்களைப் பதிவேற்றவும்.",
+  "Complete all 11 checklist responses using the allowed options.":
+    "அனுமதிக்கப்பட்ட விருப்பங்களைப் பயன்படுத்தி 11 சரிபார்ப்புப் பதில்களையும் நிரப்பவும்.",
   "Checklist saved.": "சரிபார்ப்புப் பட்டியல் சேமிக்கப்பட்டது.",
-  "Photo upload partially succeeded: {uploaded} of {selected} selected photos were saved. Refresh the visit and check the remaining photo count before selecting more.": "சில புகைப்படங்கள் மட்டும் பதிவாகின: தேர்ந்தெடுத்த {selected}-இல் {uploaded} சேமிக்கப்பட்டன. மீதமுள்ள எண்ணிக்கையைச் சரிபார்க்க வருகையைப் புதுப்பிக்கவும்.",
-  "{count} photo(s) uploaded successfully.": "{count} புகைப்படங்கள் வெற்றிகரமாகப் பதிவேற்றப்பட்டன.",
-  "Selected files were cleared to avoid duplicate uploads; refresh the visit and verify the saved photo count before trying again.": "மீண்டும் பதிவேற்றம் தவிர்க்க தேர்ந்தெடுத்த கோப்புகள் நீக்கப்பட்டன. மீண்டும் முயற்சிக்கும் முன் வருகையைப் புதுப்பித்து சேமிக்கப்பட்ட புகைப்பட எண்ணிக்கையைச் சரிபார்க்கவும்.",
+  "Photo upload partially succeeded: {uploaded} of {selected} selected photos were saved. Refresh the visit and check the remaining photo count before selecting more.":
+    "சில புகைப்படங்கள் மட்டும் பதிவாகின: தேர்ந்தெடுத்த {selected}-இல் {uploaded} சேமிக்கப்பட்டன. மீதமுள்ள எண்ணிக்கையைச் சரிபார்க்க வருகையைப் புதுப்பிக்கவும்.",
+  "{count} photo(s) uploaded successfully.":
+    "{count} புகைப்படங்கள் வெற்றிகரமாகப் பதிவேற்றப்பட்டன.",
+  "Selected files were cleared to avoid duplicate uploads; refresh the visit and verify the saved photo count before trying again.":
+    "மீண்டும் பதிவேற்றம் தவிர்க்க தேர்ந்தெடுத்த கோப்புகள் நீக்கப்பட்டன. மீண்டும் முயற்சிக்கும் முன் வருகையைப் புதுப்பித்து சேமிக்கப்பட்ட புகைப்பட எண்ணிக்கையைச் சரிபார்க்கவும்.",
   "AMC visit completed.": "AMC வருகை முடிக்கப்பட்டது.",
   "AMC visit completed successfully.": "AMC வருகை வெற்றிகரமாக முடிக்கப்பட்டது.",
-  "Location permission is required to complete this visit.": "இந்த வருகையை முடிக்க இருப்பிட அனுமதி தேவை.",
-  "Could not get your location. Check location services and try again.": "உங்கள் இருப்பிடத்தைப் பெற முடியவில்லை. இருப்பிடச் சேவையைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
+  "Location permission is required to complete this visit.":
+    "இந்த வருகையை முடிக்க இருப்பிட அனுமதி தேவை.",
+  "Could not get your location. Check location services and try again.":
+    "உங்கள் இருப்பிடத்தைப் பெற முடியவில்லை. இருப்பிடச் சேவையைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
   "Ready to begin the ATM visit?": "ATM வருகையைத் தொடங்கத் தயாரா?",
-  "Starting requires the ATM location to be configured.": "தொடங்குவதற்கு ATM இருப்பிடம் அமைக்கப்பட்டிருக்க வேண்டும்.",
+  "Starting requires the ATM location to be configured.":
+    "தொடங்குவதற்கு ATM இருப்பிடம் அமைக்கப்பட்டிருக்க வேண்டும்.",
   "Starting...": "தொடங்குகிறது...",
   "Start visit": "வருகையைத் தொடங்கவும்",
-  "Start the visit first. The checklist and photo upload will become available after the backend confirms the visit start.": "முதலில் வருகையைத் தொடங்கவும். சேவையகம் தொடக்கத்தை உறுதிப்படுத்திய பிறகு சரிபார்ப்புப் பட்டியலும் புகைப்படப் பதிவேற்றமும் கிடைக்கும்.",
+  "Start the visit first. The checklist and photo upload will become available after the backend confirms the visit start.":
+    "முதலில் வருகையைத் தொடங்கவும். சேவையகம் தொடக்கத்தை உறுதிப்படுத்திய பிறகு சரிபார்ப்புப் பட்டியலும் புகைப்படப் பதிவேற்றமும் கிடைக்கும்.",
   "Maintenance checklist": "பராமரிப்புச் சரிபார்ப்புப் பட்டியல்",
   Saved: "சேமிக்கப்பட்டது",
   "Remarks (optional)": "குறிப்புகள் (விருப்பம்)",
   "Saving checklist...": "சரிபார்ப்புப் பட்டியல் சேமிக்கப்படுகிறது...",
   "Save checklist": "சரிபார்ப்புப் பட்டியலைச் சேமிக்கவும்",
-  "Select an allowed response for all 11 items before saving.": "சேமிப்பதற்கு முன் 11 உருப்படிகளுக்கும் அனுமதிக்கப்பட்ட பதிலைத் தேர்ந்தெடுக்கவும்.",
+  "Select an allowed response for all 11 items before saving.":
+    "சேமிப்பதற்கு முன் 11 உருப்படிகளுக்கும் அனுமதிக்கப்பட்ட பதிலைத் தேர்ந்தெடுக்கவும்.",
   "Photo evidence": "புகைப்படச் சான்று",
-  "Upload six JPEG, PNG, or WebP photos, up to 5 MB each. Existing photo URLs are not rendered in this workflow.": "ஒவ்வொன்றும் அதிகபட்சம் 5 MB அளவுள்ள ஆறு JPEG, PNG அல்லது WebP புகைப்படங்களைப் பதிவேற்றவும். ஏற்கெனவே உள்ள புகைப்படங்கள் இங்கு காட்டப்படாது.",
-  "Choose photos ({count}/6 selected or uploaded)": "புகைப்படங்களைத் தேர்ந்தெடுக்கவும் (6-இல் {count} தேர்வு அல்லது பதிவேற்றம்)",
-  "Selected photo {number}: {filename}": "தேர்ந்தெடுத்த புகைப்படம் {number}: {filename}",
-  "Maximum of six photos reached. Remove a selected photo to choose another.": "அதிகபட்சம் ஆறு புகைப்படங்கள் தேர்ந்தெடுக்கப்பட்டுள்ளன. வேறொன்றைத் தேர்ந்தெடுக்க ஒன்றை நீக்கவும்.",
+  "Upload six JPEG, PNG, or WebP photos, up to 5 MB each. Existing photo URLs are not rendered in this workflow.":
+    "ஒவ்வொன்றும் அதிகபட்சம் 5 MB அளவுள்ள ஆறு JPEG, PNG அல்லது WebP புகைப்படங்களைப் பதிவேற்றவும். ஏற்கெனவே உள்ள புகைப்படங்கள் இங்கு காட்டப்படாது.",
+  "Choose photos ({count}/6 selected or uploaded)":
+    "புகைப்படங்களைத் தேர்ந்தெடுக்கவும் (6-இல் {count} தேர்வு அல்லது பதிவேற்றம்)",
+  "Selected photo {number}: {filename}":
+    "தேர்ந்தெடுத்த புகைப்படம் {number}: {filename}",
+  "Maximum of six photos reached. Remove a selected photo to choose another.":
+    "அதிகபட்சம் ஆறு புகைப்படங்கள் தேர்ந்தெடுக்கப்பட்டுள்ளன. வேறொன்றைத் தேர்ந்தெடுக்க ஒன்றை நீக்கவும்.",
   "Uploading photos: {progress}%": "புகைப்படங்கள் பதிவேற்றம்: {progress}%",
   "Photo upload progress": "புகைப்படப் பதிவேற்ற முன்னேற்றம்",
   "Uploading...": "பதிவேற்றப்படுகிறது...",
   "Uploading {progress}%": "பதிவேற்றம் {progress}%",
   "Upload selected photos": "தேர்ந்தெடுத்த புகைப்படங்களைப் பதிவேற்றவும்",
-  "Required photo evidence is uploaded.": "தேவையான புகைப்படச் சான்றுகள் பதிவேற்றப்பட்டன.",
+  "Required photo evidence is uploaded.":
+    "தேவையான புகைப்படச் சான்றுகள் பதிவேற்றப்பட்டன.",
   "This completed AMC is read-only.": "முடிக்கப்பட்ட AMC-ஐ மாற்ற முடியாது.",
   "Complete visit": "வருகையை முடிக்கவும்",
   "Visit remarks (optional)": "வருகைக் குறிப்புகள் (விருப்பம்)",
-  "Completion requires browser location permission and the server validates proximity to the configured ATM location.": "வருகையை முடிக்க உலாவி இருப்பிட அனுமதி தேவை. அமைக்கப்பட்ட ATM இருப்பிடத்திற்கான தூரத்தைச் சேவையகம் சரிபார்க்கும்.",
+  "Completion requires browser location permission and the server validates proximity to the configured ATM location.":
+    "வருகையை முடிக்க உலாவி இருப்பிட அனுமதி தேவை. அமைக்கப்பட்ட ATM இருப்பிடத்திற்கான தூரத்தைச் சேவையகம் சரிபார்க்கும்.",
   "Completing visit...": "வருகை முடிக்கப்படுகிறது...",
   "Complete AMC visit": "AMC வருகையை முடிக்கவும்",
-  "Start the visit before completing it.": "முடிப்பதற்கு முன் வருகையைத் தொடங்கவும்.",
-  "Save a valid checklist and upload all six required photos before completing.": "முடிப்பதற்கு முன் சரியான சரிபார்ப்புப் பட்டியலைச் சேமித்து தேவையான ஆறு புகைப்படங்களையும் பதிவேற்றவும்.",
-  "The AMC request could not be completed. Please try again.": "AMC கோரிக்கையை முடிக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
-  "Choose at least one photo.": "குறைந்தது ஒரு புகைப்படத்தைத் தேர்ந்தெடுக்கவும்.",
-  "You can upload {count} more photo(s).": "மேலும் {count} புகைப்படங்களைப் பதிவேற்றலாம்.",
-  "Only JPEG, PNG, and WebP images are allowed.": "JPEG, PNG அல்லது WebP படங்களை மட்டுமே பயன்படுத்தலாம்.",
-  "Each photo must be 5 MB or smaller.": "ஒவ்வொரு புகைப்படமும் 5 MB அல்லது அதற்குக் குறைவாக இருக்க வேண்டும்.",
+  "Start the visit before completing it.":
+    "முடிப்பதற்கு முன் வருகையைத் தொடங்கவும்.",
+  "Save a valid checklist and upload all six required photos before completing.":
+    "முடிப்பதற்கு முன் சரியான சரிபார்ப்புப் பட்டியலைச் சேமித்து தேவையான ஆறு புகைப்படங்களையும் பதிவேற்றவும்.",
+  "The AMC request could not be completed. Please try again.":
+    "AMC கோரிக்கையை முடிக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
+  "Choose at least one photo.":
+    "குறைந்தது ஒரு புகைப்படத்தைத் தேர்ந்தெடுக்கவும்.",
+  "You can upload {count} more photo(s).":
+    "மேலும் {count} புகைப்படங்களைப் பதிவேற்றலாம்.",
+  "Only JPEG, PNG, and WebP images are allowed.":
+    "JPEG, PNG அல்லது WebP படங்களை மட்டுமே பயன்படுத்தலாம்.",
+  "Each photo must be 5 MB or smaller.":
+    "ஒவ்வொரு புகைப்படமும் 5 MB அல்லது அதற்குக் குறைவாக இருக்க வேண்டும்.",
   Door: "கதவு",
   "Fixed Glass": "நிலைக் கண்ணாடி",
   Floor: "தரை",
@@ -747,17 +961,52 @@ const employeeTamil: Dictionary = {
   Done: "முடிந்தது",
   "Not Done": "முடிக்கப்படவில்லை",
   "My Attendance": "எனது வருகைப் பதிவு",
+  "Bike mileage": "இருசக்கர வாகன மைலேஜ்",
+  "Mileage navigation": "மைலேஜ்",
+  "Loading available bikes...":
+    "கிடைக்கும் இருசக்கர வாகனங்கள் ஏற்றப்படுகின்றன...",
+  "Could not load eligible bikes.":
+    "கிடைக்கும் இருசக்கர வாகனங்களைப் பெற முடியவில்லை.",
+  "No active bikes are available right now.":
+    "தற்போது செயலில் உள்ள இருசக்கர வாகனங்கள் இல்லை.",
+  "Your active mileage session": "உங்கள் செயலில் உள்ள மைலேஜ் அமர்வு",
+  "Starting odometer (KM)": "தொடக்க ஓடோமீட்டர் (KM)",
+  "Ending odometer (KM)": "முடிவு ஓடோமீட்டர் (KM)",
+  "Start mileage session": "மைலேஜ் அமர்வைத் தொடங்கவும்",
+  "Return bike": "வாகனத்தைத் திருப்பிக் கொடுக்கவும்",
+  "Distance travelled": "பயணித்த தூரம்",
+  "Recent mileage": "சமீபத்திய மைலேஜ்",
+  "Refresh bike state": "வாகன நிலையைப் புதுப்பிக்கவும்",
+  "Mileage session started.": "மைலேஜ் அமர்வு தொடங்கப்பட்டது.",
+  "Mileage session completed.": "மைலேஜ் அமர்வு முடிக்கப்பட்டது.",
+  "Could not save mileage. Refresh and review the current bike state.":
+    "மைலேஜைச் சேமிக்க முடியவில்லை. வாகன நிலையைப் புதுப்பித்து மீண்டும் சரிபார்க்கவும்.",
+  "Enter a valid whole-kilometre reading.":
+    "சரியான முழு கிலோமீட்டர் அளவை உள்ளிடவும்.",
+  "Ending reading cannot be below the starting reading.":
+    "முடிவு அளவு தொடக்க அளவைவிடக் குறைவாக இருக்க முடியாது.",
+  "Choose a bike": "இருசக்கர வாகனத்தைத் தேர்ந்தெடுக்கவும்",
+  "No active mileage session": "செயலில் உள்ள மைலேஜ் அமர்வு இல்லை",
+  "The employee identity is taken from your signed-in account.":
+    "பணியாளர் அடையாளம் உங்கள் உள்நுழைந்த கணக்கிலிருந்து பெறப்படுகிறது.",
+  "Bike unavailable": "வாகனம் கிடைக்கவில்லை",
+  KM: "கி.மீ",
+  "Open mileage entry": "மைலேஜ் பதிவைத் திறக்கவும்",
+  "No mileage history": "மைலேஜ் வரலாறு இல்லை",
+  "Could not load mileage history.": "மைலேஜ் வரலாற்றைப் பெற முடியவில்லை.",
   "My Location Tasks": "இருப்பிடப் பணிகள்",
   "Location Tasks navigation": "இருப்பிடப் பணிகள்",
   "Loading location tasks...": "இருப்பிடப் பணிகள் ஏற்றப்படுகின்றன...",
   "Could not load location tasks.": "இருப்பிடப் பணிகளைப் பெற முடியவில்லை.",
-  "No location tasks assigned to you.": "உங்களுக்கு இருப்பிடப் பணிகள் ஒதுக்கப்படவில்லை.",
+  "No location tasks assigned to you.":
+    "உங்களுக்கு இருப்பிடப் பணிகள் ஒதுக்கப்படவில்லை.",
   "No tasks in this status.": "இந்த நிலையில் பணிகள் இல்லை.",
   "Location task status tabs": "இருப்பிடப் பணிகளின் நிலைகள்",
   "Continue task": "பணியைத் தொடரவும்",
   "Collapse workflow": "பணிச்செயலைச் சுருக்கவும்",
   "Completed date": "முடிக்கப்பட்ட தேதி",
-  "Assigned ATM location collection and correction tasks will appear here.": "ஒதுக்கப்பட்ட ATM இருப்பிடச் சேகரிப்பு மற்றும் திருத்தப் பணிகள் இங்கே தோன்றும்.",
+  "Assigned ATM location collection and correction tasks will appear here.":
+    "ஒதுக்கப்பட்ட ATM இருப்பிடச் சேகரிப்பு மற்றும் திருத்தப் பணிகள் இங்கே தோன்றும்.",
   "Initial location collection": "முதல் இருப்பிடச் சேகரிப்பு",
   "Location correction": "இருப்பிடத் திருத்தம்",
   "Assigned date": "ஒதுக்கப்பட்ட தேதி",
@@ -774,41 +1023,61 @@ const employeeTamil: Dictionary = {
   "Held date": "நிறுத்தி வைத்த தேதி",
   "Resumed date": "மீண்டும் தொடங்கிய தேதி",
   "ATM bank unavailable": "வங்கி விவரம் இல்லை",
-  "GPS": "GPS",
-  "Manual": "கைமுறை",
+  GPS: "GPS",
+  Manual: "கைமுறை",
   "Submission source: {source}": "சமர்ப்பித்த முறை: {source}",
-  "Task status could not be refreshed. Refresh the task list.": "பணிநிலையைப் புதுப்பிக்க முடியவில்லை. பணிப் பட்டியலை மீண்டும் ஏற்றவும்.",
+  "Task status could not be refreshed. Refresh the task list.":
+    "பணிநிலையைப் புதுப்பிக்க முடியவில்லை. பணிப் பட்டியலை மீண்டும் ஏற்றவும்.",
   "Start task": "பணியைத் தொடங்கவும்",
   "Starting task...": "பணி தொடங்கப்படுகிறது...",
   "Task started.": "பணி தொடங்கப்பட்டது.",
   "Location proposal": "இருப்பிட முன்மொழிவு",
-  "Submit a proposal only after visiting this ATM.": "இந்த ATM-ஐ நேரில் பார்வையிட்ட பிறகே முன்மொழிவைச் சமர்ப்பிக்கவும்.",
-  "This task is awaiting admin review. Do not submit another proposal.": "இந்தப் பணி நிர்வாகியின் மதிப்பாய்வுக்காகக் காத்திருக்கிறது. மற்றொரு முன்மொழிவைச் சமர்ப்பிக்க வேண்டாம்.",
-  "Start this task before submitting a location proposal.": "இருப்பிட முன்மொழிவைச் சமர்ப்பிக்கும் முன் இந்தப் பணியைத் தொடங்கவும்.",
+  "Submit a proposal only after visiting this ATM.":
+    "இந்த ATM-ஐ நேரில் பார்வையிட்ட பிறகே முன்மொழிவைச் சமர்ப்பிக்கவும்.",
+  "This task is awaiting admin review. Do not submit another proposal.":
+    "இந்தப் பணி நிர்வாகியின் மதிப்பாய்வுக்காகக் காத்திருக்கிறது. மற்றொரு முன்மொழிவைச் சமர்ப்பிக்க வேண்டாம்.",
+  "Start this task before submitting a location proposal.":
+    "இருப்பிட முன்மொழிவைச் சமர்ப்பிக்கும் முன் இந்தப் பணியைத் தொடங்கவும்.",
   "Use current GPS": "தற்போதைய GPS-ஐப் பயன்படுத்தவும்",
   "Capturing GPS...": "GPS பெறப்படுகிறது...",
   "Enter coordinates manually": "ஆயத்தொலைவுகளை கைமுறையாக உள்ளிடவும்",
   "Use GPS coordinates": "GPS ஆயத்தொலைவுகளைப் பயன்படுத்தவும்",
   "GPS accuracy: {accuracy} m": "GPS துல்லியம்: {accuracy} மீ",
-  "GPS accuracy must be a finite value from 0 to 50 metres.": "GPS துல்லியம் 0 முதல் 50 மீட்டர் வரையிலான சரியான எண்ணாக இருக்க வேண்டும்.",
-  "GPS accuracy is above the 50 metre limit. Capture again or enter coordinates manually.": "GPS துல்லியம் 50 மீட்டர் வரம்பை மீறுகிறது. மீண்டும் பெறவும் அல்லது ஆயத்தொலைவுகளை கைமுறையாக உள்ளிடவும்.",
-  "Manual coordinates will be submitted as manual, without GPS accuracy.": "கைமுறை ஆயத்தொலைவுகள் GPS துல்லியமின்றி கைமுறையாகச் சமர்ப்பிக்கப்படும்.",
-  "This browser does not support GPS location capture.": "இந்த உலாவி GPS இருப்பிடப் பதிவை ஆதரிக்கவில்லை.",
-  "GPS permission was denied. Allow location access and try again.": "GPS அனுமதி மறுக்கப்பட்டது. இருப்பிட அணுகலை அனுமதித்து மீண்டும் முயற்சிக்கவும்.",
-  "Your current location is unavailable. Check device location settings and retry.": "தற்போதைய இருப்பிடம் கிடைக்கவில்லை. சாதன இருப்பிட அமைப்புகளைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
-  "GPS capture timed out. Move to an area with a clear signal and retry.": "GPS பதிவு நேரம் முடிந்தது. தெளிவான சிக்னல் உள்ள இடத்திற்குச் சென்று மீண்டும் முயற்சிக்கவும்.",
+  "GPS accuracy must be a finite value from 0 to 50 metres.":
+    "GPS துல்லியம் 0 முதல் 50 மீட்டர் வரையிலான சரியான எண்ணாக இருக்க வேண்டும்.",
+  "GPS accuracy is above the 50 metre limit. Capture again or enter coordinates manually.":
+    "GPS துல்லியம் 50 மீட்டர் வரம்பை மீறுகிறது. மீண்டும் பெறவும் அல்லது ஆயத்தொலைவுகளை கைமுறையாக உள்ளிடவும்.",
+  "Manual coordinates will be submitted as manual, without GPS accuracy.":
+    "கைமுறை ஆயத்தொலைவுகள் GPS துல்லியமின்றி கைமுறையாகச் சமர்ப்பிக்கப்படும்.",
+  "This browser does not support GPS location capture.":
+    "இந்த உலாவி GPS இருப்பிடப் பதிவை ஆதரிக்கவில்லை.",
+  "GPS permission was denied. Allow location access and try again.":
+    "GPS அனுமதி மறுக்கப்பட்டது. இருப்பிட அணுகலை அனுமதித்து மீண்டும் முயற்சிக்கவும்.",
+  "Your current location is unavailable. Check device location settings and retry.":
+    "தற்போதைய இருப்பிடம் கிடைக்கவில்லை. சாதன இருப்பிட அமைப்புகளைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
+  "GPS capture timed out. Move to an area with a clear signal and retry.":
+    "GPS பதிவு நேரம் முடிந்தது. தெளிவான சிக்னல் உள்ள இடத்திற்குச் சென்று மீண்டும் முயற்சிக்கவும்.",
   "Submit for admin review": "நிர்வாக மதிப்பாய்வுக்குச் சமர்ப்பிக்கவும்",
   "Submitting proposal...": "முன்மொழிவு சமர்ப்பிக்கப்படுகிறது...",
   "Awaiting admin review": "நிர்வாக மதிப்பாய்வுக்காகக் காத்திருக்கிறது",
-  "Location proposal submitted for admin review.": "இருப்பிட முன்மொழிவு நிர்வாக மதிப்பாய்வுக்குச் சமர்ப்பிக்கப்பட்டது.",
-  "Proposal submitted, but task status could not be refreshed. Refresh the task list.": "முன்மொழிவு சமர்ப்பிக்கப்பட்டது; ஆனால் பணி நிலையைப் புதுப்பிக்க முடியவில்லை. பணிப் பட்டியலைப் புதுப்பிக்கவும்.",
-  "This task was rejected. Contact an admin to reopen or reassign it before submitting again.": "இந்தப் பணி நிராகரிக்கப்பட்டது. மீண்டும் சமர்ப்பிப்பதற்கு முன் இதைத் திறக்க அல்லது மறுஒதுக்கீடு செய்ய நிர்வாகியைத் தொடர்புகொள்ளவும்.",
-  "The task is no longer available or assigned to you. Refresh the task list.": "இந்தப் பணி இனி கிடைக்கவில்லை அல்லது உங்களுக்கு ஒதுக்கப்படவில்லை. பணிப் பட்டியலைப் புதுப்பிக்கவும்.",
-  "Location proposal submission failed.": "இருப்பிட முன்மொழிவைச் சமர்ப்பிக்க முடியவில்லை.",
-  "Enter both latitude and longitude.": "அட்சரேகை மற்றும் தீர்க்கரேகை இரண்டையும் உள்ளிடவும்.",
-  "Coordinates must be valid finite numbers.": "ஆயத்தொலைவுகள் சரியான வரையறுக்கப்பட்ட எண்களாக இருக்க வேண்டும்.",
-  "Latitude must be between -90 and 90.": "அட்சரேகை -90 முதல் 90 வரை இருக்க வேண்டும்.",
-  "Longitude must be between -180 and 180.": "தீர்க்கரேகை -180 முதல் 180 வரை இருக்க வேண்டும்.",
+  "Location proposal submitted for admin review.":
+    "இருப்பிட முன்மொழிவு நிர்வாக மதிப்பாய்வுக்குச் சமர்ப்பிக்கப்பட்டது.",
+  "Proposal submitted, but task status could not be refreshed. Refresh the task list.":
+    "முன்மொழிவு சமர்ப்பிக்கப்பட்டது; ஆனால் பணி நிலையைப் புதுப்பிக்க முடியவில்லை. பணிப் பட்டியலைப் புதுப்பிக்கவும்.",
+  "This task was rejected. Contact an admin to reopen or reassign it before submitting again.":
+    "இந்தப் பணி நிராகரிக்கப்பட்டது. மீண்டும் சமர்ப்பிப்பதற்கு முன் இதைத் திறக்க அல்லது மறுஒதுக்கீடு செய்ய நிர்வாகியைத் தொடர்புகொள்ளவும்.",
+  "The task is no longer available or assigned to you. Refresh the task list.":
+    "இந்தப் பணி இனி கிடைக்கவில்லை அல்லது உங்களுக்கு ஒதுக்கப்படவில்லை. பணிப் பட்டியலைப் புதுப்பிக்கவும்.",
+  "Location proposal submission failed.":
+    "இருப்பிட முன்மொழிவைச் சமர்ப்பிக்க முடியவில்லை.",
+  "Enter both latitude and longitude.":
+    "அட்சரேகை மற்றும் தீர்க்கரேகை இரண்டையும் உள்ளிடவும்.",
+  "Coordinates must be valid finite numbers.":
+    "ஆயத்தொலைவுகள் சரியான வரையறுக்கப்பட்ட எண்களாக இருக்க வேண்டும்.",
+  "Latitude must be between -90 and 90.":
+    "அட்சரேகை -90 முதல் 90 வரை இருக்க வேண்டும்.",
+  "Longitude must be between -180 and 180.":
+    "தீர்க்கரேகை -180 முதல் 180 வரை இருக்க வேண்டும்.",
   "Dashboard navigation": "முகப்பு",
   "My Jobs navigation": "என் வேலைகள்",
   "My AMC visits navigation": "என் AMC வருகைகள்",
@@ -829,12 +1098,16 @@ const employeeTamil: Dictionary = {
   "Completed jobs": "முடிக்கப்பட்டவை",
   "Completion progress": "வேலை முடிப்பு முன்னேற்றம்",
   "{percent}% completed": "{percent}% முடிந்தது",
-  "{completed} of {eligible} eligible jobs completed": "தகுதியான {eligible} வேலைகளில் {completed} முடிக்கப்பட்டன",
-  "No eligible assigned jobs yet.": "தகுதியான வேலைகள் இன்னும் ஒதுக்கப்படவில்லை.",
+  "{completed} of {eligible} eligible jobs completed":
+    "தகுதியான {eligible} வேலைகளில் {completed} முடிக்கப்பட்டன",
+  "No eligible assigned jobs yet.":
+    "தகுதியான வேலைகள் இன்னும் ஒதுக்கப்படவில்லை.",
   "Assigned vs completed": "ஒதுக்கப்பட்டவை மற்றும் முடிக்கப்பட்டவை",
   "Last seven days in Asia/Kolkata": "கடந்த ஏழு நாட்கள் — இந்திய நேரம்",
-  "No job activity in the last seven days.": "கடந்த ஏழு நாட்களில் வேலை நடவடிக்கை இல்லை.",
-  "Assigned and completed jobs for the last seven days": "கடந்த ஏழு நாட்களில் ஒதுக்கப்பட்ட மற்றும் முடிக்கப்பட்ட வேலைகள்",
+  "No job activity in the last seven days.":
+    "கடந்த ஏழு நாட்களில் வேலை நடவடிக்கை இல்லை.",
+  "Assigned and completed jobs for the last seven days":
+    "கடந்த ஏழு நாட்களில் ஒதுக்கப்பட்ட மற்றும் முடிக்கப்பட்ட வேலைகள்",
   "Assigned jobs": "ஒதுக்கப்பட்ட வேலைகள்",
   "Completed job count": "முடிக்கப்பட்ட வேலைகள்",
   Resumed: "மீண்டும் தொடங்கப்பட்டது",
@@ -846,7 +1119,8 @@ const employeeTamil: Dictionary = {
   "Details: {details}": "விவரங்கள்: {details}",
   "GPS Distance: {distance} m": "GPS தூரம்: {distance} மீ",
   "GPS Accuracy: {accuracy} m": "GPS துல்லியம்: {accuracy} மீ",
-  "Employee Location: {latitude}, {longitude}": "பணியாளர் இடம்: {latitude}, {longitude}",
+  "Employee Location: {latitude}, {longitude}":
+    "பணியாளர் இடம்: {latitude}, {longitude}",
   "ATM Location: {latitude}, {longitude}": "ATM இடம்: {latitude}, {longitude}",
   "Admin Remarks": "நிர்வாகக் குறிப்பு",
   "Assigned employee updated": "ஒதுக்கப்பட்ட பணியாளர் மாற்றப்பட்டார்",
@@ -857,7 +1131,7 @@ const employeeTamil: Dictionary = {
   "Reassignment Reason": "மறுஒதுக்கீடு செய்த காரணம்",
   "New employee assigned": "புதிய பணியாளர் ஒதுக்கப்பட்டார்",
   "details recorded": "விவரங்கள் பதிவு செய்யப்பட்டன",
-  "தமிழ்": "தமிழ்",
+  தமிழ்: "தமிழ்",
   English: "English",
   Language: "மொழி",
   "Language preference": "மொழித் தேர்வு",
@@ -870,33 +1144,42 @@ const employeeTamil: Dictionary = {
   "Retrying...": "மீண்டும் முயற்சிக்கிறது...",
   "Currently Assigned Jobs": "தற்போது ஒதுக்கப்பட்ட வேலைகள்",
   "Loading assigned jobs...": "ஒதுக்கப்பட்ட வேலைகள் ஏற்றப்படுகின்றன...",
-  "Could not load your assigned jobs.": "ஒதுக்கப்பட்ட வேலைகளைப் பெற முடியவில்லை.",
+  "Could not load your assigned jobs.":
+    "ஒதுக்கப்பட்ட வேலைகளைப் பெற முடியவில்லை.",
   "Total currently assigned": "மொத்தம் ஒதுக்கப்பட்டவை",
   "View jobs with status: {status}": "{status} நிலையில் உள்ள வேலைகளைக் காண்க",
   "View all assigned jobs": "ஒதுக்கப்பட்ட அனைத்து வேலைகளையும் காண்க",
-  "No jobs are currently assigned to you.": "தற்போது உங்களுக்கு வேலைகள் ஒதுக்கப்படவில்லை.",
-  "Assigned-job information is not available.": "ஒதுக்கப்பட்ட வேலை விவரங்கள் இல்லை.",
+  "No jobs are currently assigned to you.":
+    "தற்போது உங்களுக்கு வேலைகள் ஒதுக்கப்படவில்லை.",
+  "Assigned-job information is not available.":
+    "ஒதுக்கப்பட்ட வேலை விவரங்கள் இல்லை.",
   "Currently assigned jobs by status": "நிலை வாரியான ஒதுக்கப்பட்ட வேலைகள்",
   "Job Performance": "வேலை செயல்திறன்",
-  "Completion submissions are events; rework may count more than once.": "வேலை முடித்துப் பதிவு செய்த ஒவ்வொரு முறையும் கணக்கில் வரும்; மீண்டும் செய்த வேலைகளும் ஒன்றுக்கு மேல் கணக்காகலாம்.",
+  "Completion submissions are events; rework may count more than once.":
+    "வேலை முடித்துப் பதிவு செய்த ஒவ்வொரு முறையும் கணக்கில் வரும்; மீண்டும் செய்த வேலைகளும் ஒன்றுக்கு மேல் கணக்காகலாம்.",
   "Performance period": "கணக்கிடும் காலம்",
   "This week": "இந்த வாரம்",
   "This month": "இந்த மாதம்",
   "This year": "இந்த ஆண்டு",
   "Loading job performance...": "வேலை செயல்திறன் ஏற்றப்படுகிறது...",
-  "Could not load job performance.": "வேலை செயல்திறன் விவரங்களைப் பெற முடியவில்லை.",
+  "Could not load job performance.":
+    "வேலை செயல்திறன் விவரங்களைப் பெற முடியவில்லை.",
   "Completion events": "முடித்துப் பதிவு செய்த வேலைகள்",
   "Average current-attempt duration": "தற்போதைய முயற்சியின் சராசரி நேரம்",
-  "Based on {count} currently assigned completed job(s) with valid timestamps.": "சரியான நேரப் பதிவுகளுடன் முடிக்கப்பட்ட {count} தற்போது ஒதுக்கப்பட்ட வேலைகளின் அடிப்படையில்.",
+  "Based on {count} currently assigned completed job(s) with valid timestamps.":
+    "சரியான நேரப் பதிவுகளுடன் முடிக்கப்பட்ட {count} தற்போது ஒதுக்கப்பட்ட வேலைகளின் அடிப்படையில்.",
   "Performance information is not available.": "செயல்திறன் விவரங்கள் இல்லை.",
   "AMC Progress": "AMC முன்னேற்றம்",
-  "Monthly AMC records assigned to you.": "இந்த மாதம் உங்களுக்கு ஒதுக்கப்பட்ட AMC பதிவுகள்.",
+  "Monthly AMC records assigned to you.":
+    "இந்த மாதம் உங்களுக்கு ஒதுக்கப்பட்ட AMC பதிவுகள்.",
   Month: "மாதம்",
   Year: "ஆண்டு",
   "Loading AMC progress...": "AMC முன்னேற்றம் ஏற்றப்படுகிறது...",
-  "Could not load your AMC progress.": "AMC முன்னேற்ற விவரங்களைப் பெற முடியவில்லை.",
+  "Could not load your AMC progress.":
+    "AMC முன்னேற்ற விவரங்களைப் பெற முடியவில்லை.",
   "No AMC records for this period.": "இந்தக் காலத்திற்கு AMC பதிவுகள் இல்லை.",
-  "There are no monthly AMC visits assigned to you for {period}.": "{period} காலத்திற்கு மாதாந்திர AMC வருகைகள் ஒதுக்கப்படவில்லை.",
+  "There are no monthly AMC visits assigned to you for {period}.":
+    "{period} காலத்திற்கு மாதாந்திர AMC வருகைகள் ஒதுக்கப்படவில்லை.",
   Completed: "முடிக்கப்பட்டது",
   Pending: "நிலுவையில்",
   Assigned: "ஒதுக்கப்பட்டது",
@@ -929,7 +1212,8 @@ const employeeTamil: Dictionary = {
   "All statuses": "அனைத்து நிலைகளும்",
   "Clear status filter": "நிலை வடிகட்டியை நீக்கவும்",
   "The requested status filter is invalid.": "கோரிய நிலை வடிகட்டி தவறானது.",
-  "No jobs on this page match your search.": "இந்தப் பக்கத்தில் உங்கள் தேடலுக்கு வேலைகள் இல்லை.",
+  "No jobs on this page match your search.":
+    "இந்தப் பக்கத்தில் உங்கள் தேடலுக்கு வேலைகள் இல்லை.",
   "Clear search": "தேடலை நீக்கவும்",
   "No jobs assigned yet.": "இதுவரை வேலை ஒதுக்கப்படவில்லை.",
   "No jobs found for this status.": "இந்த நிலையில் வேலைகள் இல்லை.",
@@ -950,18 +1234,23 @@ const employeeTamil: Dictionary = {
   "Assigned jobs: {count}": "ஒதுக்கப்பட்ட வேலைகள்: {count}",
   Previous: "முந்தையது",
   Next: "அடுத்தது",
-  "Record your workday and review attendance history.": "வருகையைப் பதிவு செய்து முந்தைய பதிவுகளைப் பார்க்கவும்.",
+  "Record your workday and review attendance history.":
+    "வருகையைப் பதிவு செய்து முந்தைய பதிவுகளைப் பார்க்கவும்.",
   "Back to Dashboard": "முகப்புக்குத் திரும்பவும்",
   "Current attendance": "இன்றைய வருகை",
   "Checking your current status...": "தற்போதைய நிலை சரிபார்க்கப்படுகிறது...",
-  "Current attendance status is unavailable.": "தற்போதைய வருகை நிலையைப் பெற முடியவில்லை.",
-  "Multiple open records need administrator attention.": "பல முடிக்கப்படாத பதிவுகள் உள்ளன. நிர்வாகியைத் தொடர்புகொள்ளவும்.",
+  "Current attendance status is unavailable.":
+    "தற்போதைய வருகை நிலையைப் பெற முடியவில்லை.",
+  "Multiple open records need administrator attention.":
+    "பல முடிக்கப்படாத பதிவுகள் உள்ளன. நிர்வாகியைத் தொடர்புகொள்ளவும்.",
   "Checked in for {date}": "{date} அன்று வருகை பதிவு செய்யப்பட்டது",
   "Today's attendance session is closed.": "இன்றைய வருகை அமர்வு மூடப்பட்டது.",
-  "No open session found in the latest 100 records.": "சமீபத்திய 100 பதிவுகளில் முடிக்கப்படாத வருகை இல்லை.",
+  "No open session found in the latest 100 records.":
+    "சமீபத்திய 100 பதிவுகளில் முடிக்கப்படாத வருகை இல்லை.",
   "No open attendance session.": "முடிக்கப்படாத வருகைப் பதிவு இல்லை.",
   "Check-in: {time}": "வருகை நேரம்: {time}",
-  "Older history was not scanned. Use Check Out if you need to close an earlier overnight session.": "பழைய பதிவுகள் சரிபார்க்கப்படவில்லை. முந்தைய இரவுப் பதிவை முடிக்க வேண்டுமெனில் வெளியேறும் பதிவைச் செய்யவும்.",
+  "Older history was not scanned. Use Check Out if you need to close an earlier overnight session.":
+    "பழைய பதிவுகள் சரிபார்க்கப்படவில்லை. முந்தைய இரவுப் பதிவை முடிக்க வேண்டுமெனில் வெளியேறும் பதிவைச் செய்யவும்.",
   "Retry status": "நிலையை மீண்டும் பார்க்கவும்",
   "Check In": "வருகையைப் பதிவு செய்யவும்",
   "Checking in...": "வருகை பதிவு செய்யப்படுகிறது...",
@@ -975,11 +1264,13 @@ const employeeTamil: Dictionary = {
   "From date": "தொடக்க தேதி",
   "To date": "முடிவு தேதி",
   "Clear dates": "தேதிகளை நீக்கவும்",
-  "From date must be on or before to date.": "தொடக்க தேதி, முடிவு தேதிக்கு முந்தையதாகவோ அதே நாளாகவோ இருக்க வேண்டும்.",
+  "From date must be on or before to date.":
+    "தொடக்க தேதி, முடிவு தேதிக்கு முந்தையதாகவோ அதே நாளாகவோ இருக்க வேண்டும்.",
   "Loading attendance history...": "வருகை வரலாறு ஏற்றப்படுகிறது...",
   "Could not load attendance history.": "வருகை வரலாற்றைப் பெற முடியவில்லை.",
   "No attendance records": "வருகைப் பதிவுகள் இல்லை",
-  "Showing {from}–{to} of {total} records": "{total} பதிவுகளில் {from}–{to} காட்டப்படுகிறது",
+  "Showing {from}–{to} of {total} records":
+    "{total} பதிவுகளில் {from}–{to} காட்டப்படுகிறது",
   Date: "தேதி",
   "Check in": "வருகை நேரம்",
   "Check out": "புறப்படும் நேரம்",
@@ -991,8 +1282,10 @@ const employeeTamil: Dictionary = {
   Absent: "வரவில்லை",
   Complete: "முடிந்தது",
   Open: "முடிக்கப்படவில்லை",
-  "No attendance records match the selected dates.": "தேர்ந்தெடுத்த தேதிகளில் வருகைப் பதிவுகள் இல்லை.",
-  "The attendance request could not be completed. Please try again.": "வருகைப் பதிவைச் செய்ய முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
+  "No attendance records match the selected dates.":
+    "தேர்ந்தெடுத்த தேதிகளில் வருகைப் பதிவுகள் இல்லை.",
+  "The attendance request could not be completed. Please try again.":
+    "வருகைப் பதிவைச் செய்ய முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
   "Accept Job": "வேலையை ஏற்கவும்",
   "Start Job": "வேலையைத் தொடங்கவும்",
   "Resume Job": "வேலையை மீண்டும் தொடங்கவும்",
@@ -1000,15 +1293,21 @@ const employeeTamil: Dictionary = {
   "Put Job On Hold": "வேலையைத் தற்காலிகமாக நிறுத்தவும்",
   "Put this job on hold?": "இந்த வேலையைத் தற்காலிகமாக நிறுத்தவா?",
   "Hold reason (optional)": "நிறுத்துவதற்கான காரணம் (விருப்பம்)",
-  "Saved before photos, work details, and materials will be preserved. Resume the job when you are ready to continue.": "சேமித்த முன் படங்கள், பணி விவரங்கள் மற்றும் பொருட்கள் பாதுகாக்கப்படும். தொடரத் தயாரானபோது வேலையை மீண்டும் தொடங்கலாம்.",
-  "Selected photos have not been uploaded and will be discarded when this job is put on hold.": "தேர்ந்தெடுத்த படங்கள் பதிவேற்றப்படவில்லை; வேலையை நிறுத்தும்போது அவை நீக்கப்படும்.",
-  "You have selected photos that have not been uploaded. Leave this job and discard them?": "பதிவேற்றப்படாத படங்களைத் தேர்ந்தெடுத்துள்ளீர்கள். இந்த வேலையை விட்டு வெளியேறி அவற்றை நீக்கவா?",
-  "Upload all 3 Before photos to enable putting this job on hold.": "வேலையை நிறுத்த, மூன்று முன் படங்களையும் பதிவேற்றவும்.",
+  "Saved before photos, work details, and materials will be preserved. Resume the job when you are ready to continue.":
+    "சேமித்த முன் படங்கள், பணி விவரங்கள் மற்றும் பொருட்கள் பாதுகாக்கப்படும். தொடரத் தயாரானபோது வேலையை மீண்டும் தொடங்கலாம்.",
+  "Selected photos have not been uploaded and will be discarded when this job is put on hold.":
+    "தேர்ந்தெடுத்த படங்கள் பதிவேற்றப்படவில்லை; வேலையை நிறுத்தும்போது அவை நீக்கப்படும்.",
+  "You have selected photos that have not been uploaded. Leave this job and discard them?":
+    "பதிவேற்றப்படாத படங்களைத் தேர்ந்தெடுத்துள்ளீர்கள். இந்த வேலையை விட்டு வெளியேறி அவற்றை நீக்கவா?",
+  "Upload all 3 Before photos to enable putting this job on hold.":
+    "வேலையை நிறுத்த, மூன்று முன் படங்களையும் பதிவேற்றவும்.",
   "Complete Job": "வேலையை முடிக்கவும்",
-  "No hold reason was recorded.": "வேலையை நிறுத்தியதற்கான காரணம் பதிவு செய்யப்படவில்லை.",
+  "No hold reason was recorded.":
+    "வேலையை நிறுத்தியதற்கான காரணம் பதிவு செய்யப்படவில்லை.",
   "Remaining work": "மீதமுள்ள பணி",
   "Review and complete": "சரிபார்த்து முடிக்கவும்",
-  "No materials have been recorded.": "பொருட்கள் எதுவும் பதிவு செய்யப்படவில்லை.",
+  "No materials have been recorded.":
+    "பொருட்கள் எதுவும் பதிவு செய்யப்படவில்லை.",
   "Job accepted.": "வேலை ஏற்கப்பட்டது.",
   "Job started.": "வேலை தொடங்கப்பட்டது.",
   "Job resumed.": "வேலை மீண்டும் தொடங்கப்பட்டது.",
@@ -1017,7 +1316,8 @@ const employeeTamil: Dictionary = {
   "Job not found": "வேலை கிடைக்கவில்லை",
   "Job details unavailable": "வேலை விவரங்கள் கிடைக்கவில்லை",
   "This job may have been removed.": "இந்த வேலை நீக்கப்பட்டிருக்கலாம்.",
-  "The job could not be loaded. Please try again.": "வேலை விவரங்களைப் பெற முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
+  "The job could not be loaded. Please try again.":
+    "வேலை விவரங்களைப் பெற முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
   "Back to Jobs": "வேலைகளுக்குத் திரும்பவும்",
   "Job Information": "வேலை விவரங்கள்",
   "Job ID": "வேலை எண்",
@@ -1059,41 +1359,58 @@ const employeeTamil: Dictionary = {
   "Material usage recorded.": "பயன்படுத்திய பொருள் பதிவு செய்யப்பட்டது.",
   "Material usage removed.": "பொருள் பயன்பாட்டுப் பதிவு நீக்கப்பட்டது.",
   "Recorded materials": "பதிவுசெய்த பொருட்கள்",
-  "Could not load material history. Check your connection and retry.": "பொருள் வரலாற்றைப் பெற முடியவில்லை. இணைய இணைப்பைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
-  "This Job is no longer assigned to you, so its material history is unavailable.": "இந்த வேலை இனி உங்களுக்கு ஒதுக்கப்படவில்லை. பொருள் வரலாறு கிடைக்காது.",
+  "Could not load material history. Check your connection and retry.":
+    "பொருள் வரலாற்றைப் பெற முடியவில்லை. இணைய இணைப்பைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
+  "This Job is no longer assigned to you, so its material history is unavailable.":
+    "இந்த வேலை இனி உங்களுக்கு ஒதுக்கப்படவில்லை. பொருள் வரலாறு கிடைக்காது.",
   "This Job is no longer available.": "இந்த வேலை இனி கிடைக்காது.",
   "Field Work": "களப் பணி",
   "Continue fieldwork": "களப்பணியைத் தொடரவும்",
   "Fieldwork progress": "களப்பணி முன்னேற்றம்",
-  "{count} of {required} photos uploaded": "{required} படங்களில் {count} பதிவேற்றப்பட்டன",
+  "{count} of {required} photos uploaded":
+    "{required} படங்களில் {count} பதிவேற்றப்பட்டன",
   "GPS location": "GPS இடம்",
-  "The server checks your submitted location against the ATM before completing the job.": "வேலையை முடிப்பதற்கு முன், நீங்கள் அனுப்பும் இடத்தை ATM இடத்துடன் சரிபார்ப்போம்.",
+  "The server checks your submitted location against the ATM before completing the job.":
+    "வேலையை முடிப்பதற்கு முன், நீங்கள் அனுப்பும் இடத்தை ATM இடத்துடன் சரிபார்ப்போம்.",
   "Getting location...": "இடம் பெறப்படுகிறது...",
   "Refresh location": "இடத்தைப் புதுப்பிக்கவும்",
   "Get current location": "தற்போதைய இடத்தைப் பெறவும்",
-  "Location permission is required to continue. Allow location access in your browser and try again.": "தொடர இட அனுமதி தேவை. உலாவியில் இட அனுமதியை வழங்கி மீண்டும் முயற்சிக்கவும்.",
-  "Your current location is unavailable. Check your device location settings and retry.": "தற்போதைய இடம் கிடைக்கவில்லை. சாதனத்தின் இட அமைப்பைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
-  "Getting your location took too long. Move to an area with a clear GPS signal and retry.": "இடத்தைப் பெற அதிக நேரம் ஆகிறது. GPS சிக்னல் தெளிவாகக் கிடைக்கும் இடத்திற்குச் சென்று மீண்டும் முயற்சிக்கவும்.",
-  "Could not get your location. Please retry.": "உங்கள் இடத்தைப் பெற முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
-  "This browser does not support location services.": "இந்த உலாவியில் இடச் சேவை ஆதரிக்கப்படவில்லை.",
-  "ATM location is not configured. Acquire your current location and set it as the ATM location before completing this job.": "ATM இடம் அமைக்கப்படவில்லை. வேலையை முடிக்கும் முன் உங்கள் தற்போதைய இடத்தைப் பெற்று ATM இடமாக அமைக்கவும்.",
-  "ATM location is not configured. Acquire your current location and submit it for Admin or SuperAdmin approval before completing this job.": "ATM இடம் அமைக்கப்படவில்லை. வேலையை முடிக்கும் முன் உங்கள் தற்போதைய இடத்தைப் பெற்று நிர்வாகி அல்லது சூப்பர் நிர்வாகியின் ஒப்புதலுக்காக சமர்ப்பிக்கவும்.",
+  "Location permission is required to continue. Allow location access in your browser and try again.":
+    "தொடர இட அனுமதி தேவை. உலாவியில் இட அனுமதியை வழங்கி மீண்டும் முயற்சிக்கவும்.",
+  "Your current location is unavailable. Check your device location settings and retry.":
+    "தற்போதைய இடம் கிடைக்கவில்லை. சாதனத்தின் இட அமைப்பைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
+  "Getting your location took too long. Move to an area with a clear GPS signal and retry.":
+    "இடத்தைப் பெற அதிக நேரம் ஆகிறது. GPS சிக்னல் தெளிவாகக் கிடைக்கும் இடத்திற்குச் சென்று மீண்டும் முயற்சிக்கவும்.",
+  "Could not get your location. Please retry.":
+    "உங்கள் இடத்தைப் பெற முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
+  "This browser does not support location services.":
+    "இந்த உலாவியில் இடச் சேவை ஆதரிக்கப்படவில்லை.",
+  "ATM location is not configured. Acquire your current location and set it as the ATM location before completing this job.":
+    "ATM இடம் அமைக்கப்படவில்லை. வேலையை முடிக்கும் முன் உங்கள் தற்போதைய இடத்தைப் பெற்று ATM இடமாக அமைக்கவும்.",
+  "ATM location is not configured. Acquire your current location and submit it for Admin or SuperAdmin approval before completing this job.":
+    "ATM இடம் அமைக்கப்படவில்லை. வேலையை முடிக்கும் முன் உங்கள் தற்போதைய இடத்தைப் பெற்று நிர்வாகி அல்லது சூப்பர் நிர்வாகியின் ஒப்புதலுக்காக சமர்ப்பிக்கவும்.",
   "Within 20 m": "20 மீட்டருக்குள்",
   "Outside 20 m": "20 மீட்டருக்கு வெளியே",
-  "Set Current Location as ATM Location": "தற்போதைய இடத்தை ATM இடமாக அமைக்கவும்",
+  "Set Current Location as ATM Location":
+    "தற்போதைய இடத்தை ATM இடமாக அமைக்கவும்",
   "Setting ATM location...": "ATM இடம் அமைக்கப்படுகிறது...",
-  "ATM location configured successfully.": "ATM இடம் வெற்றிகரமாக அமைக்கப்பட்டது.",
-  "ATM location request submitted for review.": "ATM இடக் கோரிக்கை மதிப்பாய்வுக்காக சமர்ப்பிக்கப்பட்டது.",
+  "ATM location configured successfully.":
+    "ATM இடம் வெற்றிகரமாக அமைக்கப்பட்டது.",
+  "ATM location request submitted for review.":
+    "ATM இடக் கோரிக்கை மதிப்பாய்வுக்காக சமர்ப்பிக்கப்பட்டது.",
   "Submitting location request...": "இடக் கோரிக்கை சமர்ப்பிக்கப்படுகிறது...",
-  "Submit Current Location for ATM Review": "தற்போதைய ATM இடத்தை மதிப்பாய்வுக்கு சமர்ப்பிக்கவும்",
+  "Submit Current Location for ATM Review":
+    "தற்போதைய ATM இடத்தை மதிப்பாய்வுக்கு சமர்ப்பிக்கவும்",
   "Cleaning photos": "சுத்தம் செய்ததற்கான படங்கள்",
   "Before photos": "முன் படங்கள்",
   "After photos": "பின் படங்கள்",
   "Missing photo evidence": "தேவையான படங்கள்",
   "{count}/{required} saved": "{required}-இல் {count} சேமிக்கப்பட்டது",
   "{count} selected": "{count} தேர்ந்தெடுக்கப்பட்டது",
-  "{type}: {count}/{required} saved; {remaining} remaining": "{type}: {required}-இல் {count} சேமிக்கப்பட்டது; மேலும் {remaining} தேவை",
-  "Selected photos are previews only. Upload them to save.": "தேர்ந்தெடுத்த படங்கள் முன்னோட்டம் மட்டுமே. சேமிக்க அவற்றைப் பதிவேற்றவும்.",
+  "{type}: {count}/{required} saved; {remaining} remaining":
+    "{type}: {required}-இல் {count} சேமிக்கப்பட்டது; மேலும் {remaining} தேவை",
+  "Selected photos are previews only. Upload them to save.":
+    "தேர்ந்தெடுத்த படங்கள் முன்னோட்டம் மட்டுமே. சேமிக்க அவற்றைப் பதிவேற்றவும்.",
   Before: "முன்",
   After: "பின்",
   Replace: "மாற்றவும்",
@@ -1106,64 +1423,105 @@ const employeeTamil: Dictionary = {
   "Uploading photos...": "படங்கள் பதிவேற்றப்படுகின்றன...",
   "Uploading {type} photos...": "{type} படங்கள் பதிவேற்றப்படுகின்றன...",
   "Preparing {type} photos...": "{type} படங்கள் தயாராகின்றன...",
-  "The selected image could not be prepared for upload.": "தேர்ந்தெடுக்கப்பட்ட படத்தை பதிவேற்றத்திற்குத் தயாரிக்க முடியவில்லை.",
-  "Photo upload requires verification before retrying.": "மீண்டும் முயற்சிக்கும் முன் புகைப்படப் பதிவேற்றத்தை உறுதிப்படுத்த வேண்டும்.",
+  "The selected image could not be prepared for upload.":
+    "தேர்ந்தெடுக்கப்பட்ட படத்தை பதிவேற்றத்திற்குத் தயாரிக்க முடியவில்லை.",
+  "Photo upload requires verification before retrying.":
+    "மீண்டும் முயற்சிக்கும் முன் புகைப்படப் பதிவேற்றத்தை உறுதிப்படுத்த வேண்டும்.",
   "Waiting to upload": "பதிவேற்றத்திற்காக காத்திருக்கிறது",
-  "The server could not confirm the uploaded {type} photo. Verify the saved photo before retrying.": "பதிவேற்றிய {type} படத்தை சேவையகம் உறுதிப்படுத்தவில்லை. மீண்டும் முயற்சிக்கும் முன் சேமிக்கப்பட்ட படத்தைச் சரிபார்க்கவும்.",
-  "The server could not confirm the uploaded {type} photo. Verify the upload before retrying.": "பதிவேற்றிய {type} படத்தை சேவையகம் உறுதிப்படுத்தவில்லை. மீண்டும் முயற்சிக்கும் முன் பதிவேற்றத்தைச் சரிபார்க்கவும்.",
-  "Uploaded; finalization is pending.": "பதிவேற்றப்பட்டது; இறுதி இணைப்பு நிலுவையில் உள்ளது.",
-  "Some uploaded photos are awaiting finalization.": "சில பதிவேற்றிய படங்கள் இறுதி இணைப்புக்காக காத்திருக்கின்றன.",
-  "Verification requires administrator attention.": "சரிபார்ப்புக்கு நிர்வாகியின் கவனம் தேவை.",
-  "Upload failed and can be retried.": "பதிவேற்றம் தோல்வியடைந்தது; மீண்டும் முயற்சி செய்யலாம்.",
+  "The server could not confirm the uploaded {type} photo. Verify the saved photo before retrying.":
+    "பதிவேற்றிய {type} படத்தை சேவையகம் உறுதிப்படுத்தவில்லை. மீண்டும் முயற்சிக்கும் முன் சேமிக்கப்பட்ட படத்தைச் சரிபார்க்கவும்.",
+  "The server could not confirm the uploaded {type} photo. Verify the upload before retrying.":
+    "பதிவேற்றிய {type} படத்தை சேவையகம் உறுதிப்படுத்தவில்லை. மீண்டும் முயற்சிக்கும் முன் பதிவேற்றத்தைச் சரிபார்க்கவும்.",
+  "Uploaded; finalization is pending.":
+    "பதிவேற்றப்பட்டது; இறுதி இணைப்பு நிலுவையில் உள்ளது.",
+  "Some uploaded photos are awaiting finalization.":
+    "சில பதிவேற்றிய படங்கள் இறுதி இணைப்புக்காக காத்திருக்கின்றன.",
+  "Verification requires administrator attention.":
+    "சரிபார்ப்புக்கு நிர்வாகியின் கவனம் தேவை.",
+  "Upload failed and can be retried.":
+    "பதிவேற்றம் தோல்வியடைந்தது; மீண்டும் முயற்சி செய்யலாம்.",
   "Upload is being processed.": "பதிவேற்றம் செயல்படுத்தப்படுகிறது.",
-  "{type} photo uploaded; finalization is pending.": "{type} படம் பதிவேற்றப்பட்டது; இறுதி இணைப்பு நிலுவையில் உள்ளது.",
-  "{type} photo uploaded and saved.": "{type} படம் பதிவேற்றப்பட்டு சேமிக்கப்பட்டது.",
-  "Photo upload response was not confirmed. Verify the saved photo before retrying.": "புகைப்படப் பதிவேற்றப் பதில் உறுதிப்படுத்தப்படவில்லை. மீண்டும் முயற்சிக்கும் முன் சேமிக்கப்பட்ட படத்தைச் சரிபார்க்கவும்.",
-  "{type} photos uploaded and saved.": "{type} படங்கள் பதிவேற்றப்பட்டு சேமிக்கப்பட்டன.",
-  "The server could not confirm the uploaded {type} photos. Refresh the job before retrying.": "பதிவேற்றிய {type} படங்களை சேவையகம் உறுதிப்படுத்தவில்லை. மீண்டும் முயற்சிக்கும் முன் வேலையைப் புதுப்பிக்கவும்.",
-  "The upload was accepted, but the saved {type} photo count could not be confirmed after refreshing. Reload the job before continuing.": "பதிவேற்றம் ஏற்கப்பட்டது; ஆனால் புதுப்பித்த பிறகும் சேமித்த {type} படங்களின் எண்ணிக்கையை உறுதிப்படுத்த முடியவில்லை. தொடர்வதற்கு முன் வேலையை மீண்டும் ஏற்றவும்.",
-  "Photos were saved, but the job could not be refreshed. Reload before continuing.": "படங்கள் சேமிக்கப்பட்டன; ஆனால் வேலையைப் புதுப்பிக்க முடியவில்லை. தொடர்வதற்கு முன் மீண்டும் ஏற்றவும்.",
-  "{saved} selected {type} photo(s) were saved; the remaining selection is ready to retry.": "தேர்ந்தெடுத்த {type} படங்களில் {saved} சேமிக்கப்பட்டன; மீதமுள்ளவற்றை மீண்டும் முயற்சிக்கலாம்.",
-  "All required Before and After photos are uploaded.": "தேவையான முன் மற்றும் பின் படங்கள் அனைத்தும் பதிவேற்றப்பட்டன.",
-  "Acquire your GPS location to complete the job.": "வேலையை முடிக்க GPS இடத்தைப் பெறவும்.",
-  "Get your current location to complete this job.": "இந்த வேலையை முடிக்க தற்போதைய இடத்தைப் பெறவும்.",
-  "Move within 20 m of the ATM and refresh your location to continue.": "தொடர ATM-இன் 20 மீட்டருக்குள் சென்று இடத்தைப் புதுப்பிக்கவும்.",
+  "{type} photo uploaded; finalization is pending.":
+    "{type} படம் பதிவேற்றப்பட்டது; இறுதி இணைப்பு நிலுவையில் உள்ளது.",
+  "{type} photo uploaded and saved.":
+    "{type} படம் பதிவேற்றப்பட்டு சேமிக்கப்பட்டது.",
+  "Photo upload response was not confirmed. Verify the saved photo before retrying.":
+    "புகைப்படப் பதிவேற்றப் பதில் உறுதிப்படுத்தப்படவில்லை. மீண்டும் முயற்சிக்கும் முன் சேமிக்கப்பட்ட படத்தைச் சரிபார்க்கவும்.",
+  "{type} photos uploaded and saved.":
+    "{type} படங்கள் பதிவேற்றப்பட்டு சேமிக்கப்பட்டன.",
+  "The server could not confirm the uploaded {type} photos. Refresh the job before retrying.":
+    "பதிவேற்றிய {type} படங்களை சேவையகம் உறுதிப்படுத்தவில்லை. மீண்டும் முயற்சிக்கும் முன் வேலையைப் புதுப்பிக்கவும்.",
+  "The upload was accepted, but the saved {type} photo count could not be confirmed after refreshing. Reload the job before continuing.":
+    "பதிவேற்றம் ஏற்கப்பட்டது; ஆனால் புதுப்பித்த பிறகும் சேமித்த {type} படங்களின் எண்ணிக்கையை உறுதிப்படுத்த முடியவில்லை. தொடர்வதற்கு முன் வேலையை மீண்டும் ஏற்றவும்.",
+  "Photos were saved, but the job could not be refreshed. Reload before continuing.":
+    "படங்கள் சேமிக்கப்பட்டன; ஆனால் வேலையைப் புதுப்பிக்க முடியவில்லை. தொடர்வதற்கு முன் மீண்டும் ஏற்றவும்.",
+  "{saved} selected {type} photo(s) were saved; the remaining selection is ready to retry.":
+    "தேர்ந்தெடுத்த {type} படங்களில் {saved} சேமிக்கப்பட்டன; மீதமுள்ளவற்றை மீண்டும் முயற்சிக்கலாம்.",
+  "All required Before and After photos are uploaded.":
+    "தேவையான முன் மற்றும் பின் படங்கள் அனைத்தும் பதிவேற்றப்பட்டன.",
+  "Acquire your GPS location to complete the job.":
+    "வேலையை முடிக்க GPS இடத்தைப் பெறவும்.",
+  "Get your current location to complete this job.":
+    "இந்த வேலையை முடிக்க தற்போதைய இடத்தைப் பெறவும்.",
+  "Move within 20 m of the ATM and refresh your location to continue.":
+    "தொடர ATM-இன் 20 மீட்டருக்குள் சென்று இடத்தைப் புதுப்பிக்கவும்.",
   "Complete this job?": "இந்த வேலையை முடிக்கவா?",
-  "The server will validate your GPS coordinates. Once completed, you cannot continue working on this job unless an authorized user changes its status.": "உங்கள் GPS இடத்தைச் சரிபார்த்த பிறகு வேலை முடிக்கப்படும். அங்கீகரிக்கப்பட்டவர் நிலையை மாற்றினால் மட்டுமே மீண்டும் வேலை செய்ய முடியும்.",
+  "The server will validate your GPS coordinates. Once completed, you cannot continue working on this job unless an authorized user changes its status.":
+    "உங்கள் GPS இடத்தைச் சரிபார்த்த பிறகு வேலை முடிக்கப்படும். அங்கீகரிக்கப்பட்டவர் நிலையை மாற்றினால் மட்டுமே மீண்டும் வேலை செய்ய முடியும்.",
   Cancel: "ரத்து செய்யவும்",
   "Confirm completion": "முடிப்பதை உறுதிப்படுத்தவும்",
   "Job Photos": "வேலைப் படங்கள்",
-  "Before and after photos for this job.": "இந்த வேலைக்கான முன் மற்றும் பின் படங்கள்.",
+  "Before and after photos for this job.":
+    "இந்த வேலைக்கான முன் மற்றும் பின் படங்கள்.",
   "No photos uploaded.": "படங்கள் பதிவேற்றப்படவில்லை.",
   "Full-size photo": "முழு அளவுப் படம்",
   "Close photo review": "படப் பார்வையை மூடவும்",
   "Close full-size photo": "முழு அளவுப் படத்தை மூடவும்",
   "Job photos": "வேலைப் படங்கள்",
   "The request could not be completed.": "கோரிக்கையை முடிக்க முடியவில்லை.",
-  "Preview of {type} photo: {filename}": "{type} படத்தின் முன்னோட்டம்: {filename}",
+  "Preview of {type} photo: {filename}":
+    "{type} படத்தின் முன்னோட்டம்: {filename}",
   "Remove {filename}": "{filename} படத்தை நீக்கவும்",
-  "{filename}: use a JPEG, PNG, or WebP image.": "{filename}: JPEG, PNG அல்லது WebP படத்தைத் தேர்ந்தெடுக்கவும்.",
-  "{filename}: maximum file size is 5 MB.": "{filename}: படத்தின் அளவு 5 MB-க்கு மேல் இருக்கக்கூடாது.",
-  "Only the first valid image was used to replace this photo.": "முதல் சரியான படம் மட்டுமே மாற்றத்திற்குப் பயன்படுத்தப்பட்டது.",
-  "{filename}: this file is already selected.": "{filename}: இந்தக் கோப்பு ஏற்கனவே தேர்ந்தெடுக்கப்பட்டுள்ளது.",
-  "{count} selected {type} photo(s) were not added; only {slots} more can be selected.": "{count} {type} படங்கள் சேர்க்கப்படவில்லை; மேலும் {slots} படங்களை மட்டுமே தேர்வு செய்யலாம்.",
-  "You are not assigned to this ATM. Ask an administrator to assign this ATM to you.": "இந்த ATM உங்களுக்கு ஒதுக்கப்படவில்லை. நிர்வாகியிடம் இதை உங்களுக்கு ஒதுக்கச் சொல்லவும்.",
-  "Select {count} more {type} photo(s) before uploading.": "பதிவேற்றுவதற்கு முன் மேலும் {count} {type} படங்களைத் தேர்ந்தெடுக்கவும்.",
-  "The server did not confirm all required {type} photos. Refresh the job and retry any missing photos.": "தேவையான {type} படங்கள் அனைத்தையும் சர்வர் உறுதிப்படுத்தவில்லை. வேலையைப் புதுப்பித்து விடுபட்ட படங்களை மீண்டும் முயற்சிக்கவும்.",
-  "The uploaded photos could not be confirmed. Refresh the job before retrying.": "பதிவேற்றிய படங்களை உறுதிப்படுத்த முடியவில்லை. மீண்டும் முயற்சிக்கும் முன் வேலையைப் புதுப்பிக்கவும்.",
-  "{message} The saved photo status could not be refreshed; reload the job before retrying.": "{message} சேமித்த படங்களின் நிலையைப் புதுப்பிக்க முடியவில்லை; மீண்டும் முயற்சிக்கும் முன் வேலையை மறுபடியும் திறக்கவும்.",
-  "Location acquired · accuracy ±{accuracy} m": "இடம் பெறப்பட்டது · துல்லியம் ±{accuracy} மீ.",
-  "GPS accuracy is low. Retry from a location with a clearer signal if possible.": "GPS துல்லியம் குறைவாக உள்ளது. சிக்னல் தெளிவான இடத்திலிருந்து மீண்டும் முயற்சிக்கவும்.",
-  "GPS accuracy must be 50 meters or better. Retry GPS capture in a clearer area before submitting the location request.": "இடக் கோரிக்கையைச் சமர்ப்பிக்க GPS துல்லியம் 50 மீட்டர் அல்லது அதற்கும் குறைவாக இருக்க வேண்டும். தெளிவான சிக்னல் உள்ள இடத்தில் GPS-ஐ மீண்டும் பெறவும்.",
+  "{filename}: use a JPEG, PNG, or WebP image.":
+    "{filename}: JPEG, PNG அல்லது WebP படத்தைத் தேர்ந்தெடுக்கவும்.",
+  "{filename}: maximum file size is 5 MB.":
+    "{filename}: படத்தின் அளவு 5 MB-க்கு மேல் இருக்கக்கூடாது.",
+  "Only the first valid image was used to replace this photo.":
+    "முதல் சரியான படம் மட்டுமே மாற்றத்திற்குப் பயன்படுத்தப்பட்டது.",
+  "{filename}: this file is already selected.":
+    "{filename}: இந்தக் கோப்பு ஏற்கனவே தேர்ந்தெடுக்கப்பட்டுள்ளது.",
+  "{count} selected {type} photo(s) were not added; only {slots} more can be selected.":
+    "{count} {type} படங்கள் சேர்க்கப்படவில்லை; மேலும் {slots} படங்களை மட்டுமே தேர்வு செய்யலாம்.",
+  "You are not assigned to this ATM. Ask an administrator to assign this ATM to you.":
+    "இந்த ATM உங்களுக்கு ஒதுக்கப்படவில்லை. நிர்வாகியிடம் இதை உங்களுக்கு ஒதுக்கச் சொல்லவும்.",
+  "Select {count} more {type} photo(s) before uploading.":
+    "பதிவேற்றுவதற்கு முன் மேலும் {count} {type} படங்களைத் தேர்ந்தெடுக்கவும்.",
+  "The server did not confirm all required {type} photos. Refresh the job and retry any missing photos.":
+    "தேவையான {type} படங்கள் அனைத்தையும் சர்வர் உறுதிப்படுத்தவில்லை. வேலையைப் புதுப்பித்து விடுபட்ட படங்களை மீண்டும் முயற்சிக்கவும்.",
+  "The uploaded photos could not be confirmed. Refresh the job before retrying.":
+    "பதிவேற்றிய படங்களை உறுதிப்படுத்த முடியவில்லை. மீண்டும் முயற்சிக்கும் முன் வேலையைப் புதுப்பிக்கவும்.",
+  "{message} The saved photo status could not be refreshed; reload the job before retrying.":
+    "{message} சேமித்த படங்களின் நிலையைப் புதுப்பிக்க முடியவில்லை; மீண்டும் முயற்சிக்கும் முன் வேலையை மறுபடியும் திறக்கவும்.",
+  "Location acquired · accuracy ±{accuracy} m":
+    "இடம் பெறப்பட்டது · துல்லியம் ±{accuracy} மீ.",
+  "GPS accuracy is low. Retry from a location with a clearer signal if possible.":
+    "GPS துல்லியம் குறைவாக உள்ளது. சிக்னல் தெளிவான இடத்திலிருந்து மீண்டும் முயற்சிக்கவும்.",
+  "GPS accuracy must be 50 meters or better. Retry GPS capture in a clearer area before submitting the location request.":
+    "இடக் கோரிக்கையைச் சமர்ப்பிக்க GPS துல்லியம் 50 மீட்டர் அல்லது அதற்கும் குறைவாக இருக்க வேண்டும். தெளிவான சிக்னல் உள்ள இடத்தில் GPS-ஐ மீண்டும் பெறவும்.",
   "{type}: {count}/": "{type}: {count}/",
   "Take photo": "படம் எடுக்கவும்",
   "Choose photos": "படங்களைத் தேர்ந்தெடுக்கவும்",
-  "{count} photo(s) already uploaded and saved.": "{count} படம்(கள்) ஏற்கனவே பதிவேற்றிச் சேமிக்கப்பட்டுள்ளன.",
-  "{type} photos uploaded successfully.": "{type} படங்கள் வெற்றிகரமாகப் பதிவேற்றப்பட்டன.",
-  "Uploading {type} photos: {count}/": "{type} படங்கள் பதிவேற்றப்படுகின்றன: {count}/",
-  "All 3 Before and 3 After photos are uploaded.": "முன் மற்றும் பின் தலா 3 படங்களும் பதிவேற்றப்பட்டன.",
+  "{count} photo(s) already uploaded and saved.":
+    "{count} படம்(கள்) ஏற்கனவே பதிவேற்றிச் சேமிக்கப்பட்டுள்ளன.",
+  "{type} photos uploaded successfully.":
+    "{type} படங்கள் வெற்றிகரமாகப் பதிவேற்றப்பட்டன.",
+  "Uploading {type} photos: {count}/":
+    "{type} படங்கள் பதிவேற்றப்படுகின்றன: {count}/",
+  "All 3 Before and 3 After photos are uploaded.":
+    "முன் மற்றும் பின் தலா 3 படங்களும் பதிவேற்றப்பட்டன.",
   "AMC progress is not available.": "AMC முன்னேற்ற விவரங்கள் இல்லை.",
-  "{completed} completed of {total} assigned AMC record(s)": "ஒதுக்கப்பட்ட {total} AMC பதிவுகளில் {completed} முடிக்கப்பட்டன",
+  "{completed} completed of {total} assigned AMC record(s)":
+    "ஒதுக்கப்பட்ட {total} AMC பதிவுகளில் {completed} முடிக்கப்பட்டன",
   "Loading...": "ஏற்றப்படுகிறது...",
   "Additional ATM information": "கூடுதல் ATM விவரங்கள்",
   Name: "பெயர்",
@@ -1174,7 +1532,8 @@ const employeeTamil: Dictionary = {
   "Reported by": "புகார் அளித்தவர்",
   "Reported via": "புகார் வந்த வழி",
   "Reported at": "புகார் அளித்த நேரம்",
-  "No complaint is linked to this job.": "இந்த வேலையுடன் புகார் இணைக்கப்படவில்லை.",
+  "No complaint is linked to this job.":
+    "இந்த வேலையுடன் புகார் இணைக்கப்படவில்லை.",
   "Lifecycle dates": "வேலையின் முக்கிய தேதிகள்",
   Started: "தொடங்கப்பட்டது",
   "Completion GPS": "வேலை முடித்த GPS விவரம்",
@@ -1223,42 +1582,60 @@ const employeeTamil: Dictionary = {
   "Job cancelled.": "வேலை ரத்து செய்யப்பட்டது.",
   "Stop (Put On Hold)": "நிறுத்தி வைக்கவும்",
   "Reject Job": "வேலையை நிராகரிக்கவும்",
-  "This job will move to Rejected. You may optionally provide a reason.": "இந்த வேலை நிராகரிக்கப்பட்ட நிலைக்கு மாறும். காரணத்தை விருப்பமாகக் குறிப்பிடலாம்.",
+  "This job will move to Rejected. You may optionally provide a reason.":
+    "இந்த வேலை நிராகரிக்கப்பட்ட நிலைக்கு மாறும். காரணத்தை விருப்பமாகக் குறிப்பிடலாம்.",
   "Confirm Reject": "நிராகரிப்பை உறுதிப்படுத்தவும்",
-  "Cancel {job}? This job will remain in history with its material and cost records intact. Any linked complaint will retain this job in its history; an active complaint will reopen for replacement work.": "{job} வேலையை ரத்து செய்யவா? பொருள் மற்றும் செலவுப் பதிவுகளுடன் இது வரலாற்றில் இருக்கும். இணைக்கப்பட்ட புகாரிலும் இந்த வேலை இருக்கும்; செயலில் உள்ள புகார் மாற்று வேலைக்காக மீண்டும் திறக்கப்படும்.",
+  "Cancel {job}? This job will remain in history with its material and cost records intact. Any linked complaint will retain this job in its history; an active complaint will reopen for replacement work.":
+    "{job} வேலையை ரத்து செய்யவா? பொருள் மற்றும் செலவுப் பதிவுகளுடன் இது வரலாற்றில் இருக்கும். இணைக்கப்பட்ட புகாரிலும் இந்த வேலை இருக்கும்; செயலில் உள்ள புகார் மாற்று வேலைக்காக மீண்டும் திறக்கப்படும்.",
   "Keep Job": "வேலையை வைத்திருக்கவும்",
   "Confirm Cancellation": "ரத்துசெய்வதை உறுதிப்படுத்தவும்",
   "Remove material usage?": "பொருள் பயன்பாட்டை நீக்கவா?",
-  "This removes the recorded {item} entry from this Job only. It will not change the Item Master.": "இந்த வேலையின் {item} பதிவு மட்டும் நீக்கப்படும். பொருள் பட்டியலில் மாற்றம் இருக்காது.",
+  "This removes the recorded {item} entry from this Job only. It will not change the Item Master.":
+    "இந்த வேலையின் {item} பதிவு மட்டும் நீக்கப்படும். பொருள் பட்டியலில் மாற்றம் இருக்காது.",
   "Keep entry": "பதிவை வைத்திருக்கவும்",
   "Remove entry": "பதிவை நீக்கவும்",
   material: "பொருள்",
   "Remove {item} usage": "{item} பயன்பாட்டை நீக்கவும்",
-  "This Job is no longer assigned to you. Refresh the Job before trying again.": "இந்த வேலை இனி உங்களுக்கு ஒதுக்கப்படவில்லை. மீண்டும் முயற்சிக்கும் முன் வேலையைப் புதுப்பிக்கவும்.",
-  "The Job or selected Item is no longer available. Refresh and choose an active Item.": "வேலை அல்லது தேர்ந்தெடுத்த பொருள் கிடைக்கவில்லை. புதுப்பித்து செயலில் உள்ள பொருளைத் தேர்ந்தெடுக்கவும்.",
-  "This Job is no longer in progress. Refresh the Job to see its current status.": "இந்த வேலை தற்போது நடைபெறவில்லை. தற்போதைய நிலையைப் பார்க்க வேலையைப் புதுப்பிக்கவும்.",
-  "Check the selected Item and quantity, then try again.": "தேர்ந்தெடுத்த பொருள் மற்றும் அளவைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
-  "Could not record material usage. Check your connection and try again.": "பொருள் பயன்பாட்டைப் பதிவு செய்ய முடியவில்லை. இணைய இணைப்பைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
-  "Material usage can only be removed while the Job is in progress.": "வேலை நடைபெறும்போது மட்டுமே பொருள் பயன்பாட்டைப் பதிவு நீக்க முடியும்.",
-  "This Job is no longer assigned to you.": "இந்த வேலை இனி உங்களுக்கு ஒதுக்கப்படவில்லை.",
-  "Could not remove material usage. Refresh and try again.": "பொருள் பயன்பாட்டை நீக்க முடியவில்லை. புதுப்பித்து மீண்டும் முயற்சிக்கவும்.",
+  "This Job is no longer assigned to you. Refresh the Job before trying again.":
+    "இந்த வேலை இனி உங்களுக்கு ஒதுக்கப்படவில்லை. மீண்டும் முயற்சிக்கும் முன் வேலையைப் புதுப்பிக்கவும்.",
+  "The Job or selected Item is no longer available. Refresh and choose an active Item.":
+    "வேலை அல்லது தேர்ந்தெடுத்த பொருள் கிடைக்கவில்லை. புதுப்பித்து செயலில் உள்ள பொருளைத் தேர்ந்தெடுக்கவும்.",
+  "This Job is no longer in progress. Refresh the Job to see its current status.":
+    "இந்த வேலை தற்போது நடைபெறவில்லை. தற்போதைய நிலையைப் பார்க்க வேலையைப் புதுப்பிக்கவும்.",
+  "Check the selected Item and quantity, then try again.":
+    "தேர்ந்தெடுத்த பொருள் மற்றும் அளவைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
+  "Could not record material usage. Check your connection and try again.":
+    "பொருள் பயன்பாட்டைப் பதிவு செய்ய முடியவில்லை. இணைய இணைப்பைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
+  "Material usage can only be removed while the Job is in progress.":
+    "வேலை நடைபெறும்போது மட்டுமே பொருள் பயன்பாட்டைப் பதிவு நீக்க முடியும்.",
+  "This Job is no longer assigned to you.":
+    "இந்த வேலை இனி உங்களுக்கு ஒதுக்கப்படவில்லை.",
+  "Could not remove material usage. Refresh and try again.":
+    "பொருள் பயன்பாட்டை நீக்க முடியவில்லை. புதுப்பித்து மீண்டும் முயற்சிக்கவும்.",
   "Select an Item.": "ஒரு பொருளைத் தேர்ந்தெடுக்கவும்.",
-  "Quantity must be a finite number greater than zero.": "அளவு பூஜ்ஜியத்தை விட அதிகமான எண்ணாக இருக்க வேண்டும்.",
-  "New material usage can only be recorded while the Job is in progress.": "வேலை நடைபெறும்போது மட்டுமே புதிய பொருள் பயன்பாட்டைப் பதிவு செய்யலாம்.",
+  "Quantity must be a finite number greater than zero.":
+    "அளவு பூஜ்ஜியத்தை விட அதிகமான எண்ணாக இருக்க வேண்டும்.",
+  "New material usage can only be recorded while the Job is in progress.":
+    "வேலை நடைபெறும்போது மட்டுமே புதிய பொருள் பயன்பாட்டைப் பதிவு செய்யலாம்.",
   "Loading material history...": "பொருள் வரலாறு ஏற்றப்படுகிறது...",
-  "No materials have been recorded for this Job.": "இந்த வேலைக்குப் பொருட்கள் பதிவு செய்யப்படவில்லை.",
+  "No materials have been recorded for this Job.":
+    "இந்த வேலைக்குப் பொருட்கள் பதிவு செய்யப்படவில்லை.",
   "Review {type} photo {number}": "{type} படம் {number}-ஐப் பார்க்கவும்",
   "{type} photo {number}": "{type} படம் {number}",
   "{count} / 3 required": "{count} / 3 தேவை",
-  "Open {type} photo {number} full size": "{type} படம் {number}-ஐ முழு அளவில் திறக்கவும்",
+  "Open {type} photo {number} full size":
+    "{type} படம் {number}-ஐ முழு அளவில் திறக்கவும்",
   "No photo available": "படம் இல்லை",
-  "Select three Before and three After photos. Review the previews, then upload both groups.": "முன் மற்றும் பின் தலா மூன்று படங்களைத் தேர்ந்தெடுத்து, முன்னோட்டங்களைப் பார்த்த பிறகு இரு தொகுப்புகளையும் பதிவேற்றவும்.",
+  "Select three Before and three After photos. Review the previews, then upload both groups.":
+    "முன் மற்றும் பின் தலா மூன்று படங்களைத் தேர்ந்தெடுத்து, முன்னோட்டங்களைப் பார்த்த பிறகு இரு தொகுப்புகளையும் பதிவேற்றவும்.",
   "Replace a selected {type} photo": "தேர்ந்தெடுத்த {type} படத்தை மாற்றவும்",
   "ATM ID": "ATM எண்",
   "Loading job details...": "வேலை விவரங்கள் ஏற்றப்படுகின்றன...",
   "Additional Workers": "கூடுதல் பணியாளர்கள்",
-  "External workers who accompanied you on this Job.": "இந்தப் பணிக்காக உங்களுடன் வந்த வெளிப்புறப் பணியாளர்கள்.",
-  "No additional workers have been recorded.": "கூடுதல் பணியாளர்கள் இன்னும் பதிவு செய்யப்படவில்லை.",
+  "External workers who accompanied you on this Job.":
+    "இந்தப் பணிக்காக உங்களுடன் வந்த வெளிப்புறப் பணியாளர்கள்.",
+  "No additional workers have been recorded.":
+    "கூடுதல் பணியாளர்கள் இன்னும் பதிவு செய்யப்படவில்லை.",
   "Add worker": "பணியாளரைச் சேர்க்கவும்",
   "Edit worker": "பணியாளர் விவரத்தைத் திருத்தவும்",
   "Remove worker": "பணியாளரை நீக்கவும்",
@@ -1267,40 +1644,55 @@ const employeeTamil: Dictionary = {
   "Worker type / name": "பணியாளர் வகை / பெயர்",
   "Notes (optional)": "குறிப்புகள் (விருப்பம்)",
   "Enter the worker type or name.": "பணியாளர் வகை அல்லது பெயரை உள்ளிடவும்.",
-  "Worker type must be 80 characters or fewer.": "பணியாளர் வகை 80 எழுத்துகளுக்கு மிகாமல் இருக்க வேண்டும்.",
-  "Quantity must be a positive whole number.": "அளவு பூஜ்ஜியத்தை விட அதிகமான முழு எண்ணாக இருக்க வேண்டும்.",
-  "Notes must be 300 characters or fewer.": "குறிப்புகள் 300 எழுத்துகளுக்கு மிகாமல் இருக்க வேண்டும்.",
+  "Worker type must be 80 characters or fewer.":
+    "பணியாளர் வகை 80 எழுத்துகளுக்கு மிகாமல் இருக்க வேண்டும்.",
+  "Quantity must be a positive whole number.":
+    "அளவு பூஜ்ஜியத்தை விட அதிகமான முழு எண்ணாக இருக்க வேண்டும்.",
+  "Notes must be 300 characters or fewer.":
+    "குறிப்புகள் 300 எழுத்துகளுக்கு மிகாமல் இருக்க வேண்டும்.",
   "Saving...": "சேமிக்கப்படுகிறது...",
   "Update worker": "பணியாளர் விவரத்தைப் புதுப்பிக்கவும்",
   "Add worker entry": "பணியாளர் பதிவைச் சேர்க்கவும்",
-  "Maximum of 20 worker entries reached.": "அதிகபட்சம் 20 பணியாளர் பதிவுகள் சேர்க்கப்பட்டுள்ளன.",
-  "Additional workers can only be changed on an assigned Job in progress.": "உங்களுக்கு ஒதுக்கப்பட்டு நடைபெறும் பணியில் மட்டுமே கூடுதல் பணியாளர் விவரங்களை மாற்றலாம்.",
-  "Job version unavailable. Refresh before managing additional workers.": "வேலை பதிப்பு கிடைக்கவில்லை. கூடுதல் பணியாளர் விவரங்களை மாற்றுவதற்கு முன் புதுப்பிக்கவும்.",
+  "Maximum of 20 worker entries reached.":
+    "அதிகபட்சம் 20 பணியாளர் பதிவுகள் சேர்க்கப்பட்டுள்ளன.",
+  "Additional workers can only be changed on an assigned Job in progress.":
+    "உங்களுக்கு ஒதுக்கப்பட்டு நடைபெறும் பணியில் மட்டுமே கூடுதல் பணியாளர் விவரங்களை மாற்றலாம்.",
+  "Job version unavailable. Refresh before managing additional workers.":
+    "வேலை பதிப்பு கிடைக்கவில்லை. கூடுதல் பணியாளர் விவரங்களை மாற்றுவதற்கு முன் புதுப்பிக்கவும்.",
   "Refresh Job": "வேலையைப் புதுப்பிக்கவும்",
   "Refreshing...": "புதுப்பிக்கப்படுகிறது...",
-  "Could not refresh the latest Job data. Your draft is still here.": "சமீபத்திய வேலை விவரங்களைப் புதுப்பிக்க முடியவில்லை. உங்கள் வரைவு அப்படியே உள்ளது.",
-  "This Job changed elsewhere. Refresh the latest data before saving again. Your draft has been kept.": "இந்த வேலை வேறொருவரால் மாற்றப்பட்டுள்ளது. மீண்டும் சேமிப்பதற்கு முன் சமீபத்திய விவரங்களைப் புதுப்பிக்கவும். உங்கள் வரைவு பாதுகாக்கப்பட்டுள்ளது.",
-  "This Job is no longer assigned to you or cannot be changed in its current status. Refresh the Job.": "இந்த வேலை இனி உங்களுக்கு ஒதுக்கப்படவில்லை அல்லது தற்போதைய நிலையில் மாற்ற முடியாது. வேலையைப் புதுப்பிக்கவும்.",
-  "Job or worker entry no longer exists. Refresh the Job.": "வேலை அல்லது பணியாளர் பதிவு இனி இல்லை. வேலையைப் புதுப்பிக்கவும்.",
-  "Check worker type, quantity, and notes, then try again.": "பணியாளர் வகை, அளவு, குறிப்புகளைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
-  "Could not save worker details. Check your connection and try again.": "பணியாளர் விவரங்களைச் சேமிக்க முடியவில்லை. இணைய இணைப்பைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
+  "Could not refresh the latest Job data. Your draft is still here.":
+    "சமீபத்திய வேலை விவரங்களைப் புதுப்பிக்க முடியவில்லை. உங்கள் வரைவு அப்படியே உள்ளது.",
+  "This Job changed elsewhere. Refresh the latest data before saving again. Your draft has been kept.":
+    "இந்த வேலை வேறொருவரால் மாற்றப்பட்டுள்ளது. மீண்டும் சேமிப்பதற்கு முன் சமீபத்திய விவரங்களைப் புதுப்பிக்கவும். உங்கள் வரைவு பாதுகாக்கப்பட்டுள்ளது.",
+  "This Job is no longer assigned to you or cannot be changed in its current status. Refresh the Job.":
+    "இந்த வேலை இனி உங்களுக்கு ஒதுக்கப்படவில்லை அல்லது தற்போதைய நிலையில் மாற்ற முடியாது. வேலையைப் புதுப்பிக்கவும்.",
+  "Job or worker entry no longer exists. Refresh the Job.":
+    "வேலை அல்லது பணியாளர் பதிவு இனி இல்லை. வேலையைப் புதுப்பிக்கவும்.",
+  "Check worker type, quantity, and notes, then try again.":
+    "பணியாளர் வகை, அளவு, குறிப்புகளைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
+  "Could not save worker details. Check your connection and try again.":
+    "பணியாளர் விவரங்களைச் சேமிக்க முடியவில்லை. இணைய இணைப்பைச் சரிபார்த்து மீண்டும் முயற்சிக்கவும்.",
   "Worker added.": "பணியாளர் சேர்க்கப்பட்டார்.",
   "Worker updated.": "பணியாளர் விவரம் புதுப்பிக்கப்பட்டது.",
   "Worker removed.": "பணியாளர் நீக்கப்பட்டார்.",
   "Remove additional worker?": "கூடுதல் பணியாளரை நீக்கவா?",
-  "Remove {workerType} from this Job? This cannot be undone.": "{workerType} விவரத்தை இந்த வேலையிலிருந்து நீக்கவா? இதை மீட்டெடுக்க முடியாது.",
+  "Remove {workerType} from this Job? This cannot be undone.":
+    "{workerType} விவரத்தை இந்த வேலையிலிருந்து நீக்கவா? இதை மீட்டெடுக்க முடியாது.",
   "Keep worker": "பணியாளரை வைத்திருக்கவும்",
   "Worker type": "பணியாளர் வகை",
-  "Notes": "குறிப்புகள்",
+  Notes: "குறிப்புகள்",
   "Added: {details}": "சேர்த்தது: {details}",
   "Before: {details}": "முன்பு: {details}",
   "After: {details}": "பிறகு: {details}",
   "Removed: {details}": "நீக்கியது: {details}",
-  "Additional worker details recorded.": "கூடுதல் பணியாளர் விவரங்கள் பதிவு செய்யப்பட்டன.",
+  "Additional worker details recorded.":
+    "கூடுதல் பணியாளர் விவரங்கள் பதிவு செய்யப்பட்டன.",
   "Additional Worker Added": "கூடுதல் பணியாளர் சேர்க்கப்பட்டார்",
   "Additional Worker Updated": "கூடுதல் பணியாளர் விவரம் புதுப்பிக்கப்பட்டது",
   "Additional Worker Removed": "கூடுதல் பணியாளர் நீக்கப்பட்டார்",
-  "Worker entries are separate from materials and job costs.": "பணியாளர் பதிவுகள் பொருட்கள் மற்றும் வேலைச் செலவுகளிலிருந்து தனியாகப் பதிவு செய்யப்படுகின்றன.",
+  "Worker entries are separate from materials and job costs.":
+    "பணியாளர் பதிவுகள் பொருட்கள் மற்றும் வேலைச் செலவுகளிலிருந்து தனியாகப் பதிவு செய்யப்படுகின்றன.",
   to: "க்கு",
 };
 
@@ -1331,7 +1723,8 @@ export function translate(
   key: EmployeeTranslationKey,
   values?: TranslationValues,
 ) {
-  const template = language === "ta" ? employeeTamil[key] : employeeEnglish[key];
+  const template =
+    language === "ta" ? employeeTamil[key] : employeeEnglish[key];
   return template.replace(/\{(\w+)\}/g, (match, name: string) =>
     values?.[name] === undefined ? match : String(values[name]),
   );
@@ -1372,9 +1765,7 @@ export function employeeDisplayLabel(
   label: string,
   t: EmployeeLanguageContextValue["t"],
 ) {
-  return label in employeeEnglish
-    ? t(label as EmployeeTranslationKey)
-    : label;
+  return label in employeeEnglish ? t(label as EmployeeTranslationKey) : label;
 }
 
 export function employeeErrorMessage(

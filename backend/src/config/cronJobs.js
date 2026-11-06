@@ -8,8 +8,23 @@ import {
 import { AMC_CONFIG } from "../modules/amc/amc.config.js";
 import { generateRecurringJobs } from "../modules/jobs/recurringMaintenance.service.js";
 import { MAINTENANCE_TIMEZONE } from "../modules/jobs/recurringMaintenance.utils.js";
+import { processVehicleReminders } from "../modules/vehicles/vehicleReminderWorker.js";
 
 export const initCronJobs = () => {
+  const runVehicleReminderWorker = async () => {
+    try {
+      const result = await processVehicleReminders();
+      console.log("[Cron] Vehicle reminder reconciliation completed:", result);
+    } catch (error) {
+      console.error("[Cron] Vehicle reminder reconciliation failed:", error);
+    }
+  };
+
+  void runVehicleReminderWorker();
+  cron.schedule("*/15 * * * *", runVehicleReminderWorker, {
+    timezone: "Asia/Kolkata",
+  });
+
   // Cloudinary cleanup — daily at 2:00 AM
   cron.schedule("0 2 * * *", async () => {
     console.log("[Cron] Starting Cloudinary FIFO cleanup...");
@@ -24,7 +39,10 @@ export const initCronJobs = () => {
       console.log("[Cron] Starting recurring maintenance job generation...");
       try {
         const result = await generateRecurringJobs();
-        console.log("[Cron] Recurring maintenance generation completed:", result);
+        console.log(
+          "[Cron] Recurring maintenance generation completed:",
+          result,
+        );
       } catch (err) {
         console.error("[Cron] Recurring maintenance generation failed:", err);
       }

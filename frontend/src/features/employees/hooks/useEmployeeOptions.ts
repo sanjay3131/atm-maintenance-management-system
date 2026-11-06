@@ -5,10 +5,11 @@ export const useEmployeeOptions = (
   search: string,
   page: number,
   enabled = true,
+  activeOnly = false,
 ) =>
   useQuery({
-    queryKey: ["employee-options", search, page],
-    queryFn: ({ signal }) => getEmployeeOptions(search, page, signal),
+    queryKey: ["employee-options", search, page, activeOnly],
+    queryFn: ({ signal }) => getEmployeeOptions(search, page, signal, activeOnly),
     enabled,
     staleTime: 30_000,
   });

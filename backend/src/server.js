@@ -31,7 +31,10 @@ import supervisorRouter from "./modules/supervisor/supervisor.routes.js";
 import itemRouter from "./modules/items/item.routes.js";
 import attendanceRouter from "./modules/attendance/attendance.routes.js";
 import publicHolidayRouter from "./modules/holidays/publicHoliday.routes.js";
+import vehicleRouter from "./modules/vehicles/vehicle.routes.js";
 import { initializeItemNameIndex } from "./modules/items/itemIndexReadiness.js";
+import { initializeVehicleIndexes } from "./modules/vehicles/vehicleIndexReadiness.js";
+import { initializeDefaultVehiclePolicy } from "./modules/vehicles/vehicle.service.js";
 
 import { initSocketServer } from "./realtime/socket.js";
 import errorMiddleware from "./middlewares/error.middleware.js";
@@ -136,6 +139,7 @@ app.use("/api/v1/supervisor", supervisorRouter);
 app.use("/api/v1/items", itemRouter);
 app.use("/api/v1/attendance", attendanceRouter);
 app.use("/api/v1/holidays", publicHolidayRouter);
+app.use("/api/v1/vehicles", vehicleRouter);
 
 // Health check
 app.get("/health", (req, res) => {
@@ -167,6 +171,15 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
       } catch {
         console.error(
           "Item Master unique-name index initialization failed; Item writes will remain disabled.",
+        );
+      }
+      try {
+        await initializeVehicleIndexes();
+        await initializeDefaultVehiclePolicy();
+      } catch (error) {
+        console.error(
+          "Vehicle index or initial service policy setup failed; vehicle writes will remain unavailable.",
+          error,
         );
       }
 

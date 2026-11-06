@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
+  Bike,
   BriefcaseBusiness,
   ClipboardCheck,
   LayoutDashboard,
@@ -26,32 +27,76 @@ const employeeNavigation: Array<{
   icon: typeof LayoutDashboard;
   end?: boolean;
 }> = [
-  { to: "/employee", label: "Dashboard navigation", icon: LayoutDashboard, end: true },
-  { to: "/employee/jobs", label: "My Jobs navigation", icon: BriefcaseBusiness },
-  { to: "/employee/location-tasks", label: "Location Tasks navigation", icon: MapPin },
-  { to: "/employee/amcs", label: "My AMC visits navigation", icon: ClipboardCheck },
-  { to: "/employee/attendance", label: "Attendance navigation", icon: Activity },
+  {
+    to: "/employee",
+    label: "Dashboard navigation",
+    icon: LayoutDashboard,
+    end: true,
+  },
+  {
+    to: "/employee/jobs",
+    label: "My Jobs navigation",
+    icon: BriefcaseBusiness,
+  },
+  {
+    to: "/employee/location-tasks",
+    label: "Location Tasks navigation",
+    icon: MapPin,
+  },
+  {
+    to: "/employee/amcs",
+    label: "My AMC visits navigation",
+    icon: ClipboardCheck,
+  },
+  {
+    to: "/employee/attendance",
+    label: "Attendance navigation",
+    icon: Activity,
+  },
+  { to: "/employee/mileage", label: "Mileage navigation", icon: Bike },
 ];
 
 const pageTitles: Array<{
   matches: (path: string) => boolean;
   label: EmployeeTranslationKey;
 }> = [
-  { matches: (path: string) => path === "/employee", label: "Employee Dashboard" },
+  {
+    matches: (path: string) => path === "/employee",
+    label: "Employee Dashboard",
+  },
   { matches: (path: string) => path === "/employee/jobs", label: "My Jobs" },
-  { matches: (path: string) => path === "/employee/location-tasks", label: "My Location Tasks" },
-  { matches: (path: string) => path.startsWith("/employee/jobs/"), label: "Job Details" },
-  { matches: (path: string) => path === "/employee/amcs", label: "My AMC Visits" },
-  { matches: (path: string) => path.startsWith("/employee/amcs/"), label: "AMC Visit Details" },
-  { matches: (path: string) => path.startsWith("/employee/attendance"), label: "Attendance" },
+  {
+    matches: (path: string) => path === "/employee/location-tasks",
+    label: "My Location Tasks",
+  },
+  {
+    matches: (path: string) => path.startsWith("/employee/jobs/"),
+    label: "Job Details",
+  },
+  {
+    matches: (path: string) => path === "/employee/amcs",
+    label: "My AMC Visits",
+  },
+  {
+    matches: (path: string) => path.startsWith("/employee/amcs/"),
+    label: "AMC Visit Details",
+  },
+  {
+    matches: (path: string) => path.startsWith("/employee/attendance"),
+    label: "Attendance",
+  },
+  {
+    matches: (path: string) => path.startsWith("/employee/mileage"),
+    label: "Bike mileage",
+  },
 ];
 
 export default function EmployeeLayout() {
   const { logout } = useAuth();
   const { language, setLanguage, t } = useEmployeeLanguage();
   const location = useLocation();
-  const [isDesktop, setIsDesktop] = useState(() =>
-    window.matchMedia("(min-width: 768px)").matches,
+  const [isDesktop, setIsDesktop] = useState(
+    () => window.matchMedia("(min-width: 768px)").matches,
   );
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -86,7 +131,10 @@ export default function EmployeeLayout() {
 
   useEffect(() => {
     if (previousMobileSidebarOpen.current !== mobileSidebarOpen) {
-      (mobileSidebarOpen ? closeButtonRef : mobileMenuButtonRef).current?.focus();
+      (mobileSidebarOpen
+        ? closeButtonRef
+        : mobileMenuButtonRef
+      ).current?.focus();
       previousMobileSidebarOpen.current = mobileSidebarOpen;
     }
   }, [mobileSidebarOpen]);
@@ -107,7 +155,7 @@ export default function EmployeeLayout() {
       if (event.key !== "Tab") return;
       const focusableElements = Array.from(
         document.querySelectorAll<HTMLElement>(
-          '[data-employee-sidebar] a[href], [data-employee-sidebar] button:not([disabled])',
+          "[data-employee-sidebar] a[href], [data-employee-sidebar] button:not([disabled])",
         ),
       );
       const first = focusableElements[0];
@@ -320,7 +368,9 @@ export default function EmployeeLayout() {
               </button>
             )}
             {location.pathname !== "/employee/location-tasks" && (
-              <h2 className={`min-w-0 text-base font-semibold sm:text-lg ${employeeLanguageClasses(language, "truncate", "break-words leading-5")}`}>
+              <h2
+                className={`min-w-0 text-base font-semibold sm:text-lg ${employeeLanguageClasses(language, "truncate", "break-words leading-5")}`}
+              >
                 {t(pageTitle)}
               </h2>
             )}
@@ -333,7 +383,9 @@ export default function EmployeeLayout() {
           </div>
         </header>
 
-        <div className={`min-w-0 flex-1 bg-slate-50 dark:bg-slate-900 ${employeeLanguageClasses(language, "p-4 sm:p-6 lg:p-8", "p-3 sm:p-5 lg:p-6")}`}>
+        <div
+          className={`min-w-0 flex-1 bg-slate-50 dark:bg-slate-900 ${employeeLanguageClasses(language, "p-4 sm:p-6 lg:p-8", "p-3 sm:p-5 lg:p-6")}`}
+        >
           <div className="mx-auto w-full max-w-7xl min-w-0">
             <Outlet />
           </div>

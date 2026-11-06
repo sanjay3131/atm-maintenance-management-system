@@ -107,6 +107,7 @@ test("employee options query validates bounded pagination and search text", () =
     page: 1,
     limit: 20,
   });
+  assert.equal(employeeOptionsQuerySchema.parse({ activeOnly: "true" }).activeOnly, "true");
   assert.equal(employeeOptionsQuerySchema.safeParse({ limit: "51" }).success, false);
   assert.equal(
     employeeOptionsQuerySchema.safeParse({ search: "x".repeat(101) }).success,
@@ -206,6 +207,39 @@ test("employee options searches escaped name/code text and returns a safe pagina
     assert.equal(JSON.stringify(pipeline).includes("phoneNumber"), false);
     assert.equal(JSON.stringify(pipeline).includes("assignedAtm"), false);
     assert.equal(JSON.stringify(pipeline).includes("status"), false);
+  } finally {
+    Employee.aggregate = originalAggregate;
+  }
+});
+
+test("activeOnly filters active employees with active employee accounts before pagination", async () => {
+  const originalAggregate = Employee.aggregate;
+  let pipeline;
+  Employee.aggregate = async (value) => {
+    pipeline = value;
+    return [{ employees: [], metadata: [{ total: 0 }] }];
+  };
+
+  try {
+    const result = await invokeOptionsRoute({
+      search: "Ravi",
+      page: "2",
+      limit: "20",
+      activeOnly: "true",
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.req.validatedQuery.activeOnly, "true");
+    assert.deepEqual(pipeline[0], { $match: { status: "active" } });
+    assert.equal(pipeline[1].$lookup.from, "users");
+    assert.deepEqual(pipeline[3].$match, {
+      "user.status": "active",
+      "user.userType": "employee",
+    });
+    assert.deepEqual(pipeline.at(-1).$facet.employees.slice(0, 2), [
+      { $skip: 20 },
+      { $limit: 20 },
+    ]);
+    assert.equal(pipeline.at(-1).$facet.employees.some((stage) => stage.$lookup), false);
   } finally {
     Employee.aggregate = originalAggregate;
   }

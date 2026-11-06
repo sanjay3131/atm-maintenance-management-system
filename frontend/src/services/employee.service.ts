@@ -195,11 +195,12 @@ export const getEmployeeOptions = async (
   search: string,
   page = 1,
   signal?: AbortSignal,
+  activeOnly = false,
 ): Promise<EmployeeOptionsResponse> => {
   const response = await api.get<{ data: EmployeeOptionsResponse }>(
     "/employees/options",
     {
-      params: { search, page, limit: 20 },
+      params: { search, page, limit: 20, ...(activeOnly ? { activeOnly: "true" } : {}) },
       signal,
     },
   );

@@ -49,6 +49,11 @@ import ATMLocationRequestsPage from "@/pages/admin/ATMLocationRequestsPage";
 import ATMLocationRequestDetailsPage from "@/pages/admin/ATMLocationRequestDetailsPage";
 import ATMLocationTasksPage from "@/pages/admin/ATMLocationTasksPage";
 import CustomerPortalLayout from "@/layouts/CustomerPortalLayout";
+import VehiclesPage from "@/pages/admin/VehiclesPage";
+import VehicleDetailsPage from "@/pages/admin/VehicleDetailsPage";
+import VehicleServiceManagementPage from "@/pages/admin/VehicleServiceManagementPage";
+import VehicleReportsPage from "@/pages/admin/VehicleReportsPage";
+import EmployeeMileagePage from "@/pages/employee/EmployeeMileagePage";
 import {
   CustomerAMCDetailsPage,
   CustomerAMCsPage,
@@ -71,10 +76,7 @@ export default function App() {
         >
           <Route element={<AdminLayout />}>
             <Route path="/admin" element={<AdminDashboardPage />} />
-            <Route
-              path="/admin/attendance"
-              element={<AdminAttendancePage />}
-            />
+            <Route path="/admin/attendance" element={<AdminAttendancePage />} />
             <Route
               path="/admin/attendance/reports"
               element={<AdminAttendanceReportPage />}
@@ -87,6 +89,19 @@ export default function App() {
             />
             <Route path="/admin/customers" element={<CustomersPage />} />
             <Route path="/admin/items" element={<ItemsPage />} />
+            <Route path="/admin/vehicles" element={<VehiclesPage />} />
+            <Route
+              path="/admin/vehicles/service-management"
+              element={<VehicleServiceManagementPage />}
+            />
+            <Route
+              path="/admin/vehicles/reports"
+              element={<VehicleReportsPage />}
+            />
+            <Route
+              path="/admin/vehicles/:vehicleId"
+              element={<VehicleDetailsPage />}
+            />
             <Route
               path="/admin/customers/:id"
               element={<CustomerDetailsPage />}
@@ -124,10 +139,7 @@ export default function App() {
               element={<RecurringMaintenancePage />}
             />
             <Route path="/admin/amc" element={<AmcPage />} />
-            <Route
-              path="/admin/amc/:amcId"
-              element={<AdminAMCDetailsPage />}
-            />
+            <Route path="/admin/amc/:amcId" element={<AdminAMCDetailsPage />} />
             <Route path="/admin/complaints" element={<ComplaintsPage />} />
             <Route
               path="/admin/complaints/:id"
@@ -177,6 +189,7 @@ export default function App() {
               path="/employee/attendance"
               element={<EmployeeAttendancePage />}
             />
+            <Route path="/employee/mileage" element={<EmployeeMileagePage />} />
             <Route path="/employee/jobs" element={<EmployeeJobsPage />} />
             <Route
               path="/employee/location-tasks"
@@ -208,10 +221,7 @@ export default function App() {
               element={<CustomerJobDetailsPage />}
             />
             <Route path="/customer/amcs" element={<CustomerAMCsPage />} />
-            <Route
-              path="/customer/reports"
-              element={<CustomerReportsPage />}
-            />
+            <Route path="/customer/reports" element={<CustomerReportsPage />} />
             <Route
               path="/customer/amcs/:amcId"
               element={<CustomerAMCDetailsPage />}

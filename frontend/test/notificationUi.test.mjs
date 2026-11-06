@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   formatNotificationTimestamp,
   formatUnreadCount,
+  getVehicleServiceNotificationHref,
   getNotificationPanelState,
   isOutsideNotificationPanel,
   notificationButtonLabel,
@@ -22,6 +23,30 @@ test("unread count display hides zero at the UI boundary and caps large values",
 test("notification button has an accessible unread label", () => {
   assert.equal(notificationButtonLabel(0), "Notifications");
   assert.equal(notificationButtonLabel(3), "Notifications, 3 unread");
+});
+
+test("vehicle service notification links use safe IDs and role-specific destinations", () => {
+  const notification = {
+    type: "system",
+    data: { serviceType: "OIL_CHANGE", vehicleId: "64b000000000000000000101" },
+  };
+  assert.equal(
+    getVehicleServiceNotificationHref(notification, "admin"),
+    "/admin/vehicles/64b000000000000000000101",
+  );
+  assert.equal(
+    getVehicleServiceNotificationHref(notification, "employee"),
+    "/employee/mileage",
+  );
+  assert.equal(getVehicleServiceNotificationHref(notification, "customer"), null);
+  assert.equal(
+    getVehicleServiceNotificationHref({ ...notification, data: { ...notification.data, vehicleId: "../../settings" } }, "admin"),
+    null,
+  );
+  assert.equal(
+    getVehicleServiceNotificationHref({ type: "system", data: { vehicleId: "64b000000000000000000101" } }, "admin"),
+    null,
+  );
 });
 
 test("notification panel distinguishes loading, error, empty, and populated states", () => {
