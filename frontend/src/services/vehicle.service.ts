@@ -1,8 +1,13 @@
 import api from "@/lib/axios";
 import type {
   PagedVehicleHistory,
+  DailyMileageState,
+  DailyMileageRolloverList,
+  DailyMileageRolloverRecovery,
+  PagedDailyMileageHistory,
   ServicePolicyResponse,
   Vehicle,
+  VehicleDailyMileage,
   VehicleDetails,
   VehicleListResponse,
   VehicleServiceRecord,
@@ -31,6 +36,9 @@ export interface VehicleOdometerCorrectionResult {
   correctedOdometerKm: number;
   timelineReviewRequired: boolean;
   serviceBaselineReviewRequired: boolean;
+  dailyMileageId?: string | null;
+  dailySegmentId?: string | null;
+  correctedField?: string;
 }
 
 export const getVehicles = async (params: VehicleListParams = {}) => {
@@ -138,12 +146,190 @@ export const transferVehicleAssignment = async (payload: {
   return response.data.data;
 };
 
+export const getDailyMileageState = async () => {
+  const response = await api.get<{ data: DailyMileageState }>(
+    "/vehicles/employee/daily-mileage",
+  );
+  return response.data.data;
+};
+
+export const getPendingDailyMileageRollovers = async () => {
+  const response = await api.get<{ data: DailyMileageRolloverList }>(
+    "/vehicles/admin/daily-mileage/rollover-pending",
+  );
+  return response.data.data;
+};
+
+export const recoverDailyMileageRollover = async ({
+  dailyMileageId,
+  recoveryOdometerKm,
+  expectedVehicleRevision,
+  expectedDailyRevision,
+  nextEmployeeId,
+}: {
+  dailyMileageId: string;
+  recoveryOdometerKm: number;
+  expectedVehicleRevision: number;
+  expectedDailyRevision: number;
+  nextEmployeeId?: string;
+}) => {
+  const response = await api.post<{ data: DailyMileageRolloverRecovery }>(
+    `/vehicles/admin/daily-mileage/${dailyMileageId}/recover-rollover`,
+    {
+      recoveryOdometerKm,
+      expectedVehicleRevision,
+      expectedDailyRevision,
+      ...(nextEmployeeId ? { nextEmployeeId } : {}),
+    },
+  );
+  return response.data.data;
+};
+
+export const getDailyMileageHistory = async (
+  params: { page?: number; limit?: number; fromDate?: string; toDate?: string } = {},
+) => {
+  const response = await api.get<{ data: PagedDailyMileageHistory }>(
+    "/vehicles/employee/daily-mileage/history",
+    { params },
+  );
+  return response.data.data;
+};
+
+export const startDailyMileage = async ({
+  vehicleId,
+  startingOdometerKm,
+  expectedVehicleRevision,
+}: {
+  vehicleId: string;
+  startingOdometerKm: number;
+  expectedVehicleRevision: number;
+}) => {
+  const response = await api.post<{ data: VehicleDailyMileage }>(
+    "/vehicles/employee/daily-mileage",
+    { vehicleId, startingOdometerKm, expectedVehicleRevision },
+  );
+  return response.data.data;
+};
+
+export const handoverDailyMileage = async ({
+  dailyMileageId,
+  endingOdometerKm,
+  expectedVehicleRevision,
+  expectedDailyRevision,
+}: {
+  dailyMileageId: string;
+  endingOdometerKm: number;
+  expectedVehicleRevision: number;
+  expectedDailyRevision: number;
+}) => {
+  const response = await api.post<{ data: VehicleDailyMileage }>(
+    `/vehicles/employee/daily-mileage/${dailyMileageId}/handover`,
+    { endingOdometerKm, expectedVehicleRevision, expectedDailyRevision },
+  );
+  return response.data.data;
+};
+
+export const joinDailyMileage = async ({
+  dailyMileageId,
+  expectedVehicleRevision,
+  expectedDailyRevision,
+}: {
+  dailyMileageId: string;
+  expectedVehicleRevision: number;
+  expectedDailyRevision: number;
+}) => {
+  const response = await api.post<{ data: VehicleDailyMileage }>(
+    `/vehicles/employee/daily-mileage/${dailyMileageId}/join`,
+    { expectedVehicleRevision, expectedDailyRevision },
+  );
+  return response.data.data;
+};
+
+export const startDailyMileageUsageSession = async ({
+  dailyMileageId,
+  requestId,
+  expectedVehicleRevision,
+  expectedDailyRevision,
+}: {
+  dailyMileageId: string;
+  requestId: string;
+  expectedVehicleRevision: number;
+  expectedDailyRevision: number;
+}) => {
+  const response = await api.post<{ data: VehicleDailyMileage }>(
+    `/vehicles/employee/daily-mileage/${dailyMileageId}/sessions/start`,
+    { requestId, expectedVehicleRevision, expectedDailyRevision },
+  );
+  return response.data.data;
+};
+
+export const completeDailyMileageUsageSession = async ({
+  dailyMileageId,
+  requestId,
+  endingOdometerKm,
+  expectedVehicleRevision,
+  expectedDailyRevision,
+}: {
+  dailyMileageId: string;
+  requestId: string;
+  endingOdometerKm: number;
+  expectedVehicleRevision: number;
+  expectedDailyRevision: number;
+}) => {
+  const response = await api.post<{ data: VehicleDailyMileage }>(
+    `/vehicles/employee/daily-mileage/${dailyMileageId}/sessions/complete`,
+    {
+      requestId,
+      endingOdometerKm,
+      expectedVehicleRevision,
+      expectedDailyRevision,
+    },
+  );
+  return response.data.data;
+};
+
+export const closeDailyMileage = async ({
+  dailyMileageId,
+  endingOdometerKm,
+  expectedVehicleRevision,
+  expectedDailyRevision,
+}: {
+  dailyMileageId: string;
+  endingOdometerKm: number;
+  expectedVehicleRevision: number;
+  expectedDailyRevision: number;
+}) => {
+  const response = await api.post<{ data: VehicleDailyMileage }>(
+    `/vehicles/employee/daily-mileage/${dailyMileageId}/close`,
+    { endingOdometerKm, expectedVehicleRevision, expectedDailyRevision },
+  );
+  return response.data.data;
+};
+
+export const reopenDailyMileage = async ({
+  dailyMileageId,
+  expectedVehicleRevision,
+  expectedDailyRevision,
+}: {
+  dailyMileageId: string;
+  expectedVehicleRevision: number;
+  expectedDailyRevision: number;
+}) => {
+  const response = await api.post<{ data: VehicleDailyMileage }>(
+    `/vehicles/employee/daily-mileage/${dailyMileageId}/reopen`,
+    { expectedVehicleRevision, expectedDailyRevision },
+  );
+  return response.data.data;
+};
+
 export const correctVehicleOdometer = async ({
   vehicleId,
   correctedOdometerKm,
   expectedVehicleRevision,
   reason,
   usageSessionId,
+  dailyMileageId,
+  dailySegmentId,
   correctedField,
 }: {
   vehicleId: string;
@@ -151,7 +337,14 @@ export const correctVehicleOdometer = async ({
   expectedVehicleRevision: number;
   reason: string;
   usageSessionId?: string;
-  correctedField?: "START" | "END";
+  dailyMileageId?: string;
+  dailySegmentId?: string;
+  correctedField?:
+    | "START"
+    | "END"
+    | "DAILY_START"
+    | "DAILY_END"
+    | "HANDOVER";
 }) => {
   const response = await api.post<{ data: VehicleOdometerCorrectionResult }>(
     `/vehicles/admin/${vehicleId}/odometer-corrections`,
@@ -160,6 +353,9 @@ export const correctVehicleOdometer = async ({
       expectedVehicleRevision,
       reason,
       ...(usageSessionId ? { usageSessionId, correctedField } : {}),
+      ...(dailyMileageId
+        ? { dailyMileageId, dailySegmentId, correctedField }
+        : {}),
     },
   );
   return response.data.data;
@@ -216,17 +412,12 @@ export const startVehicleSession = async ({
   vehicleId: string;
   startingOdometerKm: number;
   expectedVehicleRevision: number;
-}) => {
-  const response = await api.post<{ data: VehicleUsageSession }>(
-    "/vehicles/employee/usage/start",
-    {
-      vehicleId,
-      startingOdometerKm,
-      expectedVehicleRevision,
-    },
-  );
-  return response.data.data;
-};
+}): Promise<VehicleDailyMileage> =>
+  startDailyMileage({
+    vehicleId,
+    startingOdometerKm,
+    expectedVehicleRevision,
+  });
 
 export const completeVehicleSession = async ({
   sessionId,

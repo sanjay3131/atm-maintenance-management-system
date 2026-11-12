@@ -31,6 +31,9 @@ const limit = z
 
 export const vehicleIdParamsSchema = z.object({ vehicleId: objectId }).strict();
 export const sessionIdParamsSchema = z.object({ sessionId: objectId }).strict();
+export const dailyMileageIdParamsSchema = z
+  .object({ dailyMileageId: objectId })
+  .strict();
 
 export const vehicleListQuerySchema = z
   .object({
@@ -128,6 +131,62 @@ export const completeSessionSchema = z
   })
   .strict();
 
+export const startDailyMileageSchema = z
+  .object({
+    vehicleId: objectId,
+    startingOdometerKm: wholeKm,
+    expectedVehicleRevision: positiveInt.or(z.literal(0)),
+  })
+  .strict();
+
+export const updateDailyMileageSchema = z
+  .object({
+    endingOdometerKm: wholeKm,
+    expectedVehicleRevision: positiveInt.or(z.literal(0)),
+    expectedDailyRevision: positiveInt.or(z.literal(0)),
+  })
+  .strict();
+
+export const reopenDailyMileageSchema = z
+  .object({
+    expectedVehicleRevision: positiveInt.or(z.literal(0)),
+    expectedDailyRevision: positiveInt.or(z.literal(0)),
+  })
+  .strict();
+
+export const recoverDailyMileageRolloverSchema = z
+  .object({
+    recoveryOdometerKm: wholeKm,
+    expectedVehicleRevision: positiveInt.or(z.literal(0)),
+    expectedDailyRevision: positiveInt.or(z.literal(0)),
+    nextEmployeeId: objectId.optional(),
+  })
+  .strict();
+
+export const joinDailyMileageSchema = z
+  .object({
+    expectedVehicleRevision: positiveInt.or(z.literal(0)),
+    expectedDailyRevision: positiveInt.or(z.literal(0)),
+  })
+  .strict();
+
+export const startDailyMileageUsageSessionSchema = z
+  .object({
+    requestId: z.string().trim().min(1).max(128),
+    expectedVehicleRevision: positiveInt.or(z.literal(0)),
+    expectedDailyRevision: positiveInt.or(z.literal(0)),
+  })
+  .strict();
+
+export const completeDailyMileageUsageSessionSchema = z
+  .object({
+    requestId: z.string().trim().min(1).max(128),
+    endingOdometerKm: wholeKm,
+    expectedVehicleRevision: positiveInt.or(z.literal(0)),
+    expectedDailyRevision: positiveInt.or(z.literal(0)),
+  })
+  .strict();
+
 export const recoverSessionSchema = z
   .object({
     action: z.enum(["RECOVERED_COMPLETED", "CANCELLED"]),
@@ -143,13 +202,31 @@ export const correctionSchema = z
     expectedVehicleRevision: positiveInt.or(z.literal(0)),
     reason: z.string().trim().min(1).max(1000),
     usageSessionId: objectId.optional(),
-    correctedField: z.enum(["START", "END"]).optional(),
+    dailyMileageId: objectId.optional(),
+    dailySegmentId: objectId.optional(),
+    correctedField: z
+      .enum(["START", "END", "DAILY_START", "DAILY_END", "HANDOVER"])
+      .optional(),
   })
   .strict()
   .refine(
-    ({ usageSessionId, correctedField }) =>
-      (usageSessionId === undefined) === (correctedField === undefined),
-    { message: "usageSessionId and correctedField must be supplied together" },
+    ({ usageSessionId, dailyMileageId, correctedField, dailySegmentId }) => {
+      const hasLegacyTarget = usageSessionId !== undefined;
+      const hasDailyTarget = dailyMileageId !== undefined;
+      if (hasLegacyTarget && hasDailyTarget) return false;
+      if (!hasLegacyTarget && !hasDailyTarget) {
+        return correctedField === undefined && dailySegmentId === undefined;
+      }
+      if (hasLegacyTarget) {
+        return ["START", "END"].includes(correctedField) &&
+          dailySegmentId === undefined;
+      }
+      if (!["DAILY_START", "DAILY_END", "HANDOVER"].includes(correctedField)) {
+        return false;
+      }
+      return (correctedField === "HANDOVER") === (dailySegmentId !== undefined);
+    },
+    { message: "Select one valid current, legacy, or daily odometer reading" },
   );
 
 export const serviceReviewParamsSchema = z

@@ -6,7 +6,9 @@ import {
   getOdometerCorrectionSuccessMessage,
   getEmployeeDefaultVehicleId,
   getPrefilledStartingOdometer,
+  getStartingOdometerForVehicleSelection,
   normalizeVehicleReference,
+  parseStartingOdometer,
   resolveVehicleEditDraft,
 } from "../src/features/vehicles/vehicle-ui.utils.ts";
 
@@ -49,6 +51,52 @@ test("employee default bike is primary when eligible and KM is prefilled from cu
   assert.equal(getEmployeeDefaultVehicleId([available]), "");
   assert.equal(getPrefilledStartingOdometer(primary), "12000");
   assert.equal(getPrefilledStartingOdometer(undefined), "");
+  const vehicles = [
+    { ...available, usageState: "AVAILABLE" },
+    { ...primary, usageState: "AVAILABLE" },
+  ];
+  assert.equal(getStartingOdometerForVehicleSelection("bike-a", vehicles), "10015");
+  assert.equal(getStartingOdometerForVehicleSelection("bike-b", vehicles), "12000");
+  assert.equal(getStartingOdometerForVehicleSelection("", vehicles), "");
+});
+
+test("starting odometer accepts valid whole readings and rejects invalid values", () => {
+  assert.equal(parseStartingOdometer("18000", 18000), 18000);
+  const prefilled = getPrefilledStartingOdometer({
+    _id: "bike-prefilled",
+    currentOdometerKm: 18000,
+  });
+  assert.equal(parseStartingOdometer(prefilled, 18000), 18000);
+  assert.equal(parseStartingOdometer("18000", 18000), 18000);
+  assert.equal(parseStartingOdometer("18001", 18000), 18001);
+  for (const invalid of ["17999", "18000.1", "-1", "", "invalid", "1e4"]) {
+    assert.equal(parseStartingOdometer(invalid, 18000), null);
+  }
+});
+
+test("employee mileage input submits its controlled prefill without a fallback-only value", async () => {
+  const page = await readFile(
+    new URL("../src/pages/employee/EmployeeMileagePage.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(page, /value=\{startingOdometerKm\}/);
+  assert.match(page, /getStartingOdometerForVehicleSelection\(/);
+  assert.match(page, /parseStartingOdometer\(\s*startingOdometerKm/);
+  assert.match(page, /"Reopen today's record"/);
+  assert.match(page, /\["CLOSED", "REOPENED"\]/);
+});
+
+test("legacy mileage start helper uses daily record creation instead of the retired endpoint", async () => {
+  const service = await readFile(
+    new URL("../src/services/vehicle.service.ts", import.meta.url),
+    "utf8",
+  );
+  const legacyStart = service.slice(
+    service.indexOf("export const startVehicleSession"),
+    service.indexOf("export const completeVehicleSession"),
+  );
+  assert.match(legacyStart, /startDailyMileage\(\{/);
+  assert.doesNotMatch(legacyStart, /\/vehicles\/employee\/usage\/start/);
 });
 
 test("historical correction success messaging reflects remaining review conflicts", () => {

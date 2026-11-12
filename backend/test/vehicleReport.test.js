@@ -4,6 +4,7 @@ import test from "node:test";
 import Vehicle from "../src/modules/vehicles/vehicle.model.js";
 import Employee from "../src/modules/employees/employee.model.js";
 import VehicleUsageSession from "../src/modules/vehicles/vehicleUsageSession.model.js";
+import VehicleDailyMileage from "../src/modules/vehicles/vehicleDailyMileage.model.js";
 import {
   createVehicleMileageWorkbook,
   MAX_VEHICLE_REPORT_ROWS,
@@ -54,8 +55,10 @@ const withOverrides = async (overrides, run) => {
   }
 };
 
-const workbookOverrides = ({ rows = records, count = rows.length } = {}) => [
-  [VehicleUsageSession, "countDocuments", async () => count],
+const workbookOverrides = ({
+  rows = records,
+  dailyRecords = [],
+} = {}) => [
   [
     VehicleUsageSession,
     "find",
@@ -82,6 +85,22 @@ const workbookOverrides = ({ rows = records, count = rows.length } = {}) => [
       };
     },
   ],
+  [
+    VehicleDailyMileage,
+    "find",
+    () => ({
+      select() {
+        return this;
+      },
+      sort() {
+        return this;
+      },
+      limit() {
+        return this;
+      },
+      lean: async () => dailyRecords,
+    }),
+  ],
   [Vehicle, "exists", async () => ({ _id: "vehicle-a" })],
   [Employee, "exists", async () => ({ _id: "employee-a" })],
 ];
@@ -104,8 +123,75 @@ test("vehicle workbook totals the complete filtered dataset and uses snapshots",
   });
 });
 
+test("daily mileage is counted once by vehicle and segmented by employee", async () => {
+  const dailyRecord = {
+    _id: "daily-1",
+    vehicleId: "vehicle-a",
+    vehicleRegistrationSnapshot: "TN45AB1234",
+    businessDate: "2026-01-04",
+    startOdometerKm: 1055,
+    endOdometerKm: 1105,
+    dailyDistanceKm: 50,
+    segments: [
+      {
+        employeeId: "employee-a",
+        employeeNameSnapshot: "Ravi Kumar",
+        employeeCodeSnapshot: "EMP-001",
+        startOdometerKm: 1055,
+        endOdometerKm: 1085,
+        distanceKm: 30,
+      },
+      {
+        employeeId: "employee-b",
+        employeeNameSnapshot: "Kumar Ravi",
+        employeeCodeSnapshot: "EMP-002",
+        startOdometerKm: 1085,
+        endOdometerKm: 1105,
+        distanceKm: 20,
+      },
+    ],
+  };
+  await withOverrides(
+    workbookOverrides({ dailyRecords: [dailyRecord] }),
+    async () => {
+      const vehicleResult = await createVehicleMileageWorkbook({
+        reportType: "vehicle",
+        fromDate: "2026-01-01",
+        toDate: "2026-01-31",
+      });
+      const vehicleWorkbook = new ExcelJS.Workbook();
+      await vehicleWorkbook.xlsx.load(vehicleResult.buffer);
+      assert.equal(
+        vehicleWorkbook.getWorksheet("Summary").getRow(2).getCell(3).value,
+        105,
+      );
+      assert.equal(
+        vehicleWorkbook.getWorksheet("Summary").getRow(3).getCell(3).value,
+        105,
+      );
+    },
+  );
+  await withOverrides(
+    workbookOverrides({ rows: [], dailyRecords: [dailyRecord] }),
+    async () => {
+      const employeeResult = await createVehicleMileageWorkbook({
+        reportType: "employee",
+        employeeId: "employee-a",
+        fromDate: "2026-01-01",
+        toDate: "2026-01-31",
+      });
+      const employeeWorkbook = new ExcelJS.Workbook();
+      await employeeWorkbook.xlsx.load(employeeResult.buffer);
+      assert.equal(
+        employeeWorkbook.getWorksheet("Summary").getRow(2).getCell(4).value,
+        30,
+      );
+    },
+  );
+});
+
 test("empty report returns a valid workbook with a no-records indication", async () => {
-  await withOverrides(workbookOverrides({ rows: [], count: 0 }), async () => {
+  await withOverrides(workbookOverrides({ rows: [] }), async () => {
     const result = await createVehicleMileageWorkbook({
       reportType: "employee",
       fromDate: "2026-01-01",
@@ -117,7 +203,7 @@ test("empty report returns a valid workbook with a no-records indication", async
       String(
         workbook.getWorksheet("Mileage history").getRow(2).getCell(1).value,
       ),
-      /No completed mileage sessions/,
+      /No completed mileage records/,
     );
     assert.equal(
       workbook.getWorksheet("Summary").getRow(2).getCell(4).value,
@@ -128,7 +214,13 @@ test("empty report returns a valid workbook with a no-records indication", async
 
 test("report range and row count limits are enforced before workbook generation", async () => {
   await withOverrides(
-    workbookOverrides({ rows: [], count: MAX_VEHICLE_REPORT_ROWS + 1 }),
+    workbookOverrides({
+      rows: Array.from({ length: MAX_VEHICLE_REPORT_ROWS + 1 }, (_, index) => ({
+        ...records[0],
+        _id: `session-${index}`,
+        businessDate: "2026-01-01",
+      })),
+    }),
     async () => {
       await assert.rejects(
         createVehicleMileageWorkbook({

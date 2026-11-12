@@ -233,6 +233,93 @@ export const employeeEnglish = {
   "My AMC visits navigation": "My AMC visits",
   "Attendance navigation": "Attendance",
   "Mileage navigation": "Mileage",
+  "Daily bike mileage": "Daily bike mileage",
+  "One odometer record per bike each day. Your identity is taken from your signed-in account.":
+    "One odometer record per bike each day. Your identity is taken from your signed-in account.",
+  "Loading daily mileage and active bikes...":
+    "Loading daily mileage and active bikes...",
+  "Retry": "Retry",
+  "Finish the open historical mileage session":
+    "Finish the open historical mileage session",
+  "Started at": "Started at",
+  "Saving...": "Saving...",
+  "Complete historical session": "Complete historical session",
+  "Historical mileage session completed.":
+    "Historical mileage session completed.",
+  "Today's open daily record": "Today's open daily record",
+  "Bike": "Bike",
+  "Business date": "Business date",
+  "Distance so far": "Distance so far",
+  "Employee usage segments": "Employee usage segments",
+  "This record crossed a business-date boundary. Handover and closing are paused until an administrator reviews it.":
+    "This record crossed a business-date boundary. Handover and closing are paused until an administrator reviews it.",
+  "This record crossed a business-date boundary and needs administrator review.":
+    "This record crossed a business-date boundary and needs administrator review.",
+  "A bike is awaiting midnight mileage recovery. Ask an administrator to recover it before anyone uses it again.":
+    "A bike is awaiting midnight mileage recovery. Ask an administrator to recover it before anyone uses it again.",
+  "Last verified odometer": "Last verified odometer",
+  "Waiting for administrator recovery": "Waiting for administrator recovery",
+  "Record a handover or close": "Record a handover or close",
+  "Odometer reading (KM)": "Odometer reading (KM)",
+  "The next employee starts at the same handover reading.":
+    "The next employee starts at the same handover reading.",
+  "Hand over bike": "Hand over bike",
+  "Close today's record": "Close today's record",
+  "Start or join a daily record": "Start or join a daily record",
+  "Choose an active bike": "Choose an active bike",
+  "Ready for handover": "Ready for handover",
+  "Today's record is closed": "Today's record is closed",
+  "Currently in use": "Currently in use",
+  "Daily record": "Daily record",
+  "Prefilled with the latest verified vehicle odometer.":
+    "Prefilled with the latest verified vehicle odometer.",
+  "The previous employee recorded a handover at":
+    "The previous employee recorded a handover at",
+  "Your segment will start at this same reading.":
+    "Your segment will start at this same reading.",
+  "Start using this bike": "Start using this bike",
+  "Start today's mileage record": "Start today's mileage record",
+  "No active bikes are ready to start or join right now. Refresh after another employee hands over a bike.":
+    "No active bikes are ready to start or join right now. Refresh after another employee hands over a bike.",
+  "Your daily mileage segments": "Your daily mileage segments",
+  "Refresh history": "Refresh history",
+  "Loading mileage history...": "Loading mileage history...",
+  "No daily mileage segments yet.": "No daily mileage segments yet.",
+  "Historical mileage sessions (legacy)":
+    "Historical mileage sessions (legacy)",
+  "Legacy session": "Legacy session",
+  "No historical mileage sessions.": "No historical mileage sessions.",
+  "Enter a whole-kilometre reading at or above the current odometer.":
+    "Enter a whole-kilometre reading at or above the current odometer.",
+  "Ending reading cannot be below the latest verified odometer.":
+    "Ending reading cannot be below the latest verified odometer.",
+  "Refresh the bike list before joining this record.":
+    "Refresh the bike list before joining this record.",
+  "Refresh the bike list before completing this historical session.":
+    "Refresh the bike list before completing this historical session.",
+  "Your usage segment has started.": "Your usage segment has started.",
+  "Daily mileage record started.": "Daily mileage record started.",
+  "Usage session started.": "Usage session started.",
+  "Usage session completed. You can start another session.":
+    "Usage session completed. You can start another session.",
+  "Awaiting administrator recovery": "Awaiting administrator recovery",
+  "Usage sessions": "Usage sessions",
+  "Session started at": "Session started at",
+  "Session ending odometer (KM)": "Session ending odometer (KM)",
+  "End usage session": "End usage session",
+  "Start usage session": "Start usage session",
+  "Handover reading saved. The next employee can join at this reading.":
+    "Handover reading saved. The next employee can join at this reading.",
+  "Daily mileage record closed.": "Daily mileage record closed.",
+  "Closed records for today": "Closed records for today",
+  "Closed at": "Closed at",
+  "Reopen today's record": "Reopen today's record",
+  "Reopening...": "Reopening...",
+  "Today's mileage record reopened.": "Today's mileage record reopened.",
+  "Record closed": "Record closed",
+  "Record reopened": "Record reopened",
+  "This employee already has an open vehicle usage segment":
+    "This employee already has an open vehicle usage segment",
   "Main menu": "Main menu",
   Attendance: "Attendance",
   "Employee navigation": "Employee navigation",
@@ -291,7 +378,6 @@ export const employeeEnglish = {
   "Loading your profile...": "Loading your profile...",
   "Could not load your profile.": "Could not load your profile.",
   "Please try again.": "Please try again.",
-  Retry: "Retry",
   "Retrying...": "Retrying...",
   "Currently Assigned Jobs": "Currently Assigned Jobs",
   "Loading assigned jobs...": "Loading assigned jobs...",
@@ -792,7 +878,6 @@ export const employeeEnglish = {
     "Quantity must be a positive whole number.",
   "Notes must be 300 characters or fewer.":
     "Notes must be 300 characters or fewer.",
-  "Saving...": "Saving...",
   "Update worker": "Update worker",
   "Add worker entry": "Add worker entry",
   "Maximum of 20 worker entries reached.":
@@ -823,7 +908,7 @@ export const employeeEnglish = {
     "Remove {workerType} from this Job? This cannot be undone.",
   "Keep worker": "Keep worker",
   "Worker type": "Worker type",
-  Notes: "Notes",
+  "Notes": "Notes",
   "Added: {details}": "Added: {details}",
   "Before: {details}": "Before: {details}",
   "After: {details}": "After: {details}",
@@ -963,6 +1048,91 @@ const employeeTamil: Dictionary = {
   "My Attendance": "எனது வருகைப் பதிவு",
   "Bike mileage": "இருசக்கர வாகன மைலேஜ்",
   "Mileage navigation": "மைலேஜ்",
+  "Daily bike mileage": "தினசரி இருசக்கர வாகன மைலேஜ்",
+  "One odometer record per bike each day. Your identity is taken from your signed-in account.":
+    "ஒவ்வொரு வாகனத்திற்கும் தினமும் ஒரே ஓடோமீட்டர் பதிவு. உங்கள் அடையாளம் உள்நுழைந்த கணக்கிலிருந்து பெறப்படுகிறது.",
+  "Loading daily mileage and active bikes...":
+    "தினசரி மைலேஜ் மற்றும் செயலில் உள்ள வாகனங்கள் ஏற்றப்படுகின்றன...",
+  Retry: "மீண்டும் முயற்சி",
+  "Finish the open historical mileage session":
+    "திறந்துள்ள பழைய மைலேஜ் அமர்வை முடிக்கவும்",
+  "Started at": "தொடக்க அளவு",
+  "Saving...": "சேமிக்கப்படுகிறது...",
+  "Complete historical session": "பழைய அமர்வை முடிக்கவும்",
+  "Historical mileage session completed.": "பழைய மைலேஜ் அமர்வு முடிக்கப்பட்டது.",
+  "Today's open daily record": "இன்றைய திறந்த தினசரி பதிவு",
+  Bike: "வாகனம்",
+  "Business date": "வணிகத் தேதி",
+  "Distance so far": "இதுவரை சென்ற தூரம்",
+  "Employee usage segments": "பணியாளர் பயன்பாட்டு பகுதிகள்",
+  "This record crossed a business-date boundary. Handover and closing are paused until an administrator reviews it.":
+    "இந்த பதிவு வணிகத் தேதியைத் தாண்டியுள்ளது. நிர்வாகி மதிப்பாய்வு செய்யும் வரை ஒப்படைப்பு மற்றும் நிறைவு நிறுத்தப்பட்டுள்ளது.",
+  "This record crossed a business-date boundary and needs administrator review.":
+    "இந்த பதிவு வணிகத் தேதியைத் தாண்டியுள்ளது; நிர்வாகி மதிப்பாய்வு தேவை.",
+  "A bike is awaiting midnight mileage recovery. Ask an administrator to recover it before anyone uses it again.":
+    "ஒரு இருசக்கர வாகனம் நள்ளிரவு மைலேஜ் மீட்புக்காக காத்திருக்கிறது. மீண்டும் பயன்படுத்துவதற்கு முன் நிர்வாகியிடம் மீட்டெடுக்கச் சொல்லவும்.",
+  "Last verified odometer": "கடைசியாக சரிபார்க்கப்பட்ட ஓடோமீட்டர்",
+  "Waiting for administrator recovery": "நிர்வாகி மீட்புக்காக காத்திருக்கிறது",
+  "Record a handover or close": "ஒப்படைப்பு அல்லது நிறைவைப் பதிவு செய்யவும்",
+  "Odometer reading (KM)": "ஓடோமீட்டர் அளவு (KM)",
+  "The next employee starts at the same handover reading.":
+    "அடுத்த பணியாளர் அதே ஒப்படைப்பு அளவில் தொடங்குவார்.",
+  "Hand over bike": "வாகனத்தை ஒப்படைக்கவும்",
+  "Close today's record": "இன்றைய பதிவை மூடவும்",
+  "Start or join a daily record": "தினசரி பதிவைத் தொடங்கவும் அல்லது சேரவும்",
+  "Choose an active bike": "செயலில் உள்ள வாகனத்தைத் தேர்ந்தெடுக்கவும்",
+  "Ready for handover": "ஒப்படைப்புக்குத் தயார்",
+  "Today's record is closed": "இன்றைய பதிவு மூடப்பட்டது",
+  "Currently in use": "தற்போது பயன்பாட்டில் உள்ளது",
+  "Daily record": "தினசரி பதிவு",
+  "Prefilled with the latest verified vehicle odometer.":
+    "சமீபத்திய சரிபார்க்கப்பட்ட ஓடோமீட்டர் அளவு நிரப்பப்பட்டுள்ளது.",
+  "The previous employee recorded a handover at":
+    "முந்தைய பணியாளர் ஒப்படைப்பு அளவைப் பதிவு செய்துள்ளார்:",
+  "Your segment will start at this same reading.":
+    "உங்கள் பயன்பாட்டு பகுதி இதே அளவில் தொடங்கும்.",
+  "Start using this bike": "இந்த வாகனத்தைப் பயன்படுத்தத் தொடங்கவும்",
+  "Start today's mileage record": "இன்றைய மைலேஜ் பதிவைத் தொடங்கவும்",
+  "No active bikes are ready to start or join right now. Refresh after another employee hands over a bike.":
+    "தற்போது தொடங்க அல்லது சேர செயலில் உள்ள வாகனங்கள் இல்லை. மற்றொரு பணியாளர் ஒப்படைத்த பிறகு புதுப்பிக்கவும்.",
+  "Your daily mileage segments": "உங்கள் தினசரி மைலேஜ் பகுதிகள்",
+  "Refresh history": "வரலாற்றைப் புதுப்பிக்கவும்",
+  "Loading mileage history...": "மைலேஜ் வரலாறு ஏற்றப்படுகிறது...",
+  "No daily mileage segments yet.": "தினசரி மைலேஜ் பதிவுகள் இன்னும் இல்லை.",
+  "Historical mileage sessions (legacy)": "பழைய மைலேஜ் அமர்வுகள்",
+  "Legacy session": "பழைய அமர்வு",
+  "No historical mileage sessions.": "பழைய மைலேஜ் அமர்வுகள் இல்லை.",
+  "Enter a whole-kilometre reading at or above the current odometer.":
+    "தற்போதைய ஓடோமீட்டர் அளவுக்கு சமமான அல்லது அதிகமான முழு கிலோமீட்டர் அளவை உள்ளிடவும்.",
+  "Ending reading cannot be below the latest verified odometer.":
+    "முடிவு அளவு சமீபத்திய சரிபார்க்கப்பட்ட அளவைவிடக் குறைவாக இருக்க முடியாது.",
+  "Refresh the bike list before joining this record.":
+    "இந்த பதிவில் சேர்வதற்கு முன் வாகனப் பட்டியலைப் புதுப்பிக்கவும்.",
+  "Refresh the bike list before completing this historical session.":
+    "பழைய அமர்வை முடிப்பதற்கு முன் வாகனப் பட்டியலைப் புதுப்பிக்கவும்.",
+  "Your usage segment has started.": "உங்கள் பயன்பாட்டு பகுதி தொடங்கப்பட்டது.",
+  "Daily mileage record started.": "தினசரி மைலேஜ் பதிவு தொடங்கப்பட்டது.",
+  "Usage session started.": "பயன்பாட்டு அமர்வு தொடங்கியது.",
+  "Usage session completed. You can start another session.":
+    "பயன்பாட்டு அமர்வு முடிக்கப்பட்டது. நீங்கள் மற்றொரு அமர்வை தொடங்கலாம்.",
+  "Awaiting administrator recovery": "நிர்வாகி மீட்புக்காக காத்திருக்கிறது",
+  "Usage sessions": "பயன்பாட்டு அமர்வுகள்",
+  "Session started at": "அமர்வு தொடங்கிய நேரம்",
+  "Session ending odometer (KM)": "அமர்வு முடிவடைந்த ஓடோமீட்டர் (KM)",
+  "End usage session": "பயன்பாட்டு அமர்வை முடிக்கவும்",
+  "Start usage session": "பயன்பாட்டு அமர்வை தொடங்கவும்",
+  "Handover reading saved. The next employee can join at this reading.":
+    "ஒப்படைப்பு அளவு சேமிக்கப்பட்டது. அடுத்த பணியாளர் இதே அளவில் சேரலாம்.",
+  "Daily mileage record closed.": "தினசரி மைலேஜ் பதிவு மூடப்பட்டது.",
+  "Closed records for today": "இன்றைய மூடப்பட்ட பதிவுகள்",
+  "Closed at": "மூடிய நேரம்",
+  "Reopen today's record": "இன்றைய பதிவை மீண்டும் திறக்கவும்",
+  "Reopening...": "மீண்டும் திறக்கப்படுகிறது...",
+  "Today's mileage record reopened.": "இன்றைய மைலேஜ் பதிவு மீண்டும் திறக்கப்பட்டது.",
+  "Record closed": "பதிவு மூடப்பட்டது",
+  "Record reopened": "பதிவு மீண்டும் திறக்கப்பட்டது",
+  "This employee already has an open vehicle usage segment":
+    "இந்தப் பணியாளருக்கு ஏற்கனவே திறந்த வாகனப் பயன்பாட்டு பதிவு உள்ளது",
   "Loading available bikes...":
     "கிடைக்கும் இருசக்கர வாகனங்கள் ஏற்றப்படுகின்றன...",
   "Could not load eligible bikes.":
@@ -1140,7 +1310,6 @@ const employeeTamil: Dictionary = {
   "Loading your profile...": "உங்கள் விவரங்கள் ஏற்றப்படுகின்றன...",
   "Could not load your profile.": "உங்கள் விவரங்களைப் பெற முடியவில்லை.",
   "Please try again.": "மீண்டும் முயற்சிக்கவும்.",
-  Retry: "மீண்டும் முயற்சிக்கவும்",
   "Retrying...": "மீண்டும் முயற்சிக்கிறது...",
   "Currently Assigned Jobs": "தற்போது ஒதுக்கப்பட்ட வேலைகள்",
   "Loading assigned jobs...": "ஒதுக்கப்பட்ட வேலைகள் ஏற்றப்படுகின்றன...",
@@ -1650,7 +1819,6 @@ const employeeTamil: Dictionary = {
     "அளவு பூஜ்ஜியத்தை விட அதிகமான முழு எண்ணாக இருக்க வேண்டும்.",
   "Notes must be 300 characters or fewer.":
     "குறிப்புகள் 300 எழுத்துகளுக்கு மிகாமல் இருக்க வேண்டும்.",
-  "Saving...": "சேமிக்கப்படுகிறது...",
   "Update worker": "பணியாளர் விவரத்தைப் புதுப்பிக்கவும்",
   "Add worker entry": "பணியாளர் பதிவைச் சேர்க்கவும்",
   "Maximum of 20 worker entries reached.":
@@ -1681,7 +1849,7 @@ const employeeTamil: Dictionary = {
     "{workerType} விவரத்தை இந்த வேலையிலிருந்து நீக்கவா? இதை மீட்டெடுக்க முடியாது.",
   "Keep worker": "பணியாளரை வைத்திருக்கவும்",
   "Worker type": "பணியாளர் வகை",
-  Notes: "குறிப்புகள்",
+  "Notes": "குறிப்புகள்",
   "Added: {details}": "சேர்த்தது: {details}",
   "Before: {details}": "முன்பு: {details}",
   "After: {details}": "பிறகு: {details}",

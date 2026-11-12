@@ -4,6 +4,7 @@ import Employee from "../employees/employee.model.js";
 import User from "../users/user.model.js";
 import Vehicle from "./vehicle.model.js";
 import VehicleAssignment from "./vehicleAssignment.model.js";
+import VehicleDailyMileage from "./vehicleDailyMileage.model.js";
 import VehicleUsageSession from "./vehicleUsageSession.model.js";
 import VehicleService from "./vehicleService.model.js";
 import VehicleServicePolicy from "./vehicleServicePolicy.model.js";
@@ -27,7 +28,81 @@ const isDuplicate = (error) => error?.code === 11000;
 const cycleKeyFor = (vehicleId, baselineServiceId) =>
   `${vehicleId}:OIL_CHANGE:${baselineServiceId ? idString(baselineServiceId) : "INITIAL"}`;
 
-const withTransaction = async (operation) => {
+const updateCorrectedSegmentBoundary = (
+  segment,
+  edge,
+  previousOdometerKm,
+  correctedOdometerKm,
+) => {
+  const usageSessions = (segment.usageSessions ?? []).map(
+    (usageSession) => usageSession.toObject?.() ?? usageSession,
+  );
+  const sessionIndex = edge === "start" ? 0 : usageSessions.length - 1;
+  const boundarySession = usageSessions[sessionIndex];
+  if (
+    boundarySession &&
+    (edge === "start"
+      ? boundarySession.startOdometerKm
+      : boundarySession.endOdometerKm) === previousOdometerKm
+  ) {
+    if (edge === "start") {
+      boundarySession.startOdometerKm = correctedOdometerKm;
+    } else {
+      boundarySession.endOdometerKm = correctedOdometerKm;
+    }
+  }
+  for (const usageSession of usageSessions) {
+    if (
+      Number.isSafeInteger(usageSession.startOdometerKm) &&
+      Number.isSafeInteger(usageSession.endOdometerKm) &&
+      usageSession.endOdometerKm >= usageSession.startOdometerKm
+    ) {
+      usageSession.distanceKm =
+        usageSession.endOdometerKm - usageSession.startOdometerKm;
+    }
+  }
+
+  const odometerReadings = (segment.odometerReadings ?? []).map(
+    (reading) => reading.toObject?.() ?? reading,
+  );
+  const readingIndex = edge === "start" ? 0 : odometerReadings.length - 1;
+  const boundaryReading = odometerReadings[readingIndex];
+  if (boundaryReading?.odometerKm === previousOdometerKm) {
+    boundaryReading.odometerKm = correctedOdometerKm;
+  }
+  if (segment.odometerReadingsComplete === true) {
+    let precedingOdometerKm = segment.startOdometerKm;
+    for (const reading of odometerReadings) {
+      if (
+        !Number.isSafeInteger(reading.odometerKm) ||
+        reading.odometerKm < precedingOdometerKm
+      ) {
+        throw vehicleError(
+          409,
+          "ODOMETER_CONFLICT",
+          "Corrected readings would make the employee odometer history decrease",
+        );
+      }
+      reading.distanceKm = reading.odometerKm - precedingOdometerKm;
+      precedingOdometerKm = reading.odometerKm;
+    }
+    if (
+      odometerReadings.length &&
+      segment.endOdometerKm != null &&
+      precedingOdometerKm !== segment.endOdometerKm
+    ) {
+      throw vehicleError(
+        409,
+        "ODOMETER_CONFLICT",
+        "Corrected employee readings do not reach the segment ending reading",
+      );
+    }
+  }
+
+  return { ...segment, usageSessions, odometerReadings };
+};
+
+export const withTransaction = async (operation) => {
   const session = await mongoose.startSession();
   let result;
   try {
@@ -40,7 +115,7 @@ const withTransaction = async (operation) => {
   }
 };
 
-const casVehicle = async (vehicle, expectedRevision, session, set = {}) => {
+export const casVehicle = async (vehicle, expectedRevision, session, set = {}) => {
   if (vehicle.serviceStateRevision !== expectedRevision) {
     throw vehicleError(
       409,
@@ -62,7 +137,7 @@ const casVehicle = async (vehicle, expectedRevision, session, set = {}) => {
   }
 };
 
-const getVehicle = async (vehicleId, session) => {
+export const getVehicle = async (vehicleId, session) => {
   if (!mongoose.isValidObjectId(vehicleId)) {
     throw vehicleError(400, "VALIDATION_ERROR", "Invalid vehicle ID");
   }
@@ -118,7 +193,7 @@ const getActiveEmployeeById = async (employeeId, session) => {
   return employee;
 };
 
-const hasActiveSession = async (vehicleId, employeeId, session) => {
+export const hasActiveSession = async (vehicleId, employeeId, session) => {
   const query = VehicleUsageSession.exists({
     status: "IN_PROGRESS",
     $or: [
@@ -342,8 +417,19 @@ export const listVehicles = async ({
 };
 
 export const getVehicleDetails = async (vehicleId) => {
-  const [vehicle, assignments, services, sessions, reminders, policy] =
-    await Promise.all([
+  const businessDate = toAsiaKolkataDateKey();
+  const [
+    vehicle,
+    assignments,
+    services,
+    sessions,
+    dailyMileageHistory,
+    reminders,
+    policy,
+    todayDailyRecord,
+    rolloverRecord,
+    activeLegacySession,
+  ] = await Promise.all([
       Vehicle.findById(vehicleId)
         .select("-registrationNumberNormalized")
         .populate({
@@ -370,11 +456,28 @@ export const getVehicleDetails = async (vehicleId) => {
       VehicleUsageSession.find({ vehicleId })
         .sort({ startedAt: -1, _id: -1 })
         .limit(50),
+      VehicleDailyMileage.find({ vehicleId, status: "CLOSED" })
+        .sort({ businessDate: -1, createdAt: -1, _id: -1 })
+        .limit(50),
       VehicleServiceReminder.find({ vehicleId }).sort({
         updatedAt: -1,
         _id: -1,
       }),
       getPolicy(),
+      VehicleDailyMileage.findOne({ vehicleId, businessDate }).populate({
+        path: "activeEmployeeId",
+        select: "employeeCode userId",
+        populate: { path: "userId", select: "firstName lastName" },
+      }),
+      VehicleDailyMileage.findOne({
+        vehicleId,
+        status: "ROLLOVER_PENDING",
+      }).populate({
+        path: "activeEmployeeId",
+        select: "employeeCode userId",
+        populate: { path: "userId", select: "firstName lastName" },
+      }),
+      VehicleUsageSession.exists({ vehicleId, status: "IN_PROGRESS" }),
     ]);
   if (!vehicle)
     throw vehicleError(404, "RESOURCE_NOT_FOUND", "Vehicle not found");
@@ -387,6 +490,20 @@ export const getVehicleDetails = async (vehicleId) => {
   const serviceBaselineReviewRequired = services.some(
     (record) => record.timelineReviewRequired,
   );
+  const activeEmployee =
+    todayDailyRecord?.status === "OPEN"
+      ? todayDailyRecord.activeEmployeeId
+      : null;
+  const employeeDisplayName = (employee, fallback) => {
+    if (!employee) return fallback;
+    const name = [
+      employee.userId?.firstName,
+      employee.userId?.lastName,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    return name || employee.employeeCode || fallback;
+  };
   return {
     ...vehicle.toObject(),
     serviceStatus: service.status,
@@ -394,9 +511,40 @@ export const getVehicleDetails = async (vehicleId) => {
     assignments,
     services,
     mileageHistory: sessions,
+    dailyMileageHistory,
     reminders,
     policyConfigured: Boolean(policy),
     serviceBaselineReviewRequired,
+    dailyMileageStatus: {
+      businessDate,
+      dailyRecordStatus:
+        todayDailyRecord?.status ??
+        (rolloverRecord ? "ROLLOVER_PENDING" : "NONE"),
+      currentlyUsingEmployee: activeEmployee
+        ? {
+            id: String(activeEmployee._id),
+            displayName: employeeDisplayName(
+              activeEmployee,
+              "Unknown employee",
+            ),
+          }
+        : null,
+      unresolvedSession:
+        todayDailyRecord?.status === "ROLLOVER_PENDING" ||
+        (!todayDailyRecord && rolloverRecord)
+          ? {
+              id: rolloverRecord?.activeEmployeeId
+                ? String(rolloverRecord.activeEmployeeId._id)
+                : null,
+              displayName: employeeDisplayName(
+                rolloverRecord?.activeEmployeeId,
+                "Unknown employee",
+              ),
+            }
+          : null,
+      legacySessionStatus: activeLegacySession ? "IN_PROGRESS" : "NONE",
+      rolloverStatus: rolloverRecord ? "PENDING" : "NONE",
+    },
   };
 };
 
@@ -521,6 +669,7 @@ const rebuildVehicleOdometerTimeline = async (
   vehicle,
   session,
   reviewedServiceId = null,
+  actorId = null,
 ) => {
   const sessions = await VehicleUsageSession.find({
     vehicleId: vehicle._id,
@@ -534,10 +683,16 @@ const rebuildVehicleOdometerTimeline = async (
   })
     .sort({ serviceDate: 1, createdAt: 1, _id: 1 })
     .session(session);
-  const previousValidSessions = [];
+  const dailyRecords = await VehicleDailyMileage.find({
+    vehicleId: vehicle._id,
+    status: "CLOSED",
+  })
+    .sort({ businessDate: 1, createdAt: 1, _id: 1 })
+    .session(session);
   const verifiedReadings = [vehicle.initialOdometerKm];
   let precedingVerifiedKm = vehicle.initialOdometerKm;
   let hasSessionReviewConflict = false;
+  let hasDailyReviewConflict = false;
 
   for (const usage of sessions) {
     const precedingServiceReadings = services
@@ -580,10 +735,105 @@ const rebuildVehicleOdometerTimeline = async (
     }
 
     if (conflictReason) continue;
-    previousValidSessions.push({
-      ...(usage.toObject?.() ?? usage),
-      timelineReviewRequired: false,
-    });
+    verifiedReadings.push(startKm, endKm);
+    precedingVerifiedKm = endKm;
+  }
+
+  for (const record of dailyRecords) {
+    const precedingServiceReadings = services
+      .filter(
+        (service) =>
+          service.timelineReviewRequired !== true &&
+          toAsiaKolkataDateKey(service.serviceDate) < record.businessDate,
+      )
+      .map((service) => service.serviceOdometerKm);
+    const precedingReadingKm = Math.max(
+      precedingVerifiedKm,
+      ...precedingServiceReadings,
+    );
+    const startKm = record.startOdometerKm;
+    const endKm = record.endOdometerKm;
+    const segments = record.segments.map(
+      (segment) => segment.toObject?.() ?? segment,
+    );
+    let expectedStartKm = startKm;
+    let conflictReason = "";
+    if (!Number.isSafeInteger(startKm) || !Number.isSafeInteger(endKm)) {
+      conflictReason = "Daily record contains a non-whole-kilometre reading";
+    } else if (endKm < startKm) {
+      conflictReason = "Daily ending reading is below its starting reading";
+    } else if (startKm < precedingReadingKm) {
+      conflictReason = `Daily starting reading ${startKm} KM is below the preceding verified reading ${precedingReadingKm} KM`;
+    }
+
+    for (const segment of segments) {
+      if (
+        !Number.isSafeInteger(segment.startOdometerKm) ||
+        !Number.isSafeInteger(segment.endOdometerKm) ||
+        segment.startOdometerKm !== expectedStartKm ||
+        segment.endOdometerKm < segment.startOdometerKm
+      ) {
+        conflictReason ||= "Employee usage segments are not continuous";
+        continue;
+      }
+      segment.distanceKm = segment.endOdometerKm - segment.startOdometerKm;
+      expectedStartKm = segment.endOdometerKm;
+    }
+    if (expectedStartKm !== endKm) {
+      conflictReason ||= "Employee usage segments do not reconcile with the daily reading";
+    }
+    if (conflictReason) hasDailyReviewConflict = true;
+
+    const nextDistanceKm =
+      Number.isSafeInteger(startKm) &&
+      Number.isSafeInteger(endKm) &&
+      endKm >= startKm
+        ? endKm - startKm
+        : record.dailyDistanceKm;
+    const segmentsChanged = segments.some(
+      (segment, index) =>
+        segment.distanceKm !== record.segments[index]?.distanceKm,
+    );
+    const needsUpdate =
+      nextDistanceKm !== record.dailyDistanceKm ||
+      endKm !== record.latestOdometerKm ||
+      Boolean(conflictReason) !== Boolean(record.timelineReviewRequired) ||
+      conflictReason !== (record.timelineReviewReason ?? "") ||
+      segmentsChanged;
+    if (needsUpdate) {
+      const changed = await VehicleDailyMileage.updateOne(
+        { _id: record._id, vehicleId: vehicle._id, revision: record.revision },
+        {
+          $set: {
+            dailyDistanceKm: nextDistanceKm,
+            latestOdometerKm: endKm,
+            segments,
+            timelineReviewRequired: Boolean(conflictReason),
+            timelineReviewReason: conflictReason,
+            updatedBy: actorId,
+          },
+          $push: {
+            auditHistory: {
+              action: "TIMELINE_RECALCULATED",
+              actorId,
+              employeeId: null,
+              odometerKm: endKm,
+              occurredAt: new Date(),
+            },
+          },
+          $inc: { revision: 1 },
+        },
+        { session, runValidators: true },
+      );
+      if (changed.matchedCount !== 1) {
+        throw vehicleError(
+          409,
+          "REVISION_CONFLICT",
+          "A daily mileage record changed during odometer reconciliation",
+        );
+      }
+    }
+    if (conflictReason) continue;
     verifiedReadings.push(startKm, endKm);
     precedingVerifiedKm = endKm;
   }
@@ -591,22 +841,42 @@ const rebuildVehicleOdometerTimeline = async (
   let precedingServiceKm = vehicle.initialOdometerKm;
   let hasServiceReviewConflict = false;
   const validServiceReadings = [];
+  const chronologicalMileage = [
+    ...sessions.map((usage) => ({
+      businessDate: usage.businessDate,
+      startOdometerKm: usage.startOdometerKm,
+      endOdometerKm: usage.endOdometerKm,
+    })),
+    ...dailyRecords.map((record) => ({
+      businessDate: record.businessDate,
+      startOdometerKm: record.startOdometerKm,
+      endOdometerKm: record.endOdometerKm,
+    })),
+  ].sort((left, right) => left.businessDate.localeCompare(right.businessDate));
   for (const service of services) {
     const serviceDateKey = toAsiaKolkataDateKey(service.serviceDate);
-    const chronologicalSessions = sessions.filter(
-      (usage) =>
-        Number.isSafeInteger(usage.startOdometerKm) &&
-        Number.isSafeInteger(usage.endOdometerKm),
+    const chronologicalRecords = chronologicalMileage.filter(
+      (record) =>
+        Number.isSafeInteger(record.startOdometerKm) &&
+        Number.isSafeInteger(record.endOdometerKm),
     );
-    const priorSession = chronologicalSessions
-      .filter((usage) => usage.businessDate < serviceDateKey)
+    const priorRecord = chronologicalRecords
+      .filter((record) => record.businessDate < serviceDateKey)
       .at(-1);
-    const nextSession = chronologicalSessions.find(
-      (usage) => usage.businessDate > serviceDateKey,
+    const nextRecord = chronologicalRecords.find(
+      (record) => record.businessDate > serviceDateKey,
+    );
+    const sameDateRecords = chronologicalRecords.filter(
+      (record) => record.businessDate === serviceDateKey,
     );
     const conflictsWithSession =
-      (priorSession && service.serviceOdometerKm < priorSession.endOdometerKm) ||
-      (nextSession && service.serviceOdometerKm > nextSession.startOdometerKm);
+      (priorRecord && service.serviceOdometerKm < priorRecord.endOdometerKm) ||
+      (nextRecord && service.serviceOdometerKm > nextRecord.startOdometerKm) ||
+      sameDateRecords.some(
+        (record) =>
+          service.serviceOdometerKm < record.startOdometerKm ||
+          service.serviceOdometerKm > record.endOdometerKm,
+      );
     const conflictsWithService = service.serviceOdometerKm < precedingServiceKm;
     const conflictReason = conflictsWithSession
       ? "Service odometer conflicts with the corrected mileage timeline"
@@ -637,6 +907,7 @@ const rebuildVehicleOdometerTimeline = async (
   const currentReadingCorrections = await VehicleOdometerCorrection.find({
     vehicleId: vehicle._id,
     usageSessionId: null,
+    dailyMileageId: null,
   }).session(session);
   for (const correction of currentReadingCorrections) {
     verifiedReadings.push(correction.correctedOdometerKm);
@@ -647,7 +918,7 @@ const rebuildVehicleOdometerTimeline = async (
     currentOdometerKm,
     hasServiceReviewConflict,
     hasTimelineReviewConflict:
-      hasSessionReviewConflict || hasServiceReviewConflict,
+      hasSessionReviewConflict || hasDailyReviewConflict || hasServiceReviewConflict,
     validServiceCount: validServiceReadings.length,
   };
 };
@@ -663,6 +934,18 @@ export const changeVehicleStatus = async ({
     if (vehicle.status === status) return vehicle;
     if (status === "INACTIVE") {
       await assertNoActiveSession(vehicle._id, null, session);
+      if (
+        await VehicleDailyMileage.exists({
+          vehicleId: vehicle._id,
+          status: { $in: ["OPEN", "ROLLOVER_PENDING"] },
+        }).session(session)
+      ) {
+        throw vehicleError(
+          409,
+          "OPEN_DAILY_MILEAGE_EXISTS",
+          "Close the open daily mileage record before deactivating this bike",
+        );
+      }
       const assignment = await VehicleAssignment.findOne({
         vehicleId: vehicle._id,
         unassignedAt: null,
@@ -809,8 +1092,6 @@ export const transferVehicleAssignment = async ({
           "Both bikes must be active",
         );
       }
-      await assertNoActiveSession(source._id, null, session);
-      await assertNoActiveSession(target._id, null, session);
       const sourceAssignment = await VehicleAssignment.findOne({
         vehicleId: source._id,
         employeeId: employee._id,
@@ -835,36 +1116,70 @@ export const transferVehicleAssignment = async ({
           "Employee does not have the expected source-bike assignment",
         );
       }
-      if (targetAssignment)
+      const targetEmployeeId = targetAssignment?.employeeId ?? null;
+      if (
+        idString(source.primaryAssignedEmployeeId) !== idString(employee._id) ||
+        idString(target.primaryAssignedEmployeeId) !== idString(targetEmployeeId)
+      ) {
         throw vehicleError(
           409,
-          "VEHICLE_ALREADY_ASSIGNED",
-          "Target bike is already assigned; unassign it first",
+          "ASSIGNMENT_CONFLICT",
+          "Vehicle and assignment history are out of sync; refresh and review assignments",
         );
+      }
 
       await casVehicle(source, expectedSourceRevision, session, {
-        primaryAssignedEmployeeId: null,
+        primaryAssignedEmployeeId: targetEmployeeId,
         updatedBy: actorId,
       });
       await casVehicle(target, expectedTargetRevision, session, {
         primaryAssignedEmployeeId: employee._id,
         updatedBy: actorId,
       });
-      sourceAssignment.unassignedAt = new Date();
+      const transferredAt = new Date();
+      sourceAssignment.unassignedAt = transferredAt;
       sourceAssignment.reason = reason || "Transferred to another bike";
       await sourceAssignment.save({ session });
-      const [newAssignment] = await VehicleAssignment.create(
+      if (targetAssignment) {
+        targetAssignment.unassignedAt = transferredAt;
+        targetAssignment.reason = reason || "Exchanged with another bike";
+        await targetAssignment.save({ session });
+      }
+      const newAssignments = await VehicleAssignment.create(
         [
+          ...(targetAssignment
+            ? [
+                {
+                  vehicleId: source._id,
+                  employeeId: targetEmployeeId,
+                  assignedAt: transferredAt,
+                  assignedBy: actorId,
+                  reason: reason || "Exchanged with another bike",
+                },
+              ]
+            : []),
           {
             vehicleId: target._id,
             employeeId: employee._id,
+            assignedAt: transferredAt,
             assignedBy: actorId,
-            reason,
+            reason: reason || "Transferred to another bike",
           },
         ],
         { session },
       );
-      return newAssignment;
+      return {
+        sourceAssignment:
+          newAssignments.find(
+            (assignment) =>
+              idString(assignment.vehicleId) === idString(source._id),
+          ) ?? null,
+        targetAssignment: newAssignments.find(
+          (assignment) =>
+            idString(assignment.vehicleId) === idString(target._id),
+        ),
+        exchanged: Boolean(targetAssignment),
+      };
     });
   } catch (error) {
     if (isDuplicate(error))
@@ -1240,14 +1555,11 @@ export const recordVehicleService = async ({ vehicleId, input, actorId }) => {
   return withTransaction(async (session) => {
     const vehicle = await getVehicle(vehicleId, session);
     const policy = await getPolicy(session);
-    if (
-      input.serviceOdometerKm < vehicle.initialOdometerKm ||
-      input.serviceOdometerKm > vehicle.currentOdometerKm
-    ) {
+    if (input.serviceOdometerKm < vehicle.currentOdometerKm) {
       throw vehicleError(
         409,
         "INVALID_SERVICE_ODOMETER",
-        "Service odometer must be between the initial and current verified readings",
+        "Service odometer cannot be below the current verified vehicle reading",
       );
     }
     const previousBaseline = await getBaseline(vehicle, session);
@@ -1264,7 +1576,12 @@ export const recordVehicleService = async ({ vehicleId, input, actorId }) => {
       ],
       { session },
     );
-    await casVehicle(vehicle, input.expectedVehicleRevision, session, {});
+    await casVehicle(vehicle, input.expectedVehicleRevision, session, {
+      ...(input.serviceOdometerKm > vehicle.currentOdometerKm
+        ? { currentOdometerKm: input.serviceOdometerKm }
+        : {}),
+      updatedBy: actorId,
+    });
     const nextBaseline = await getBaseline(vehicle, session);
     const baselineChanged =
       idString(nextBaseline.serviceId ?? "INITIAL") !==
@@ -1305,15 +1622,30 @@ export const createOdometerCorrection = async ({
   reason,
   actorId,
   usageSessionId,
+  dailyMileageId,
+  dailySegmentId,
   correctedField,
 }) => {
   requireWholeKilometres(correctedOdometerKm, "Corrected odometer");
   return withTransaction(async (session) => {
     const vehicle = await getVehicle(vehicleId, session);
     await assertNoActiveSession(vehicle._id, null, session);
+    if (
+      await VehicleDailyMileage.exists({
+        vehicleId: vehicle._id,
+        status: { $in: ["OPEN", "ROLLOVER_PENDING"] },
+      }).session(session)
+    ) {
+      throw vehicleError(
+        409,
+        "OPEN_DAILY_MILEAGE_EXISTS",
+        "Resolve the open daily mileage record before correcting its odometer timeline",
+      );
+    }
     let previousOdometerKm = vehicle.currentOdometerKm;
     let timelineResult = null;
     let targetSession = null;
+    let targetDailyRecord = null;
     if (usageSessionId) {
       targetSession = await VehicleUsageSession.findOne({
         _id: usageSessionId,
@@ -1337,6 +1669,89 @@ export const createOdometerCorrection = async ({
       if (correctedField === "END" && correctedOdometerKm < targetSession.startOdometerKm) {
         throw vehicleError(409, "ODOMETER_CONFLICT", "Corrected ending reading cannot be below the session starting reading");
       }
+    } else if (dailyMileageId) {
+      if (!mongoose.isValidObjectId(dailyMileageId)) {
+        throw vehicleError(400, "VALIDATION_ERROR", "Invalid daily mileage ID");
+      }
+      targetDailyRecord = await VehicleDailyMileage.findOne({
+        _id: dailyMileageId,
+        vehicleId: vehicle._id,
+        status: "CLOSED",
+      }).session(session);
+      if (!targetDailyRecord) {
+        throw vehicleError(
+          404,
+          "RESOURCE_NOT_FOUND",
+          "Closed daily mileage record not found",
+        );
+      }
+      if (targetDailyRecord.segments.length === 0) {
+        throw vehicleError(
+          409,
+          "ODOMETER_CONFLICT",
+          "A daily record without employee segments cannot be corrected safely",
+        );
+      }
+      if (!["DAILY_START", "DAILY_END", "HANDOVER"].includes(correctedField)) {
+        throw vehicleError(
+          400,
+          "VALIDATION_ERROR",
+          "Select a daily starting, ending, or handover reading",
+        );
+      }
+      if (correctedField === "DAILY_START") {
+        previousOdometerKm = targetDailyRecord.startOdometerKm;
+        if (
+          correctedOdometerKm < vehicle.initialOdometerKm ||
+          correctedOdometerKm > targetDailyRecord.segments[0]?.endOdometerKm
+        ) {
+          throw vehicleError(
+            409,
+            "ODOMETER_CONFLICT",
+            "Corrected daily starting reading must remain within the verified record",
+          );
+        }
+      } else if (correctedField === "DAILY_END") {
+        previousOdometerKm = targetDailyRecord.endOdometerKm;
+        if (correctedOdometerKm < targetDailyRecord.startOdometerKm) {
+          throw vehicleError(
+            409,
+            "ODOMETER_CONFLICT",
+            "Corrected daily ending reading cannot be below its starting reading",
+          );
+        }
+      } else {
+        if (!mongoose.isValidObjectId(dailySegmentId)) {
+          throw vehicleError(
+            400,
+            "VALIDATION_ERROR",
+            "Select a handover segment to correct",
+          );
+        }
+        const segmentIndex = targetDailyRecord.segments.findIndex(
+          (segment) => idString(segment._id) === idString(dailySegmentId),
+        );
+        const segment = targetDailyRecord.segments[segmentIndex];
+        const nextSegment = targetDailyRecord.segments[segmentIndex + 1];
+        if (!segment || !nextSegment) {
+          throw vehicleError(
+            409,
+            "ODOMETER_CONFLICT",
+            "Select a recorded handover between two employee segments",
+          );
+        }
+        previousOdometerKm = segment.endOdometerKm;
+        if (
+          correctedOdometerKm < segment.startOdometerKm ||
+          correctedOdometerKm > nextSegment.endOdometerKm
+        ) {
+          throw vehicleError(
+            409,
+            "ODOMETER_CONFLICT",
+            "Corrected handover reading must remain within the adjacent employee segments",
+          );
+        }
+      }
     } else if (correctedOdometerKm < vehicle.currentOdometerKm) {
       throw vehicleError(409, "ODOMETER_CONFLICT", "Current odometer correction cannot decrease the verified reading; select a historical session reading instead");
     }
@@ -1346,7 +1761,11 @@ export const createOdometerCorrection = async ({
         {
           vehicleId: vehicle._id,
           usageSessionId: targetSession?._id ?? null,
-          correctedField: targetSession ? correctedField : "CURRENT",
+          dailyMileageId: targetDailyRecord?._id ?? null,
+          dailySegmentId:
+            correctedField === "HANDOVER" ? dailySegmentId : null,
+          correctedField:
+            targetSession || targetDailyRecord ? correctedField : "CURRENT",
           previousOdometerKm,
           correctedOdometerKm,
           reason,
@@ -1372,7 +1791,133 @@ export const createOdometerCorrection = async ({
       if (changed.matchedCount !== 1) {
         throw vehicleError(409, "REVISION_CONFLICT", "Mileage session changed during correction");
       }
-      timelineResult = await rebuildVehicleOdometerTimeline(vehicle, session);
+      timelineResult = await rebuildVehicleOdometerTimeline(
+        vehicle,
+        session,
+        null,
+        actorId,
+      );
+    } else if (targetDailyRecord) {
+      const segments = targetDailyRecord.segments.map(
+        (segment) => segment.toObject?.() ?? segment,
+      );
+      let startOdometerKm = targetDailyRecord.startOdometerKm;
+      let endOdometerKm = targetDailyRecord.endOdometerKm;
+      if (correctedField === "DAILY_START") {
+        startOdometerKm = correctedOdometerKm;
+        segments[0] = updateCorrectedSegmentBoundary(
+          {
+            ...segments[0],
+            startOdometerKm: correctedOdometerKm,
+          },
+          "start",
+          targetDailyRecord.startOdometerKm,
+          correctedOdometerKm,
+        );
+      } else if (correctedField === "DAILY_END") {
+        endOdometerKm = correctedOdometerKm;
+        const lastSegmentIndex = segments.length - 1;
+        segments[lastSegmentIndex] = updateCorrectedSegmentBoundary(
+          {
+            ...segments[lastSegmentIndex],
+            endOdometerKm: correctedOdometerKm,
+          },
+          "end",
+          targetDailyRecord.endOdometerKm,
+          correctedOdometerKm,
+        );
+      } else {
+        const segmentIndex = segments.findIndex(
+          (segment) => idString(segment._id) === idString(dailySegmentId),
+        );
+        const previousSegment = segments[segmentIndex];
+        const nextSegment = segments[segmentIndex + 1];
+        segments[segmentIndex] = updateCorrectedSegmentBoundary(
+          { ...previousSegment, endOdometerKm: correctedOdometerKm },
+          "end",
+          previousSegment.endOdometerKm,
+          correctedOdometerKm,
+        );
+        segments[segmentIndex + 1] = updateCorrectedSegmentBoundary(
+          { ...nextSegment, startOdometerKm: correctedOdometerKm },
+          "start",
+          nextSegment.startOdometerKm,
+          correctedOdometerKm,
+        );
+      }
+      let precedingOdometerKm = startOdometerKm;
+      for (const segment of segments) {
+        if (
+          segment.startOdometerKm !== precedingOdometerKm ||
+          !Number.isSafeInteger(segment.endOdometerKm) ||
+          segment.endOdometerKm < segment.startOdometerKm
+        ) {
+          throw vehicleError(
+            409,
+            "ODOMETER_CONFLICT",
+            "Corrected employee segments would not be continuous",
+          );
+        }
+        segment.distanceKm =
+          segment.endOdometerKm - segment.startOdometerKm;
+        precedingOdometerKm = segment.endOdometerKm;
+      }
+      const segmentDistanceKm = segments.reduce(
+        (total, segment) => total + segment.distanceKm,
+        0,
+      );
+      const dailyDistanceKm = endOdometerKm - startOdometerKm;
+      if (precedingOdometerKm !== endOdometerKm || segmentDistanceKm !== dailyDistanceKm) {
+        throw vehicleError(
+          409,
+          "ODOMETER_CONFLICT",
+          "Corrected employee segments must reconcile with the daily readings",
+        );
+      }
+      const changed = await VehicleDailyMileage.updateOne(
+        {
+          _id: targetDailyRecord._id,
+          vehicleId: vehicle._id,
+          status: "CLOSED",
+          revision: targetDailyRecord.revision,
+        },
+        {
+          $set: {
+            startOdometerKm,
+            endOdometerKm,
+            latestOdometerKm: endOdometerKm,
+            dailyDistanceKm,
+            segments,
+            updatedBy: actorId,
+            timelineReviewRequired: false,
+            timelineReviewReason: "",
+          },
+          $push: {
+            auditHistory: {
+              action: "ODOMETER_CORRECTED",
+              actorId,
+              employeeId: null,
+              odometerKm: correctedOdometerKm,
+              occurredAt: new Date(),
+            },
+          },
+          $inc: { revision: 1 },
+        },
+        { session, runValidators: true },
+      );
+      if (changed.matchedCount !== 1) {
+        throw vehicleError(
+          409,
+          "REVISION_CONFLICT",
+          "Daily mileage record changed during correction",
+        );
+      }
+      timelineResult = await rebuildVehicleOdometerTimeline(
+        vehicle,
+        session,
+        null,
+        actorId,
+      );
     }
     await casVehicle(vehicle, expectedVehicleRevision, session, {
       currentOdometerKm: timelineResult?.currentOdometerKm ?? correctedOdometerKm,
@@ -1455,6 +2000,7 @@ export const reviewVehicleServiceConflict = async ({
       vehicle,
       session,
       service._id,
+      actorId,
     );
     await casVehicle(vehicle, expectedVehicleRevision, session, {
       currentOdometerKm: timelineResult.currentOdometerKm,

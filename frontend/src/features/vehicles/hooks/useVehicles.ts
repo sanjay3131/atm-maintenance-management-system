@@ -1,11 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   completeVehicleSession,
+  completeDailyMileageUsageSession,
+  closeDailyMileage,
+  reopenDailyMileage,
   assignVehicle,
   correctVehicleOdometer,
   createVehicle,
   createVehicleService,
   getCurrentVehicleSession,
+  getDailyMileageHistory,
+  getDailyMileageState,
+  getPendingDailyMileageRollovers,
   getEligibleVehicles,
   getMyVehicleHistory,
   getVehicle,
@@ -15,8 +21,13 @@ import {
   getVehicleServices,
   getVehicles,
   recoverVehicleSession,
+  recoverDailyMileageRollover,
+  handoverDailyMileage,
+  joinDailyMileage,
   reviewVehicleServiceConflict,
   startVehicleSession,
+  startDailyMileage,
+  startDailyMileageUsageSession,
   transferVehicleAssignment,
   unassignVehicle,
   updateVehicle,
@@ -30,6 +41,11 @@ import type {
 
 export const VEHICLES_QUERY_KEY = ["vehicles"] as const;
 export const VEHICLE_SESSION_QUERY_KEY = ["vehicle-sessions", "me"] as const;
+export const DAILY_MILEAGE_QUERY_KEY = ["daily-mileage", "me"] as const;
+export const DAILY_MILEAGE_ROLLOVER_QUERY_KEY = [
+  "daily-mileage",
+  "rollover-pending",
+] as const;
 
 export const useVehicles = (params: VehicleListParams = {}) =>
   useQuery({
@@ -88,6 +104,24 @@ export const useMyVehicleHistory = () =>
     queryFn: () => getMyVehicleHistory({ page: 1, limit: 20 }),
   });
 
+export const useDailyMileageState = () =>
+  useQuery({
+    queryKey: DAILY_MILEAGE_QUERY_KEY,
+    queryFn: getDailyMileageState,
+  });
+
+export const useDailyMileageHistory = () =>
+  useQuery({
+    queryKey: [...DAILY_MILEAGE_QUERY_KEY, "history"],
+    queryFn: () => getDailyMileageHistory({ page: 1, limit: 50 }),
+  });
+
+export const usePendingDailyMileageRollovers = () =>
+  useQuery({
+    queryKey: DAILY_MILEAGE_ROLLOVER_QUERY_KEY,
+    queryFn: getPendingDailyMileageRollovers,
+  });
+
 const useVehicleMutation = <TData, TVariables>(
   mutationFn: (variables: TVariables) => Promise<TData>,
 ) => {
@@ -98,6 +132,10 @@ const useVehicleMutation = <TData, TVariables>(
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: VEHICLES_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: VEHICLE_SESSION_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: DAILY_MILEAGE_QUERY_KEY }),
+        queryClient.invalidateQueries({
+          queryKey: DAILY_MILEAGE_ROLLOVER_QUERY_KEY,
+        }),
       ]);
     },
   });
@@ -119,6 +157,8 @@ export const useCorrectVehicleOdometer = () =>
   useVehicleMutation(correctVehicleOdometer);
 export const useRecoverVehicleSession = () =>
   useVehicleMutation(recoverVehicleSession);
+export const useRecoverDailyMileageRollover = () =>
+  useVehicleMutation(recoverDailyMileageRollover);
 export const useCreateVehicleService = () =>
   useVehicleMutation(createVehicleService);
 export const useReviewVehicleServiceConflict = () =>
@@ -129,3 +169,17 @@ export const useStartVehicleSession = () =>
   useVehicleMutation(startVehicleSession);
 export const useCompleteVehicleSession = () =>
   useVehicleMutation(completeVehicleSession);
+export const useStartDailyMileage = () =>
+  useVehicleMutation(startDailyMileage);
+export const useStartDailyMileageUsageSession = () =>
+  useVehicleMutation(startDailyMileageUsageSession);
+export const useCompleteDailyMileageUsageSession = () =>
+  useVehicleMutation(completeDailyMileageUsageSession);
+export const useHandoverDailyMileage = () =>
+  useVehicleMutation(handoverDailyMileage);
+export const useJoinDailyMileage = () =>
+  useVehicleMutation(joinDailyMileage);
+export const useCloseDailyMileage = () =>
+  useVehicleMutation(closeDailyMileage);
+export const useReopenDailyMileage = () =>
+  useVehicleMutation(reopenDailyMileage);

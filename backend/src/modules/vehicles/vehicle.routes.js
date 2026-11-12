@@ -11,9 +11,11 @@ import {
   completeSessionSchema,
   correctionSchema,
   createVehicleSchema,
+  dailyMileageIdParamsSchema,
   employeeReportQuerySchema,
   historyQuerySchema,
   recoverSessionSchema,
+  recoverDailyMileageRolloverSchema,
   reportQuerySchema,
   serviceCreateSchema,
   servicePolicyUpdateSchema,
@@ -21,6 +23,12 @@ import {
   serviceReviewSchema,
   sessionIdParamsSchema,
   startSessionSchema,
+  startDailyMileageSchema,
+  updateDailyMileageSchema,
+  joinDailyMileageSchema,
+  startDailyMileageUsageSessionSchema,
+  completeDailyMileageUsageSessionSchema,
+  reopenDailyMileageSchema,
   transferSchema,
   unassignmentSchema,
   updateVehicleSchema,
@@ -29,6 +37,19 @@ import {
   vehicleStatusSchema,
   vehicleReportQuerySchema,
 } from "./vehicle.validation.js";
+import {
+  getEmployeeDailyMileage,
+  getEmployeeDailyMileageHistory,
+  getAdminDailyMileageRollovers,
+  postAdminDailyMileageRolloverRecovery,
+  postEmployeeDailyMileageClose,
+  postEmployeeDailyMileageHandover,
+  postEmployeeDailyMileageJoin,
+  postEmployeeDailyMileageStart,
+  postEmployeeDailyMileageUsageSessionStart,
+  postEmployeeDailyMileageUsageSessionComplete,
+  postEmployeeDailyMileageReopen,
+} from "./vehicleDailyMileage.controller.js";
 import {
   exportEmployeeMileageReport,
   exportVehicleMileageReport,
@@ -63,6 +84,73 @@ const adminRoles = authorizeRoles("admin", "superAdmin");
 
 router.use(verifyAccessToken);
 
+router.get(
+  "/employee/daily-mileage",
+  authorizeRoles("employee"),
+  requireVehicleIndexes,
+  getEmployeeDailyMileage,
+);
+router.get(
+  "/employee/daily-mileage/history",
+  authorizeRoles("employee"),
+  validateRequest(historyQuerySchema, "query"),
+  getEmployeeDailyMileageHistory,
+);
+router.post(
+  "/employee/daily-mileage",
+  authorizeRoles("employee"),
+  validateRequest(startDailyMileageSchema),
+  requireVehicleIndexes,
+  postEmployeeDailyMileageStart,
+);
+router.post(
+  "/employee/daily-mileage/:dailyMileageId/handover",
+  authorizeRoles("employee"),
+  validateRequest(dailyMileageIdParamsSchema, "params"),
+  validateRequest(updateDailyMileageSchema),
+  requireVehicleIndexes,
+  postEmployeeDailyMileageHandover,
+);
+router.post(
+  "/employee/daily-mileage/:dailyMileageId/join",
+  authorizeRoles("employee"),
+  validateRequest(dailyMileageIdParamsSchema, "params"),
+  validateRequest(joinDailyMileageSchema),
+  requireVehicleIndexes,
+  postEmployeeDailyMileageJoin,
+);
+router.post(
+  "/employee/daily-mileage/:dailyMileageId/sessions/start",
+  authorizeRoles("employee"),
+  validateRequest(dailyMileageIdParamsSchema, "params"),
+  validateRequest(startDailyMileageUsageSessionSchema),
+  requireVehicleIndexes,
+  postEmployeeDailyMileageUsageSessionStart,
+);
+router.post(
+  "/employee/daily-mileage/:dailyMileageId/sessions/complete",
+  authorizeRoles("employee"),
+  validateRequest(dailyMileageIdParamsSchema, "params"),
+  validateRequest(completeDailyMileageUsageSessionSchema),
+  requireVehicleIndexes,
+  postEmployeeDailyMileageUsageSessionComplete,
+);
+router.post(
+  "/employee/daily-mileage/:dailyMileageId/close",
+  authorizeRoles("employee"),
+  validateRequest(dailyMileageIdParamsSchema, "params"),
+  validateRequest(updateDailyMileageSchema),
+  requireVehicleIndexes,
+  postEmployeeDailyMileageClose,
+);
+router.post(
+  "/employee/daily-mileage/:dailyMileageId/reopen",
+  authorizeRoles("employee"),
+  validateRequest(dailyMileageIdParamsSchema, "params"),
+  validateRequest(reopenDailyMileageSchema),
+  requireVehicleIndexes,
+  postEmployeeDailyMileageReopen,
+);
 router.get(
   "/employee/usage/available-vehicles",
   authorizeRoles("employee"),
@@ -122,6 +210,20 @@ router.get(
   adminRoles,
   validateRequest(vehicleReportQuerySchema, "query"),
   exportVehicleMileageReport,
+);
+router.get(
+  "/admin/daily-mileage/rollover-pending",
+  adminRoles,
+  requireVehicleIndexes,
+  getAdminDailyMileageRollovers,
+);
+router.post(
+  "/admin/daily-mileage/:dailyMileageId/recover-rollover",
+  adminRoles,
+  validateRequest(dailyMileageIdParamsSchema, "params"),
+  validateRequest(recoverDailyMileageRolloverSchema),
+  requireVehicleIndexes,
+  postAdminDailyMileageRolloverRecovery,
 );
 router.get(
   "/admin/reports/employee-export.xlsx",

@@ -13,6 +13,7 @@
     "attendance:auto-checkout": "node src/modules/attendance/attendanceAutoCheckout.worker.js",
     "test:attendance-auto-checkout-mongo": "node --test test/integration/attendanceAutoCheckout.mongodb.test.js",
     "test:location-workflow-mongo": "node --test test/integration/atmLocationWorkflow.mongodb.test.js",
+    "test:vehicle-rollover-mongo": "node --test test/integration/vehicleRollover.mongodb.test.js",
     "job-photos:ensure-indexes": "node scripts/ensureJobPhotoUploadIndexes.js",
     "job-photos:backfill-fence": "node scripts/backfillJobPhotoUploadFence.js",
     "employees:ensure-user-id-index": "node scripts/ensureEmployeeUserIdUniqueIndex.js",

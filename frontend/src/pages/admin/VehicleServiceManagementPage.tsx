@@ -93,11 +93,10 @@ export default function VehicleServiceManagementPage() {
     }
     if (
       !Number.isSafeInteger(reading) ||
-      reading < vehicle.initialOdometerKm ||
-      reading > vehicle.currentOdometerKm
+      reading < vehicle.currentOdometerKm
     ) {
       toast.error(
-        "Service reading must be a whole KM between the initial and current verified odometer.",
+        "Service reading must be a whole KM equal to or above the current verified odometer.",
       );
       return;
     }
@@ -255,8 +254,7 @@ export default function VehicleServiceManagementPage() {
                 <input
                   required
                   type="number"
-                  min={selectedVehicleQuery.data?.initialOdometerKm ?? 0}
-                  max={selectedVehicleQuery.data?.currentOdometerKm}
+                  min={selectedVehicleQuery.data?.currentOdometerKm ?? 0}
                   step="1"
                   inputMode="numeric"
                   className={controlClass}

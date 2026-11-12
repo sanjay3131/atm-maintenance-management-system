@@ -13,11 +13,15 @@ import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  usePendingDailyMileageRollovers,
+  useRecoverDailyMileageRollover,
   useCreateVehicle,
   useVehicles,
 } from "@/features/vehicles/hooks/useVehicles";
+import { useEmployeeOptions } from "@/features/employees/hooks/useEmployeeOptions";
 import type { VehicleListParams } from "@/services/vehicle.service";
 import type { ServiceStatus } from "@/features/vehicles/types/vehicle.types";
+import type { DailyMileageRolloverPending } from "@/features/vehicles/types/vehicle.types";
 
 const controlClass =
   "h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -35,6 +39,152 @@ const serviceTone: Record<ServiceStatus, string> = {
   OVERDUE: "bg-rose-50 text-rose-800",
   POLICY_NOT_CONFIGURED: "bg-slate-100 text-slate-700",
 };
+
+function DailyMileageRolloverCard({
+  record,
+}: {
+  record: DailyMileageRolloverPending;
+}) {
+  const [reading, setReading] = useState("");
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [nextEmployeeId, setNextEmployeeId] = useState("");
+  const mutation = useRecoverDailyMileageRollover();
+  const employeeOptionsQuery = useEmployeeOptions(
+    employeeSearch,
+    1,
+    true,
+    true,
+  );
+  const vehicle = record.vehicleId;
+  const verifiedOdometerKm = Math.max(
+    record.latestOdometerKm,
+    vehicle.currentOdometerKm,
+  );
+  const activeSegment = record.segments.find((segment) => segment.endedAt == null);
+  const activeEmployeeName = record.activeEmployeeId
+    ? [
+        record.activeEmployeeId.userId?.firstName,
+        record.activeEmployeeId.userId?.lastName,
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : activeSegment?.employeeNameSnapshot || "None";
+  const employees = employeeOptionsQuery.data?.employees ?? [];
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const odometer = Number(reading);
+    if (!Number.isSafeInteger(odometer) || odometer < verifiedOdometerKm) {
+      toast.error("Enter a whole-kilometre reading at or above the last verified odometer.");
+      return;
+    }
+    try {
+      const result = await mutation.mutateAsync({
+        dailyMileageId: record._id,
+        recoveryOdometerKm: odometer,
+        expectedVehicleRevision: vehicle.serviceStateRevision,
+        expectedDailyRevision: record.revision,
+        ...(nextEmployeeId ? { nextEmployeeId } : {}),
+      });
+      toast.success(
+        result.replayed
+          ? "This rollover was already recovered."
+          : "Mileage rollover recovered.",
+      );
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{vehicle.registrationNumber} · {record.businessDate}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 text-sm sm:grid-cols-3">
+          <p>
+            <span className="text-muted-foreground">Active employee: </span>
+            <span className="font-medium">{activeEmployeeName}</span>
+          </p>
+          <p>
+            <span className="text-muted-foreground">Last verified: </span>
+            <span className="font-medium tabular-nums">
+              {verifiedOdometerKm.toLocaleString("en-IN")} KM
+            </span>
+          </p>
+          <p>
+            <span className="text-muted-foreground">Previous day began at: </span>
+            <span className="font-medium tabular-nums">
+              {record.startOdometerKm.toLocaleString("en-IN")} KM
+            </span>
+          </p>
+        </div>
+        <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-950">
+          The mileage accumulated after midnight through the recovery reading
+          will be assigned to {record.businessDate}, because that interval
+          cannot be split accurately. The new business date starts at the same
+          reading. The previous active employee is retained unless you choose
+          another employee below.
+        </p>
+        <form className="grid gap-3 sm:grid-cols-2" onSubmit={submit}>
+          <label className="space-y-1 text-sm font-medium">
+            Actual current odometer (KM)
+            <input
+              type="number"
+              min={verifiedOdometerKm}
+              step="1"
+              inputMode="numeric"
+              required
+              className={controlClass}
+              value={reading}
+              onChange={(event) => setReading(event.target.value)}
+            />
+          </label>
+          <div className="space-y-1">
+            <label
+              className="block text-sm font-medium"
+              htmlFor={`rollover-employee-search-${record._id}`}
+            >
+              Search active employees for a handover
+            </label>
+            <input
+              id={`rollover-employee-search-${record._id}`}
+              className={controlClass}
+              value={employeeSearch}
+              onChange={(event) => setEmployeeSearch(event.target.value)}
+            />
+            <select
+              className={controlClass}
+              aria-label={`Next business date employee for ${vehicle.registrationNumber}`}
+              value={nextEmployeeId}
+              onChange={(event) => setNextEmployeeId(event.target.value)}
+            >
+              <option value="">
+                Keep previous employee{activeEmployeeName !== "None" ? ` (${activeEmployeeName})` : ""}
+              </option>
+              {employees.map((employee) => (
+                <option key={employee._id} value={employee._id}>
+                  {[employee.firstName, employee.lastName]
+                    .filter(Boolean)
+                    .join(" ")}{" "}
+                  · {employee.employeeCode}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button
+            type="submit"
+            className="sm:col-span-2"
+            disabled={mutation.isPending || !reading}
+          >
+            {mutation.isPending ? "Recovering…" : "Confirm rollover recovery"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
 
 function errorMessage(error: unknown) {
   if (isAxiosError<{ message?: string; code?: string }>(error)) {
@@ -63,8 +213,10 @@ export default function VehiclesPage() {
   const [purchaseDate, setPurchaseDate] = useState("");
   const [notes, setNotes] = useState("");
   const vehiclesQuery = useVehicles(filters);
+  const rolloversQuery = usePendingDailyMileageRollovers();
   const createMutation = useCreateVehicle();
   const vehicles = vehiclesQuery.data?.vehicles ?? [];
+  const pendingRollovers = rolloversQuery.data?.records ?? [];
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -256,6 +408,54 @@ export default function VehiclesPage() {
           </select>
         </CardContent>
       </Card>
+
+      <section aria-labelledby="rollover-recovery-heading" className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 id="rollover-recovery-heading" className="text-lg font-semibold">
+              Midnight mileage recovery
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Recover open records that crossed the Asia/Kolkata business-date boundary.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => void rolloversQuery.refetch()}
+            disabled={rolloversQuery.isFetching}
+          >
+            <RefreshCw /> Refresh
+          </Button>
+        </div>
+        {rolloversQuery.isLoading ? (
+          <Card>
+            <CardContent className="p-5 text-sm text-muted-foreground" role="status">
+              Checking for pending mileage recovery…
+            </CardContent>
+          </Card>
+        ) : rolloversQuery.isError ? (
+          <Card>
+            <CardContent className="flex items-center justify-between gap-3 p-5">
+              <p className="text-sm text-destructive">
+                {errorMessage(rolloversQuery.error)}
+              </p>
+              <Button variant="outline" onClick={() => void rolloversQuery.refetch()}>
+                <RefreshCw /> Retry
+              </Button>
+            </CardContent>
+          </Card>
+        ) : pendingRollovers.length === 0 ? (
+          <Card>
+            <CardContent className="p-5 text-sm text-muted-foreground">
+              No bikes are waiting for midnight mileage recovery.
+            </CardContent>
+          </Card>
+        ) : (
+          pendingRollovers.map((record) => (
+            <DailyMileageRolloverCard key={record._id} record={record} />
+          ))
+        )}
+      </section>
 
       {vehiclesQuery.isLoading ? (
         <Card>

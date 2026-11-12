@@ -12,9 +12,18 @@ const vehicleOdometerCorrectionSchema = new mongoose.Schema(
       ref: "VehicleUsageSession",
       default: null,
     },
+    dailyMileageId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "VehicleDailyMileage",
+      default: null,
+    },
+    dailySegmentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
     correctedField: {
       type: String,
-      enum: ["CURRENT", "START", "END"],
+      enum: ["CURRENT", "START", "END", "DAILY_START", "DAILY_END", "HANDOVER"],
       default: "CURRENT",
     },
     previousOdometerKm: { type: Number, required: true, min: 0 },
@@ -39,6 +48,7 @@ const vehicleOdometerCorrectionSchema = new mongoose.Schema(
 vehicleOdometerCorrectionSchema.index({ vehicleId: 1, correctedAt: -1 });
 vehicleOdometerCorrectionSchema.index({ correctedBy: 1, correctedAt: -1 });
 vehicleOdometerCorrectionSchema.index({ usageSessionId: 1, correctedAt: -1 });
+vehicleOdometerCorrectionSchema.index({ dailyMileageId: 1, correctedAt: -1 });
 
 const VehicleOdometerCorrection = mongoose.model(
   "VehicleOdometerCorrection",

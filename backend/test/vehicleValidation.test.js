@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   completeSessionSchema,
+  correctionSchema,
   createVehicleSchema,
   reportQuerySchema,
+  recoverDailyMileageRolloverSchema,
+  reopenDailyMileageSchema,
   serviceReviewParamsSchema,
   serviceReviewSchema,
   servicePolicyUpdateSchema,
@@ -61,6 +64,120 @@ test("session completion requires a safe integer and expected revision", () => {
     completeSessionSchema.safeParse({
       endingOdometerKm: 2.5,
       expectedVehicleRevision: 2,
+    }).success,
+    false,
+  );
+});
+
+test("rollover recovery requires whole odometer readings and revision fences", () => {
+  const valid = {
+    recoveryOdometerKm: 1540,
+    expectedVehicleRevision: 3,
+    expectedDailyRevision: 2,
+  };
+  assert.equal(recoverDailyMileageRolloverSchema.safeParse(valid).success, true);
+  assert.equal(
+    recoverDailyMileageRolloverSchema.safeParse({
+      ...valid,
+      recoveryOdometerKm: 1540.5,
+    }).success,
+    false,
+  );
+  assert.equal(
+    recoverDailyMileageRolloverSchema.safeParse({
+      ...valid,
+      recoveryOdometerKm: -1,
+    }).success,
+    false,
+  );
+  assert.equal(
+    recoverDailyMileageRolloverSchema.safeParse({
+      ...valid,
+      expectedDailyRevision: undefined,
+    }).success,
+    false,
+  );
+  assert.equal(
+    recoverDailyMileageRolloverSchema.safeParse({
+      ...valid,
+      nextEmployeeId: "invalid",
+    }).success,
+    false,
+  );
+});
+
+test("daily mileage reopen requires both expected revisions", () => {
+  const valid = {
+    expectedVehicleRevision: 3,
+    expectedDailyRevision: 2,
+  };
+  assert.equal(reopenDailyMileageSchema.safeParse(valid).success, true);
+  assert.equal(
+    reopenDailyMileageSchema.safeParse({
+      ...valid,
+      expectedDailyRevision: undefined,
+    }).success,
+    false,
+  );
+  assert.equal(
+    reopenDailyMileageSchema.safeParse({
+      ...valid,
+      expectedVehicleRevision: -1,
+    }).success,
+    false,
+  );
+  assert.equal(
+    reopenDailyMileageSchema.safeParse({ ...valid, extra: true }).success,
+    false,
+  );
+});
+
+test("odometer corrections select exactly one valid current, legacy, or daily target", () => {
+  const base = {
+    correctedOdometerKm: 100,
+    expectedVehicleRevision: 2,
+    reason: "Verified paper reading",
+  };
+  assert.equal(correctionSchema.safeParse(base).success, true);
+  assert.equal(
+    correctionSchema.safeParse({
+      ...base,
+      usageSessionId: "64b000000000000000000001",
+      correctedField: "END",
+    }).success,
+    true,
+  );
+  assert.equal(
+    correctionSchema.safeParse({
+      ...base,
+      dailyMileageId: "64b000000000000000000002",
+      correctedField: "DAILY_END",
+    }).success,
+    true,
+  );
+  assert.equal(
+    correctionSchema.safeParse({
+      ...base,
+      dailyMileageId: "64b000000000000000000002",
+      dailySegmentId: "64b000000000000000000003",
+      correctedField: "HANDOVER",
+    }).success,
+    true,
+  );
+  assert.equal(
+    correctionSchema.safeParse({
+      ...base,
+      dailyMileageId: "64b000000000000000000002",
+      correctedField: "HANDOVER",
+    }).success,
+    false,
+  );
+  assert.equal(
+    correctionSchema.safeParse({
+      ...base,
+      usageSessionId: "64b000000000000000000001",
+      dailyMileageId: "64b000000000000000000002",
+      correctedField: "END",
     }).success,
     false,
   );

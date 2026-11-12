@@ -76,6 +76,7 @@ const employeeSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+    vehicleUsageRevision: { type: Number, min: 0, default: 0, select: false },
     salary: {
       type: Number,
     },

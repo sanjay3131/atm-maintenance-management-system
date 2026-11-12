@@ -23,7 +23,6 @@ import {
   recordVehicleService,
   recoverUsageSession,
   reviewVehicleServiceConflict,
-  startUsageSession,
   transferVehicleAssignment,
   unassignVehicle,
   updateServicePolicy,
@@ -198,20 +197,9 @@ export const getMyCurrentVehicleSession = asyncHandler(async (req, res) => {
 });
 
 export const postVehicleSessionStart = asyncHandler(async (req, res) => {
-  const session = await startUsageSession({ ...req.body, user: req.user });
-  await reconcileAfterCommit(session.vehicleId);
-  const vehicle = await Vehicle.findById(session.vehicleId).select(
-    "serviceStateRevision",
-  );
-  return res.status(201).json(
-    new ApiResponse(
-      201,
-      {
-        ...session.toObject(),
-        vehicleRevision: vehicle?.serviceStateRevision,
-      },
-      "Vehicle session started",
-    ),
+  throw new ApiError(
+    410,
+    "Legacy mileage session starts are disabled; use the daily mileage workflow",
   );
 });
 

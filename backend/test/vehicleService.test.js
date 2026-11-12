@@ -5,6 +5,7 @@ import Employee from "../src/modules/employees/employee.model.js";
 import Vehicle from "../src/modules/vehicles/vehicle.model.js";
 import VehicleAssignment from "../src/modules/vehicles/vehicleAssignment.model.js";
 import VehicleUsageSession from "../src/modules/vehicles/vehicleUsageSession.model.js";
+import VehicleDailyMileage from "../src/modules/vehicles/vehicleDailyMileage.model.js";
 import VehicleService from "../src/modules/vehicles/vehicleService.model.js";
 import VehicleServicePolicy from "../src/modules/vehicles/vehicleServicePolicy.model.js";
 import VehicleServiceReminder from "../src/modules/vehicles/vehicleServiceReminder.model.js";
@@ -19,6 +20,7 @@ import {
   recordVehicleService,
   reviewVehicleServiceConflict,
   startUsageSession,
+  transferVehicleAssignment,
   updateServicePolicy,
 } from "../src/modules/vehicles/vehicle.service.js";
 import { reconcileVehicleReminder } from "../src/modules/vehicles/vehicleReminderWorker.js";
@@ -135,6 +137,7 @@ test("session start derives employee, snapshots actual vehicle, and advances rev
         },
       ],
       [VehicleUsageSession, "exists", () => query(false)],
+      [VehicleDailyMileage, "exists", () => query(false)],
       [
         VehicleUsageSession,
         "create",
@@ -251,6 +254,87 @@ test("eligible vehicles include all active bikes and put the primary assignment 
         assert.deepEqual(
           result.map((vehicle) => vehicle.primaryAssignedToMe),
           assignedVehicleId ? [true, false] : [false, false],
+        );
+      },
+    );
+  }
+});
+
+test("assignment transfer moves or exchanges primary responsibility atomically", async () => {
+  const targetVehicleId = "64b000000000000000000020";
+  const otherEmployeeId = "64b000000000000000000021";
+  for (const targetAssigned of [false, true]) {
+    const source = activeVehicle({
+      primaryAssignedEmployeeId: employeeId,
+    });
+    const target = activeVehicle({
+      _id: targetVehicleId,
+      serviceStateRevision: 4,
+      primaryAssignedEmployeeId: targetAssigned ? otherEmployeeId : null,
+    });
+    const sourceAssignment = {
+      vehicleId,
+      employeeId,
+      async save() {},
+    };
+    const targetAssignment = targetAssigned
+      ? {
+          vehicleId: targetVehicleId,
+          employeeId: otherEmployeeId,
+          async save() {},
+        }
+      : null;
+    const created = [];
+    await withOverrides(
+      [
+        [mongoose, "startSession", async () => transactionStub()],
+        [Vehicle, "findById", (id) => query(
+          String(id) === targetVehicleId ? target : source,
+        )],
+        [Vehicle, "updateOne", async (filter, update) => {
+          const current = String(filter._id) === targetVehicleId ? target : source;
+          if (current.serviceStateRevision !== filter.serviceStateRevision) {
+            return { matchedCount: 0 };
+          }
+          Object.assign(current, update.$set);
+          current.serviceStateRevision += update.$inc.serviceStateRevision;
+          return { matchedCount: 1 };
+        }],
+        [Employee, "findById", () => query(activeEmployee())],
+        [VehicleAssignment, "findOne", (filter) => {
+          if (String(filter.vehicleId) === vehicleId) return query(sourceAssignment);
+          if (String(filter.vehicleId) === targetVehicleId) return query(targetAssignment);
+          return query(sourceAssignment);
+        }],
+        [VehicleAssignment, "create", async (documents) => {
+          const assignments = documents.map((document, index) => ({
+            _id: `new-assignment-${index}`,
+            ...document,
+          }));
+          created.push(...assignments);
+          return assignments;
+        }],
+      ],
+      async () => {
+        const result = await transferVehicleAssignment({
+          employeeId,
+          sourceVehicleId: vehicleId,
+          targetVehicleId,
+          expectedSourceRevision: 7,
+          expectedTargetRevision: 4,
+          actorId: userId,
+        });
+        assert.equal(result.exchanged, targetAssigned);
+        assert.equal(String(source.primaryAssignedEmployeeId), targetAssigned ? otherEmployeeId : "null");
+        assert.equal(String(target.primaryAssignedEmployeeId), employeeId);
+        assert.equal(created.length, targetAssigned ? 2 : 1);
+        assert.equal(
+          created.some((item) => String(item.vehicleId) === targetVehicleId),
+          true,
+        );
+        assert.equal(
+          created.some((item) => String(item.vehicleId) === vehicleId),
+          targetAssigned,
         );
       },
     );
@@ -574,7 +658,7 @@ test("recording oil service atomically advances verified KM and resolves the pre
     vehicleId,
     serviceType: "OIL_CHANGE",
     serviceDate: new Date("2026-01-01T00:00:00.000Z"),
-    serviceOdometerKm: 2800,
+    serviceOdometerKm: 3200,
     createdAt: new Date("2026-01-01T01:00:00.000Z"),
   };
   await withOverrides(
@@ -620,13 +704,13 @@ test("recording oil service atomically advances verified KM and resolves the pre
         input: {
           serviceType: "OIL_CHANGE",
           serviceDate: "2026-01-01",
-          serviceOdometerKm: 2800,
+          serviceOdometerKm: 3200,
           expectedVehicleRevision: 7,
         },
         actorId: userId,
       });
-      assert.equal(result.baseline.odometerKm, 2800);
-      assert.equal(result.nextServiceOdometerKm, 5800);
+      assert.equal(result.baseline.odometerKm, 3200);
+      assert.equal(result.nextServiceOdometerKm, 6200);
       assert.equal(vehicle.serviceStateRevision, 8);
       assert.equal(
         state.resolved.filter.cycleKey,
@@ -634,6 +718,40 @@ test("recording oil service atomically advances verified KM and resolves the pre
       );
       assert.equal(state.resolved.update.$set.lifecycleStatus, "RESOLVED");
       assert.equal(Object.hasOwn(state.resolved.update.$set, "serviceStatus"), false);
+    },
+  );
+});
+
+test("oil service rejects a reading below the current vehicle odometer", async () => {
+  const vehicle = activeVehicle({
+    initialOdometerKm: 1000,
+    currentOdometerKm: 3000,
+  });
+  await withOverrides(
+    [
+      [mongoose, "startSession", async () => transactionStub()],
+      [Vehicle, "findById", () => query(vehicle)],
+      [
+        VehicleServicePolicy,
+        "findOne",
+        () => query({ version: 1, intervalKm: 3000, isActive: true }),
+      ],
+    ],
+    async () => {
+      await assert.rejects(
+        recordVehicleService({
+          vehicleId,
+          input: {
+            serviceType: "OIL_CHANGE",
+            serviceDate: "2026-01-01",
+            serviceOdometerKm: 2999,
+            expectedVehicleRevision: 7,
+          },
+          actorId: userId,
+        }),
+        { code: "INVALID_SERVICE_ODOMETER" },
+      );
+      assert.equal(vehicle.currentOdometerKm, 3000);
     },
   );
 });
@@ -657,7 +775,7 @@ test("new service resolves ACTIVE and SUPERSEDED previous cycles but preserves R
       vehicleId,
       serviceType: "OIL_CHANGE",
       serviceDate: new Date("2026-01-01T00:00:00.000Z"),
-      serviceOdometerKm: 2800,
+      serviceOdometerKm: 3000,
       createdAt: new Date("2026-01-01T01:00:00.000Z"),
     };
     const serviceQuery = {
@@ -686,7 +804,7 @@ test("new service resolves ACTIVE and SUPERSEDED previous cycles but preserves R
     ], async () => {
       await recordVehicleService({
         vehicleId,
-        input: { serviceType: "OIL_CHANGE", serviceDate: "2026-01-01", serviceOdometerKm: 2800, expectedVehicleRevision: 7 },
+        input: { serviceType: "OIL_CHANGE", serviceDate: "2026-01-01", serviceOdometerKm: 3000, expectedVehicleRevision: 7 },
         actorId: userId,
       });
       if (previousState === "RESOLVED") {
@@ -768,6 +886,7 @@ test("downward historical correction preserves audit, recalculates distances, fl
       return { matchedCount: 1 };
     }],
     [VehicleUsageSession, "exists", () => query(false)],
+    [VehicleDailyMileage, "exists", () => query(false)],
     [VehicleUsageSession, "findOne", () => query(sessionA)],
     [VehicleUsageSession, "find", () => serviceQuery],
     [VehicleUsageSession, "updateOne", async (filter, update) => {
@@ -775,6 +894,7 @@ test("downward historical correction preserves audit, recalculates distances, fl
       Object.assign(current, update.$set);
       return { matchedCount: 1 };
     }],
+    [VehicleDailyMileage, "find", () => query([])],
     [VehicleService, "find", () => servicesQuery],
     [VehicleService, "updateOne", async (_filter, update) => {
       Object.assign(service, update.$set);
@@ -816,6 +936,141 @@ test("downward historical correction preserves audit, recalculates distances, fl
     assert.equal(vehicle.currentOdometerKm, 14200);
     assert.equal(vehicle.serviceStateRevision, 8);
     assert.equal(state.vehicleUpdate.$set.currentOdometerKm, 14200);
+  });
+});
+
+test("daily odometer correction preserves the original reading and recalculates employee and vehicle distances", async () => {
+  const vehicle = activeVehicle({
+    initialOdometerKm: 1000,
+    currentOdometerKm: 1200,
+  });
+  const dailyRecord = {
+    _id: "64b000000000000000000050",
+    vehicleId,
+    businessDate: "2026-01-02",
+    startOdometerKm: 1000,
+    endOdometerKm: 1200,
+    latestOdometerKm: 1200,
+    dailyDistanceKm: 200,
+    status: "CLOSED",
+    revision: 0,
+    updatedBy: userId,
+    segments: [
+      {
+        _id: "64b000000000000000000051",
+        employeeId,
+        startOdometerKm: 1000,
+        endOdometerKm: 1100,
+        distanceKm: 100,
+        odometerReadingsComplete: true,
+        usageSessions: [],
+        odometerReadings: [
+          { odometerKm: 1000, distanceKm: 0, source: "BASELINE" },
+          { odometerKm: 1100, distanceKm: 100, source: "HANDOVER" },
+        ],
+      },
+      {
+        _id: "64b000000000000000000052",
+        employeeId: userId,
+        startOdometerKm: 1100,
+        endOdometerKm: 1200,
+        distanceKm: 100,
+        odometerReadingsComplete: true,
+        usageSessions: [
+          {
+            startRequestId: "session-start",
+            endRequestId: "session-end",
+            startOdometerKm: 1100,
+            endOdometerKm: 1200,
+            distanceKm: 100,
+            status: "COMPLETED",
+          },
+        ],
+        odometerReadings: [
+          { odometerKm: 1100, distanceKm: 0, source: "BASELINE" },
+          { odometerKm: 1200, distanceKm: 100, source: "SESSION_END" },
+        ],
+      },
+    ],
+    auditHistory: [],
+  };
+  const state = { correction: null };
+  const listQuery = (value) => ({
+    sort() { return this; },
+    session() { return this; },
+    then(resolve, reject) { return Promise.resolve(value).then(resolve, reject); },
+  });
+
+  await withOverrides([
+    [mongoose, "startSession", async () => transactionStub()],
+    [Vehicle, "findById", () => query(vehicle)],
+    [Vehicle, "updateOne", async (_filter, update) => {
+      Object.assign(vehicle, update.$set);
+      vehicle.serviceStateRevision += update.$inc.serviceStateRevision;
+      return { matchedCount: 1 };
+    }],
+    [VehicleUsageSession, "exists", () => query(false)],
+    [VehicleUsageSession, "find", () => listQuery([])],
+    [VehicleDailyMileage, "exists", () => query(false)],
+    [VehicleDailyMileage, "findOne", () => query(dailyRecord)],
+    [VehicleDailyMileage, "find", () => listQuery([dailyRecord])],
+    [VehicleDailyMileage, "updateOne", async (filter, update) => {
+      if (dailyRecord.revision !== filter.revision) {
+        return { matchedCount: 0 };
+      }
+      Object.assign(dailyRecord, update.$set);
+      if (update.$push?.auditHistory) {
+        dailyRecord.auditHistory.push(update.$push.auditHistory);
+      }
+      dailyRecord.revision += update.$inc.revision;
+      return { matchedCount: 1 };
+    }],
+    [VehicleService, "find", () => listQuery([])],
+    [VehicleOdometerCorrection, "create", async ([correction]) => {
+      state.correction = { _id: "correction-daily", ...correction };
+      return [state.correction];
+    }],
+    [VehicleOdometerCorrection, "find", () => query([])],
+  ], async () => {
+    const result = await createOdometerCorrection({
+      vehicleId,
+      dailyMileageId: dailyRecord._id,
+      correctedField: "DAILY_END",
+      correctedOdometerKm: 1150,
+      expectedVehicleRevision: 7,
+      reason: "Verified the closing reading against the paper log",
+      actorId: userId,
+    });
+
+    assert.equal(result.previousOdometerKm, 1200);
+    assert.equal(result.correctedOdometerKm, 1150);
+    assert.equal(result.dailyMileageId, dailyRecord._id);
+    assert.equal(dailyRecord.endOdometerKm, 1150);
+    assert.equal(dailyRecord.latestOdometerKm, 1150);
+    assert.equal(dailyRecord.dailyDistanceKm, 150);
+    assert.deepEqual(
+      dailyRecord.segments.map((segment) => segment.distanceKm),
+      [100, 50],
+    );
+    assert.equal(
+      dailyRecord.segments[1].usageSessions[0].endOdometerKm,
+      1150,
+    );
+    assert.equal(dailyRecord.segments[1].usageSessions[0].distanceKm, 50);
+    assert.deepEqual(
+      dailyRecord.segments[1].odometerReadings.map((reading) => [
+        reading.odometerKm,
+        reading.distanceKm,
+      ]),
+      [
+        [1100, 0],
+        [1150, 50],
+      ],
+    );
+    assert.equal(dailyRecord.auditHistory[0].action, "ODOMETER_CORRECTED");
+    assert.equal(dailyRecord.timelineReviewRequired, false);
+    assert.equal(vehicle.currentOdometerKm, 1150);
+    assert.equal(vehicle.serviceStateRevision, 8);
   });
 });
 
@@ -872,6 +1127,7 @@ test("service conflict review preserves the reading and audits explicit confirma
       return { matchedCount: 1 };
     }],
     [VehicleService, "findById", () => query(service)],
+    [VehicleDailyMileage, "find", () => chain([])],
     [VehicleOdometerCorrection, "find", () => query([])],
   ], async () => {
     const result = await reviewVehicleServiceConflict({

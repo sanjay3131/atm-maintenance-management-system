@@ -19,6 +19,8 @@ import {
 } from "../amc/amcResponsibility.service.js";
 import { throwEmployeeUserIdConflict } from "../employees/employeeUserIdIndex.js";
 import { escapeRegex } from "../../utils/geographicQuery.js";
+import VehicleDailyMileage from "../vehicles/vehicleDailyMileage.model.js";
+import VehicleUsageSession from "../vehicles/vehicleUsageSession.model.js";
 
 export const getAllUsers = asyncHandler(async (req, res) => {
   const isAdmin =
@@ -423,6 +425,25 @@ export const changeUserStatus = asyncHandler(async (req, res) => {
     user = await withAMCResponsibilityTransaction(async (session) => {
       const currentUser = await User.findById(id).session(session);
       if (!currentUser) return null;
+      const employeeIds = await Employee.distinct("_id", {
+        userId: currentUser._id,
+      }).session(session);
+      if (employeeIds.length) {
+        const activeDailyMileage = await VehicleDailyMileage.exists({
+          status: { $in: ["OPEN", "ROLLOVER_PENDING"] },
+          activeEmployeeId: { $in: employeeIds },
+        }).session(session);
+        const activeLegacyMileage = await VehicleUsageSession.exists({
+          employeeId: { $in: employeeIds },
+          status: "IN_PROGRESS",
+        }).session(session);
+        if (activeDailyMileage || activeLegacyMileage) {
+          throw new ApiError(
+            409,
+            "Resolve all active mileage sessions before disabling this User account",
+          );
+        }
+      }
       await guardUserEligibilityChange({
         userId: currentUser._id,
         session,

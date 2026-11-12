@@ -7,6 +7,31 @@ export const getEmployeeDefaultVehicleId = (vehicles: Vehicle[]) =>
 export const getPrefilledStartingOdometer = (vehicle?: Vehicle) =>
   vehicle ? String(vehicle.currentOdometerKm) : "";
 
+export const getStartingOdometerForVehicleSelection = (
+  vehicleId: string,
+  vehicles: Array<
+    Pick<Vehicle, "_id" | "currentOdometerKm"> & {
+      usageState: "AVAILABLE" | "HANDOVER" | "IN_USE" | "CLOSED" | "ROLLOVER_PENDING";
+    }
+  >,
+) => {
+  const vehicle = vehicles.find((item) => item._id === vehicleId);
+  return vehicle?.usageState === "AVAILABLE"
+    ? String(vehicle.currentOdometerKm)
+    : "";
+};
+
+export const parseStartingOdometer = (
+  value: string,
+  currentOdometerKm: number,
+) => {
+  if (!/^\d+$/.test(value)) return null;
+  const reading = Number(value);
+  return Number.isSafeInteger(reading) && reading >= currentOdometerKm
+    ? reading
+    : null;
+};
+
 export const getOdometerCorrectionSuccessMessage = ({
   historical,
   timelineReviewRequired,

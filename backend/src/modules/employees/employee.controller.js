@@ -21,6 +21,8 @@ import {
 import { guardEmployeeEligibilityChange } from "../amc/amcResponsibility.service.js";
 import { resolveSupervisorId } from "./employeeSupervisor.service.js";
 import { throwEmployeeUserIdConflict } from "./employeeUserIdIndex.js";
+import VehicleDailyMileage from "../vehicles/vehicleDailyMileage.model.js";
+import VehicleUsageSession from "../vehicles/vehicleUsageSession.model.js";
 
 export const createEmployee = asyncHandler(async (req, res) => {
   const isAdmin =
@@ -195,6 +197,20 @@ export const updateEmployee = asyncHandler(async (req, res) => {
           session,
         );
         if (!currentEmployee) return null;
+        const activeDailyMileage = await VehicleDailyMileage.exists({
+          status: { $in: ["OPEN", "ROLLOVER_PENDING"] },
+          activeEmployeeId: currentEmployee._id,
+        }).session(session);
+        const activeLegacyMileage = await VehicleUsageSession.exists({
+          employeeId: currentEmployee._id,
+          status: "IN_PROGRESS",
+        }).session(session);
+        if (activeDailyMileage || activeLegacyMileage) {
+          throw new ApiError(
+            409,
+            "Employee must resolve all active mileage sessions before leaving active status",
+          );
+        }
         await guardEmployeeEligibilityChange({
           employeeId: currentEmployee._id,
           session,

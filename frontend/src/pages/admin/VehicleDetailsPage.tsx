@@ -11,6 +11,7 @@ import {
   useCorrectVehicleOdometer,
   useRecoverVehicleSession,
   useReviewVehicleServiceConflict,
+  useTransferVehicleAssignment,
   useUnassignVehicle,
   useUpdateVehicle,
   useUpdateVehicleStatus,
@@ -20,13 +21,15 @@ import {
   useVehicles,
 } from "@/features/vehicles/hooks/useVehicles";
 import { useEmployeeOptions } from "@/features/employees/hooks/useEmployeeOptions";
-import { transferVehicleAssignment } from "@/services/vehicle.service";
 import {
   getOdometerCorrectionSuccessMessage,
   resolveVehicleEditDraft,
   type VehicleEditDraft,
 } from "@/features/vehicles/vehicle-ui.utils";
-import type { VehicleUsageSession } from "@/features/vehicles/types/vehicle.types";
+import type {
+  VehicleDailyMileage,
+  VehicleUsageSession,
+} from "@/features/vehicles/types/vehicle.types";
 
 const controlClass =
   "h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -61,8 +64,9 @@ export default function VehicleDetailsPage() {
   const vehicleQuery = useVehicle(vehicleId);
   const servicesQuery = useVehicleServices(vehicleId);
   const correctionsQuery = useVehicleOdometerCorrections(vehicleId);
+  const [targetPage, setTargetPage] = useState(1);
   const activeVehiclesQuery = useVehicles({
-    page: 1,
+    page: targetPage,
     limit: 100,
     status: "ACTIVE",
   });
@@ -73,6 +77,7 @@ export default function VehicleDetailsPage() {
   const statusMutation = useUpdateVehicleStatus();
   const assignMutation = useAssignVehicle();
   const unassignMutation = useUnassignVehicle();
+  const transferMutation = useTransferVehicleAssignment();
   const correctionMutation = useCorrectVehicleOdometer();
   const recoveryMutation = useRecoverVehicleSession();
   const serviceReviewMutation = useReviewVehicleServiceConflict();
@@ -84,7 +89,9 @@ export default function VehicleDetailsPage() {
   const [reason, setReason] = useState("");
   const [correctedOdometerKm, setCorrectedOdometerKm] = useState("");
   const [correctionSessionId, setCorrectionSessionId] = useState("");
-  const [correctionField, setCorrectionField] = useState<"START" | "END">("END");
+  const [correctionField, setCorrectionField] = useState<
+    "START" | "END" | "DAILY_START" | "DAILY_END" | `HANDOVER:${string}`
+  >("END");
   const [verifiedEndOdometerKm, setVerifiedEndOdometerKm] = useState("");
   const [recoveryReason, setRecoveryReason] = useState("");
   const [serviceReviewReasons, setServiceReviewReasons] = useState<Record<string, string>>({});
@@ -154,7 +161,7 @@ export default function VehicleDetailsPage() {
       return;
     }
     try {
-      await transferVehicleAssignment({
+      const result = await transferMutation.mutateAsync({
         employeeId: vehicle.primaryAssignedEmployeeId._id,
         sourceVehicleId: vehicle._id,
         targetVehicleId: target._id,
@@ -162,7 +169,11 @@ export default function VehicleDetailsPage() {
         expectedTargetRevision: target.revision,
         reason: "Administrative transfer",
       });
-      toast.success("Primary assignment transferred.");
+      toast.success(
+        result.exchanged === true
+          ? "Primary assignments exchanged."
+          : "Primary assignment transferred.",
+      );
       setTargetVehicleId("");
       await Promise.all([
         vehicleQuery.refetch(),
@@ -195,17 +206,49 @@ export default function VehicleDetailsPage() {
     event.preventDefault();
     if (!vehicle) return;
     const reading = Number(correctedOdometerKm);
-    const targetSession = sessions.find((session) => session._id === correctionSessionId);
-    const minimumReading = targetSession
-      ? correctionField === "START" ? vehicle.initialOdometerKm : targetSession.startOdometerKm
-      : vehicle.currentOdometerKm;
-    const maximumReading = targetSession && correctionField === "START"
-      ? targetSession.endOdometerKm ?? Number.MAX_SAFE_INTEGER
+    const targetSession = sessions.find(
+      (session) => correctionSessionId === `session:${session._id}`,
+    );
+    const targetDailyRecord = dailyMileageHistory.find(
+      (record) => correctionSessionId === `daily:${record._id}`,
+    );
+    const handoverSegmentId = correctionField.startsWith("HANDOVER:")
+      ? correctionField.slice("HANDOVER:".length)
       : undefined;
+    const correctedField = handoverSegmentId ? "HANDOVER" : correctionField;
+    let minimumReading = vehicle.currentOdometerKm;
+    let maximumReading: number | undefined;
+    if (targetSession) {
+      minimumReading =
+        correctionField === "START"
+          ? vehicle.initialOdometerKm
+          : targetSession.startOdometerKm;
+      maximumReading =
+        correctionField === "START"
+          ? targetSession.endOdometerKm ?? Number.MAX_SAFE_INTEGER
+          : undefined;
+    } else if (targetDailyRecord) {
+      const segmentIndex = targetDailyRecord.segments.findIndex(
+        (segment) => segment._id === handoverSegmentId,
+      );
+      if (correctionField === "DAILY_START") {
+        minimumReading = vehicle.initialOdometerKm;
+        maximumReading =
+          targetDailyRecord.segments[0]?.endOdometerKm ?? undefined;
+      } else if (correctionField === "DAILY_END") {
+        minimumReading = targetDailyRecord.startOdometerKm;
+      } else if (segmentIndex >= 0) {
+        minimumReading =
+          targetDailyRecord.segments[segmentIndex].startOdometerKm;
+        maximumReading =
+          targetDailyRecord.segments[segmentIndex + 1]?.endOdometerKm ??
+          undefined;
+      }
+    }
     if (!Number.isSafeInteger(reading) || reading < minimumReading || (maximumReading !== undefined && reading > maximumReading) || !reason.trim()) {
       toast.error(
-        targetSession
-          ? "Corrected session reading must remain valid for the session and include a reason."
+        targetSession || targetDailyRecord
+          ? "Corrected historical reading must remain valid for the mileage record and include a reason."
           : "Current odometer corrections cannot decrease the verified reading and require a reason.",
       );
       return;
@@ -216,11 +259,26 @@ export default function VehicleDetailsPage() {
         correctedOdometerKm: reading,
         expectedVehicleRevision: vehicle.revision,
         reason: reason.trim(),
-        ...(targetSession ? { usageSessionId: targetSession._id, correctedField: correctionField } : {}),
+        ...(targetSession
+          ? {
+              usageSessionId: targetSession._id,
+              correctedField: correctedField as "START" | "END",
+            }
+          : {}),
+        ...(targetDailyRecord
+          ? {
+              dailyMileageId: targetDailyRecord._id,
+              ...(handoverSegmentId ? { dailySegmentId: handoverSegmentId } : {}),
+              correctedField: correctedField as
+                | "DAILY_START"
+                | "DAILY_END"
+                | "HANDOVER",
+            }
+          : {}),
       });
       toast.success(
         getOdometerCorrectionSuccessMessage({
-          historical: Boolean(targetSession),
+          historical: Boolean(targetSession || targetDailyRecord),
           timelineReviewRequired: result.timelineReviewRequired,
         }),
       );
@@ -326,9 +384,13 @@ export default function VehicleDetailsPage() {
   const employeeOptions = employeeOptionsQuery.data?.employees ?? [];
   const assignments = vehicle.assignments ?? [];
   const sessions = vehicle.mileageHistory ?? [];
+  const dailyMileageHistory = vehicle.dailyMileageHistory ?? [];
   const services = servicesQuery.data?.services ?? vehicle.services ?? [];
   const corrections = correctionsQuery.data?.corrections ?? [];
   const reminder = vehicle.reminders?.[0];
+  const selectedDailyRecord = dailyMileageHistory.find(
+    (record) => correctionSessionId === `daily:${record._id}`,
+  );
 
   return (
     <main className="space-y-5 p-4 sm:p-6">
@@ -492,6 +554,74 @@ export default function VehicleDetailsPage() {
         </Card>
       </div>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Daily Mileage Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {vehicle.dailyMileageStatus ? (
+            <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <dt className="text-muted-foreground">Today's daily record</dt>
+                <dd className="mt-1 font-medium">
+                  {vehicle.dailyMileageStatus.dailyRecordStatus === "NONE"
+                    ? "No record"
+                    : vehicle.dailyMileageStatus.dailyRecordStatus.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">
+                  Currently using
+                </dt>
+                <dd className="mt-1 font-medium">
+                  {vehicle.dailyMileageStatus.currentlyUsingEmployee
+                    ?.displayName ?? "None"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Unresolved session</dt>
+                <dd className="mt-1 font-medium">
+                  {vehicle.dailyMileageStatus.unresolvedSession?.displayName ??
+                    "None"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Legacy session</dt>
+                <dd className="mt-1 font-medium">
+                  {vehicle.dailyMileageStatus.legacySessionStatus === "NONE"
+                    ? "None"
+                    : vehicle.dailyMileageStatus.legacySessionStatus.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Rollover</dt>
+                <dd className="mt-1 font-medium">
+                  {vehicle.dailyMileageStatus.rolloverStatus === "NONE"
+                    ? "None"
+                    : vehicle.dailyMileageStatus.rolloverStatus}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Business date</dt>
+                <dd className="mt-1 font-medium">
+                  {vehicle.dailyMileageStatus.businessDate}
+                </dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Daily mileage status is unavailable. Refresh to try again.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       {vehicle.serviceBaselineReviewRequired && <Card className="border-amber-400 bg-amber-50/60">
         <CardContent className="p-4 text-sm text-amber-950">
           <p className="font-semibold">Service baseline review required</p>
@@ -578,33 +708,89 @@ export default function VehicleDetailsPage() {
             >
               <label className="space-y-1 text-sm font-medium">
                 Transfer this employee to another available bike
+                {activeVehiclesQuery.isLoading ? (
+                  <span className="mt-1 block text-sm font-normal text-muted-foreground" role="status">
+                    Loading active bikes…
+                  </span>
+                ) : activeVehiclesQuery.isError ? (
+                  <span className="mt-1 flex items-center gap-2 text-sm font-normal text-destructive">
+                    Could not load active bikes.
+                    <Button type="button" size="sm" variant="outline" onClick={() => void activeVehiclesQuery.refetch()}>
+                      Retry
+                    </Button>
+                  </span>
+                ) : null}
                 <select
                   required
                   className={controlClass}
                   value={targetVehicleId}
                   onChange={(event) => setTargetVehicleId(event.target.value)}
+                  disabled={activeVehiclesQuery.isLoading || activeVehiclesQuery.isError}
                 >
                   <option value="">Choose an active target</option>
                   {(activeVehiclesQuery.data?.vehicles ?? [])
-                    .filter(
-                      (target) =>
-                        target._id !== vehicle._id &&
-                        !target.primaryAssignedEmployeeId,
-                    )
+                    .filter((target) => target._id !== vehicle._id)
                     .map((target) => (
                       <option key={target._id} value={target._id}>
                         {target.registrationNumber} · {target.make}{" "}
                         {target.model}
+                        {target.primaryAssignedEmployeeId
+                          ? ` · Exchange with ${target.primaryAssignedEmployeeId.userId?.firstName ?? "assigned"} ${target.primaryAssignedEmployeeId.userId?.lastName ?? "employee"}`
+                          : " · Unassigned"}
                       </option>
                     ))}
                 </select>
+                {activeVehiclesQuery.data?.pagination.totalPages !== undefined &&
+                  activeVehiclesQuery.data.pagination.totalPages > 1 && (
+                    <span className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={activeVehiclesQuery.data.pagination.page <= 1}
+                        onClick={() => {
+                          setTargetVehicleId("");
+                          setTargetPage((page) => page - 1);
+                        }}
+                      >
+                        Previous
+                      </Button>
+                      <span>
+                        Page {activeVehiclesQuery.data.pagination.page} of {activeVehiclesQuery.data.pagination.totalPages}
+                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={
+                          activeVehiclesQuery.data.pagination.page >=
+                          activeVehiclesQuery.data.pagination.totalPages
+                        }
+                        onClick={() => {
+                          setTargetVehicleId("");
+                          setTargetPage((page) => page + 1);
+                        }}
+                      >
+                        Next
+                      </Button>
+                    </span>
+                  )}
+                {!activeVehiclesQuery.isLoading &&
+                  !activeVehiclesQuery.isError &&
+                  !(activeVehiclesQuery.data?.vehicles ?? []).some(
+                    (target) => target._id !== vehicle._id,
+                  ) && (
+                    <span className="mt-1 block text-sm font-normal text-muted-foreground">
+                      No other active bikes are available.
+                    </span>
+                  )}
               </label>
               <Button
                 className="self-end"
                 type="submit"
-                disabled={!targetVehicleId}
+                disabled={!targetVehicleId || transferMutation.isPending}
               >
-                Transfer assignment
+                {transferMutation.isPending ? "Transferring…" : "Transfer assignment"}
               </Button>
             </form>
           )}
@@ -667,24 +853,84 @@ export default function VehicleDetailsPage() {
           >
             <label className="space-y-1 text-sm font-medium">
               Reading to correct
-              <select className={controlClass} value={correctionSessionId} onChange={(event) => setCorrectionSessionId(event.target.value)}>
+              <select className={controlClass} value={correctionSessionId} onChange={(event) => {
+                const target = event.target.value;
+                setCorrectionSessionId(target);
+                setCorrectionField(target.startsWith("daily:") ? "DAILY_END" : "END");
+              }}>
                 <option value="">Current vehicle odometer</option>
-                {sessions.filter((session) => session.status === "COMPLETED").map((session) => <option key={session._id} value={session._id}>{session.employeeNameSnapshot} · {session.businessDate} · {session.startOdometerKm}–{session.endOdometerKm} KM</option>)}
+                {sessions.filter((session) => session.status === "COMPLETED").map((session) => <option key={`session:${session._id}`} value={`session:${session._id}`}>{session.employeeNameSnapshot} · {session.businessDate} · {session.startOdometerKm}–{session.endOdometerKm} KM · Legacy</option>)}
+                {dailyMileageHistory.map((record) => <option key={`daily:${record._id}`} value={`daily:${record._id}`}>{record.businessDate} · {record.startOdometerKm}–{record.endOdometerKm} KM · Daily</option>)}
               </select>
             </label>
             {correctionSessionId && <label className="space-y-1 text-sm font-medium">
               Field
-              <select className={controlClass} value={correctionField} onChange={(event) => setCorrectionField(event.target.value as "START" | "END")}>
-                <option value="START">Starting KM</option>
-                <option value="END">Ending KM</option>
+              <select className={controlClass} value={correctionField} onChange={(event) => setCorrectionField(event.target.value as typeof correctionField)}>
+                {selectedDailyRecord ? (
+                  <>
+                    <option value="DAILY_START">Daily starting KM</option>
+                    <option value="DAILY_END">Daily ending KM</option>
+                    {selectedDailyRecord.segments.slice(0, -1).map((segment) => (
+                      <option key={segment._id} value={`HANDOVER:${segment._id}`}>
+                        Handover after {segment.employeeNameSnapshot}
+                      </option>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <option value="START">Starting KM</option>
+                    <option value="END">Ending KM</option>
+                  </>
+                )}
               </select>
             </label>}
             <label className="space-y-1 text-sm font-medium">
               Corrected KM
               <input
                 type="number"
-                min={correctionSessionId ? correctionField === "START" ? vehicle.initialOdometerKm : sessions.find((session) => session._id === correctionSessionId)?.startOdometerKm : vehicle.currentOdometerKm}
-                max={correctionSessionId && correctionField === "START" ? sessions.find((session) => session._id === correctionSessionId)?.endOdometerKm ?? undefined : undefined}
+                min={(() => {
+                  const targetSession = sessions.find(
+                    (session) => correctionSessionId === `session:${session._id}`,
+                  );
+                  if (targetSession) {
+                    return correctionField === "START"
+                      ? vehicle.initialOdometerKm
+                      : targetSession.startOdometerKm;
+                  }
+                  if (selectedDailyRecord) {
+                    if (correctionField === "DAILY_START") {
+                      return vehicle.initialOdometerKm;
+                    }
+                    if (correctionField === "DAILY_END") {
+                      return selectedDailyRecord.startOdometerKm;
+                    }
+                    const segmentId = correctionField.slice("HANDOVER:".length);
+                    return selectedDailyRecord.segments.find(
+                      (segment) => segment._id === segmentId,
+                    )?.startOdometerKm ?? vehicle.initialOdometerKm;
+                  }
+                  return vehicle.currentOdometerKm;
+                })()}
+                max={(() => {
+                  const targetSession = sessions.find(
+                    (session) => correctionSessionId === `session:${session._id}`,
+                  );
+                  if (targetSession && correctionField === "START") {
+                    return targetSession.endOdometerKm ?? undefined;
+                  }
+                  if (!selectedDailyRecord) return undefined;
+                  if (correctionField === "DAILY_START") {
+                    return selectedDailyRecord.segments[0]?.endOdometerKm ?? undefined;
+                  }
+                  if (correctionField.startsWith("HANDOVER:")) {
+                    const segmentId = correctionField.slice("HANDOVER:".length);
+                    const index = selectedDailyRecord.segments.findIndex(
+                      (segment) => segment._id === segmentId,
+                    );
+                    return selectedDailyRecord.segments[index + 1]?.endOdometerKm ?? undefined;
+                  }
+                  return undefined;
+                })()}
                 step="1"
                 inputMode="numeric"
                 required
@@ -890,6 +1136,30 @@ export default function VehicleDetailsPage() {
                 </div>
                 <p className="self-center font-semibold tabular-nums">
                   {session.distanceKm ?? "—"} KM
+                </p>
+              </div>
+            ))}
+            {dailyMileageHistory.map((record: VehicleDailyMileage) => (
+              <div
+                key={record._id}
+                className="grid grid-cols-[1fr_auto] gap-2 border-b pb-2 text-sm last:border-0"
+              >
+                <div>
+                  <p className="font-medium">
+                    Daily record · {record.businessDate}
+                  </p>
+                  <p className="text-muted-foreground">
+                    {record.startOdometerKm} → {record.endOdometerKm} KM ·{" "}
+                    {record.segments.map((segment) => segment.employeeNameSnapshot).join(", ")}
+                  </p>
+                  {record.timelineReviewRequired && (
+                    <p className="mt-1 text-xs font-semibold text-amber-800">
+                      Review required: {record.timelineReviewReason}
+                    </p>
+                  )}
+                </div>
+                <p className="self-center font-semibold tabular-nums">
+                  {record.dailyDistanceKm ?? "—"} KM
                 </p>
               </div>
             ))}

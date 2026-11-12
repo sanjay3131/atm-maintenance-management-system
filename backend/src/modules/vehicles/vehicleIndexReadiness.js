@@ -1,6 +1,7 @@
 import ApiError from "../../utils/ApiError.js";
 import Vehicle from "./vehicle.model.js";
 import VehicleAssignment from "./vehicleAssignment.model.js";
+import VehicleDailyMileage from "./vehicleDailyMileage.model.js";
 import VehicleUsageSession from "./vehicleUsageSession.model.js";
 import VehicleService from "./vehicleService.model.js";
 import VehicleServicePolicy from "./vehicleServicePolicy.model.js";
@@ -10,6 +11,7 @@ import VehicleOdometerCorrection from "./vehicleOdometerCorrection.model.js";
 const VEHICLE_MODELS = [
   Vehicle,
   VehicleAssignment,
+  VehicleDailyMileage,
   VehicleUsageSession,
   VehicleService,
   VehicleServicePolicy,

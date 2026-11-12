@@ -6,6 +6,8 @@ import { verifyAccessToken } from "../src/middlewares/auth.middleware.js";
 import { loginUser } from "../src/modules/auth/auth.controller.js";
 import ATM from "../src/modules/atms/atm.model.js";
 import Employee from "../src/modules/employees/employee.model.js";
+import VehicleDailyMileage from "../src/modules/vehicles/vehicleDailyMileage.model.js";
+import VehicleUsageSession from "../src/modules/vehicles/vehicleUsageSession.model.js";
 import { updateEmployee } from "../src/modules/employees/employee.controller.js";
 import User from "../src/modules/users/user.model.js";
 import { changeUserStatus } from "../src/modules/users/user.controller.js";
@@ -131,8 +133,11 @@ const withStatusMocks = async (records, callback) => {
     [mongoose, "startSession", async () => session],
     [Employee, "findById", () => makeQuery(records.employee)],
     [Employee, "find", () => makeQuery([records.employee])],
+    [Employee, "distinct", () => makeQuery([employeeId])],
     [User, "findById", () => makeQuery(records.user)],
     [ATM, "find", () => makeQuery([records.atm])],
+    [VehicleDailyMileage, "exists", () => makeQuery(false)],
+    [VehicleUsageSession, "exists", () => makeQuery(false)],
   ];
   for (const model of [Employee, User]) {
     for (const method of [
@@ -406,6 +411,57 @@ test("User status changes do not change Employee work status or reciprocal ATM a
   });
 });
 
+test("User deactivation is blocked while its Employee has an active mileage session", async () => {
+  const records = makeRecords();
+  await withStatusMocks(records, async () => {
+    await withOverrides(
+      [
+        [
+          Employee,
+          "distinct",
+          (field, filter) => {
+            assert.equal(field, "_id");
+            assert.deepEqual(filter, { userId });
+            return makeQuery([employeeId]);
+          },
+        ],
+        [
+          VehicleDailyMileage,
+          "exists",
+          (filter) => {
+            assert.deepEqual(filter, {
+              status: { $in: ["OPEN", "ROLLOVER_PENDING"] },
+              activeEmployeeId: { $in: [employeeId] },
+            });
+            return makeQuery(false);
+          },
+        ],
+        [
+          VehicleUsageSession,
+          "exists",
+          (filter) => {
+            assert.deepEqual(filter, {
+              employeeId: { $in: [employeeId] },
+              status: "IN_PROGRESS",
+            });
+            return makeQuery(true);
+          },
+        ],
+      ],
+      async () => {
+        const error = await captureError(changeUserStatus, {
+          params: { id: userId },
+          body: { status: "inactive" },
+          user: { _id: adminId, userType: "admin" },
+        });
+
+        assert.equal(error.statusCode, 409);
+        assert.equal(records.user.status, "active");
+      },
+    );
+  });
+});
+
 test("Employee work-status changes do not change linked User login status or history references", async () => {
   const records = makeRecords();
   await withStatusMocks(records, async () => {
@@ -425,6 +481,36 @@ test("Employee work-status changes do not change linked User login status or his
     assert.equal(records.recurringPlan.assignedEmployeeId, employeeId);
     assert.equal(records.amcRecord.employeeId, userId);
     assert.deepEqual(records.deleteCalls, []);
+  });
+});
+
+test("Employee deactivation is blocked while a legacy vehicle session is active", async () => {
+  const records = makeRecords();
+  await withStatusMocks(records, async () => {
+    await withOverrides(
+      [
+        [
+          VehicleUsageSession,
+          "exists",
+          (filter) => {
+            assert.deepEqual(filter, {
+              employeeId,
+              status: "IN_PROGRESS",
+            });
+            return makeQuery(true);
+          },
+        ],
+      ],
+      async () => {
+        const error = await captureError(
+          updateEmployee,
+          adminRequest(employeeId, { status: "inactive" }),
+        );
+
+        assert.equal(error.statusCode, 409);
+        assert.equal(records.employee.status, "active");
+      },
+    );
   });
 });
 
