@@ -6,12 +6,14 @@ export const NOTIFICATION_EVENT = "notification:new";
 export const JOB_EVENT = "domain:job:updated";
 export const LOCATION_TASK_EVENT = "domain:atm-location-task:updated";
 export const LOCATION_REQUEST_EVENT = "domain:atm-location-request:updated";
+export const VEHICLE_EVENT = "domain:vehicle:updated";
 
 const MAX_TIMEOUT_MS = 2 ** 31 - 1;
 
 let io = null;
 
 export const userRoom = (userId) => `user:${String(userId)}`;
+export const roleRoom = (role) => `role:${String(role)}`;
 
 export const toNotificationPayload = (notification) => ({
   id: String(notification._id),
@@ -57,6 +59,7 @@ export const authenticateSocket = async (socket, next) => {
     }
 
     socket.data.userId = String(user._id);
+    socket.data.userType = user.userType;
     socket.data.tokenExp = decoded.exp;
     return next();
   } catch {
@@ -67,6 +70,9 @@ export const authenticateSocket = async (socket, next) => {
 const handleConnection = (socket) => {
   // Room is derived only from the verified database user; clients cannot pick one.
   socket.join(userRoom(socket.data.userId));
+  if (["employee", "admin", "superAdmin"].includes(socket.data.userType)) {
+    socket.join(roleRoom(socket.data.userType));
+  }
 
   let timer = null;
   if (socket.data.tokenExp) {
@@ -119,5 +125,14 @@ export const closeSocketServer = async () => {
 export const emitToUser = (userId, event, payload) => {
   if (!io || !userId) return false;
   io.to(userRoom(userId)).emit(event, payload);
+  return true;
+};
+
+export const emitToRoles = (roles, event, payload) => {
+  if (!io || !Array.isArray(roles) || roles.length === 0) return false;
+  const [firstRole, ...remainingRoles] = roles;
+  let target = io.to(roleRoom(firstRole));
+  for (const role of remainingRoles) target = target.to(roleRoom(role));
+  target.emit(event, payload);
   return true;
 };

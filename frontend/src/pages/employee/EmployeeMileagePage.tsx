@@ -5,6 +5,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   useCloseDailyMileage,
   useCompleteDailyMileageUsageSession,
   useCompleteVehicleSession,
@@ -587,45 +594,81 @@ export default function EmployeeMileagePage() {
               <form className="space-y-4" onSubmit={(event) => void startOrJoin(event)}>
                 <label className="block space-y-1 text-sm font-medium">
                   {t("Choose an active bike")}
-                  <select
+                  <Select
+                    name="vehicleId"
                     required
-                    className={controlClass}
-                    value={selectedVehicleId}
-                    onChange={(event) => {
-                    const vehicleId = event.target.value;
-                    setSelectedVehicleId(vehicleId);
-                    setStartingOdometerKm(
-                      getStartingOdometerForVehicleSelection(
-                        vehicleId,
-                        state?.vehicles ?? [],
-                      ),
-                    );
+                    value={selectedVehicleId || null}
+                    onValueChange={(value) => {
+                      const vehicleId = value ?? "";
+                      setSelectedVehicleId(vehicleId);
+                      setStartingOdometerKm(
+                        getStartingOdometerForVehicleSelection(
+                          vehicleId,
+                          state?.vehicles ?? [],
+                        ),
+                      );
                     }}
                   >
-                    <option value="">{t("Choose a bike")}</option>
-                    {vehicles.map((vehicle) => (
-                      <option
-                        key={vehicle._id}
-                        value={vehicle._id}
-                        disabled={
+                    <SelectTrigger
+                      aria-label={t("Choose an active bike")}
+                      className="h-12 w-full rounded-lg border-input bg-background px-3 text-base shadow-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/40"
+                    >
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                        <Bike className="size-4" aria-hidden="true" />
+                      </span>
+                      <SelectValue
+                        placeholder={t("Choose a bike")}
+                        className="min-w-0 flex-1 truncate text-left"
+                      >
+                        {selectedVehicle
+                          ? `${selectedVehicle.registrationNumber} · ${
+                              selectedVehicle.usageState === "HANDOVER"
+                                ? `${t("Ready for handover")} · ${formatKm(selectedVehicle.latestOdometerKm)} KM`
+                                : `${formatKm(selectedVehicle.currentOdometerKm)} KM`
+                            }`
+                          : undefined}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent
+                      align="start"
+                      className="max-h-72 rounded-lg border-border/70 p-1.5 shadow-lg"
+                    >
+                      {vehicles.map((vehicle) => {
+                        const unavailable =
                           vehicle.usageState === "IN_USE" ||
                           vehicle.usageState === "CLOSED" ||
-                          vehicle.usageState === "ROLLOVER_PENDING"
-                        }
-                      >
-                        {vehicle.registrationNumber} ·{" "}
-                        {vehicle.usageState === "HANDOVER"
-                          ? `${t("Ready for handover")} · ${formatKm(vehicle.latestOdometerKm)} KM`
-                          : vehicle.usageState === "CLOSED"
-                            ? t("Today's record is closed")
-                            : vehicle.usageState === "IN_USE"
-                              ? t("Currently in use")
-                              : vehicle.usageState === "ROLLOVER_PENDING"
-                                ? t("Waiting for administrator recovery")
-                              : `${formatKm(vehicle.currentOdometerKm)} KM`}
-                      </option>
-                    ))}
-                  </select>
+                          vehicle.usageState === "ROLLOVER_PENDING";
+                        const status =
+                          vehicle.usageState === "HANDOVER"
+                            ? `${t("Ready for handover")} · ${formatKm(vehicle.latestOdometerKm)} KM`
+                            : vehicle.usageState === "CLOSED"
+                              ? t("Today's record is closed")
+                              : vehicle.usageState === "IN_USE"
+                                ? t("Currently in use")
+                                : vehicle.usageState === "ROLLOVER_PENDING"
+                                  ? t("Waiting for administrator recovery")
+                                  : `${formatKm(vehicle.currentOdometerKm)} KM`;
+
+                        return (
+                          <SelectItem
+                            key={vehicle._id}
+                            value={vehicle._id}
+                            disabled={unavailable}
+                            className="min-h-12 cursor-pointer rounded-md px-3 py-2 text-sm focus:bg-accent data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45"
+                          >
+                            <span className="min-w-0">
+                              <span className="block font-medium tabular-nums">
+                                {vehicle.registrationNumber}
+                              </span>
+                              <span className="block text-xs font-normal text-muted-foreground">
+                                {status}
+                              </span>
+                            </span>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
                 </label>
 
                 {selectedVehicle?.usageState === "AVAILABLE" && (
@@ -698,6 +741,9 @@ export default function EmployeeMileagePage() {
                   <p className="font-medium">
                     {record.vehicleRegistrationSnapshot} · {record.businessDate}
                   </p>
+                  <p className="text-sm text-muted-foreground">
+                    {t("Reopening starts a new usage segment from the closed odometer. The closure stays in the record history.")}
+                  </p>
                   <p className="text-sm text-muted-foreground tabular-nums">
                     {t("Closed at")} {formatKm(record.endOdometerKm)} KM ·{" "}
                     {record.closedAt
@@ -712,12 +758,14 @@ export default function EmployeeMileagePage() {
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={dailyMutationPending}
+                  disabled={
+                    dailyMutationPending || Boolean(current) || Boolean(legacyCurrent)
+                  }
                   onClick={() => void reopenRecord(record)}
                 >
                   {reopenMutation.isPending
                     ? t("Reopening...")
-                    : t("Reopen today's record")}
+                    : t("Undo close and continue")}
                 </Button>
               </div>
             ))}

@@ -95,6 +95,25 @@ test("ATM-scoped request reopening does not invalidate a request detail", async 
   ]);
 });
 
+test("vehicle realtime events refresh admin and employee vehicle data", async () => {
+  const client = queryClient();
+  await invalidateRealtimeEvent(
+    client,
+    event({
+      entityType: "vehicle",
+      entityId: "vehicle-1",
+      action: "daily-mileage-closed",
+    }),
+  );
+
+  assert.deepEqual(client.calls, [
+    ["vehicles"],
+    ["vehicle-sessions", "me"],
+    ["daily-mileage", "me"],
+    ["daily-mileage", "rollover-pending"],
+  ]);
+});
+
 test("reconnect recovery invalidates only the implemented realtime domains", async () => {
   const client = queryClient();
   await invalidateRealtimeDomains(client);
@@ -112,6 +131,10 @@ test("reconnect recovery invalidates only the implemented realtime domains", asy
     ["customer-portal", "job-history"],
     ["atm-location-request"],
     ["atm-location-tasks"],
+    ["vehicles"],
+    ["vehicle-sessions", "me"],
+    ["daily-mileage", "me"],
+    ["daily-mileage", "rollover-pending"],
   ]) {
     assert.ok(
       client.calls.some((actual) =>

@@ -4,6 +4,7 @@ export const REALTIME_EVENTS = {
   JOB_UPDATED: "domain:job:updated",
   LOCATION_TASK_UPDATED: "domain:atm-location-task:updated",
   LOCATION_REQUEST_UPDATED: "domain:atm-location-request:updated",
+  VEHICLE_UPDATED: "domain:vehicle:updated",
 } as const;
 
 export type RealtimeEventName =
@@ -48,6 +49,7 @@ export const isRealtimeEvent = (
       "atm-location-request",
       "atm-location",
     ],
+    [REALTIME_EVENTS.VEHICLE_UPDATED]: ["vehicle"],
   };
   if (
     typeof value.entityType !== "string" ||
@@ -66,7 +68,8 @@ export const isRealtimeEvent = (
   }
 
   if (
-    value.entityType !== "job" &&
+    (value.entityType === "atm-location-task" ||
+      value.entityType === "atm-location-request") &&
     !isNonEmptyString(value.data.atmId)
   ) {
     return false;
@@ -128,6 +131,13 @@ const requestWindowQueryKeys = (event: RealtimeEvent): QueryKey[] => [
   ["atm", event.entityId],
 ];
 
+const vehicleQueryKeys = (): QueryKey[] => [
+  ["vehicles"],
+  ["vehicle-sessions", "me"],
+  ["daily-mileage", "me"],
+  ["daily-mileage", "rollover-pending"],
+];
+
 export const queryKeysForRealtimeEvent = (
   event: RealtimeEvent,
 ): QueryKey[] => {
@@ -141,6 +151,7 @@ export const queryKeysForRealtimeEvent = (
   if (event.entityType === "atm-location") {
     return requestWindowQueryKeys(event);
   }
+  if (event.entityType === "vehicle") return vehicleQueryKeys();
   return [];
 };
 
@@ -174,4 +185,5 @@ export const invalidateRealtimeDomains = (queryClient: QueryClient) =>
     ["dashboard-job-trends"],
     ["dashboard-recent-activity"],
     ["dashboard-employee-performance"],
+    ...vehicleQueryKeys(),
   ]);

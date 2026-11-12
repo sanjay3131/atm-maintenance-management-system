@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/features/auth/auth-context";
 import {
   completeVehicleSession,
   completeDailyMileageUsageSession,
@@ -86,35 +87,58 @@ export const useVehicleReminders = () =>
     queryFn: getVehicleReminders,
   });
 
-export const useEligibleVehicles = () =>
-  useQuery({
-    queryKey: [...VEHICLES_QUERY_KEY, "eligible"],
+export const useEligibleVehicles = () => {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: [...VEHICLES_QUERY_KEY, "eligible", user?._id ?? "signed-out"],
     queryFn: getEligibleVehicles,
+    enabled: Boolean(user),
   });
+};
 
-export const useCurrentVehicleSession = () =>
-  useQuery({
-    queryKey: VEHICLE_SESSION_QUERY_KEY,
+export const useCurrentVehicleSession = () => {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: [...VEHICLE_SESSION_QUERY_KEY, user?._id ?? "signed-out"],
     queryFn: getCurrentVehicleSession,
+    enabled: Boolean(user),
   });
+};
 
-export const useMyVehicleHistory = () =>
-  useQuery({
-    queryKey: [...VEHICLE_SESSION_QUERY_KEY, "history"],
+export const useMyVehicleHistory = () => {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: [
+      ...VEHICLE_SESSION_QUERY_KEY,
+      user?._id ?? "signed-out",
+      "history",
+    ],
     queryFn: () => getMyVehicleHistory({ page: 1, limit: 20 }),
+    enabled: Boolean(user),
   });
+};
 
-export const useDailyMileageState = () =>
-  useQuery({
-    queryKey: DAILY_MILEAGE_QUERY_KEY,
+export const useDailyMileageState = () => {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: [...DAILY_MILEAGE_QUERY_KEY, user?._id ?? "signed-out"],
     queryFn: getDailyMileageState,
+    enabled: Boolean(user),
   });
+};
 
-export const useDailyMileageHistory = () =>
-  useQuery({
-    queryKey: [...DAILY_MILEAGE_QUERY_KEY, "history"],
+export const useDailyMileageHistory = () => {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: [
+      ...DAILY_MILEAGE_QUERY_KEY,
+      user?._id ?? "signed-out",
+      "history",
+    ],
     queryFn: () => getDailyMileageHistory({ page: 1, limit: 50 }),
+    enabled: Boolean(user),
   });
+};
 
 export const usePendingDailyMileageRollovers = () =>
   useQuery({

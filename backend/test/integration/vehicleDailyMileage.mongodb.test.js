@@ -786,6 +786,70 @@ integrationTest(
     );
 
     await t.test(
+      "closed record remains undoable after a handover by the employee who closed it",
+      async () => {
+        const { user: employeeAUser } = await createEmployee();
+        const { user: employeeBUser } = await createEmployee();
+        const employeeA = vehicleUser(employeeAUser);
+        const employeeB = vehicleUser(employeeBUser);
+        const vehicle = await createVehicle(employeeAUser._id, 1250);
+        const opened = await startDailyMileage({
+          user: employeeA,
+          vehicleId: vehicle._id,
+          startingOdometerKm: 1250,
+          expectedVehicleRevision: 0,
+          now: fixedNow,
+        });
+        const handedOver = await handoverDailyMileage({
+          dailyMileageId: opened._id,
+          user: employeeA,
+          endingOdometerKm: 1255,
+          expectedVehicleRevision: 1,
+          expectedDailyRevision: 0,
+          now: fixedNow,
+        });
+        const joined = await joinDailyMileage({
+          dailyMileageId: opened._id,
+          user: employeeB,
+          expectedVehicleRevision: 2,
+          expectedDailyRevision: 1,
+          now: fixedNow,
+        });
+        const closed = await closeDailyMileage({
+          dailyMileageId: opened._id,
+          user: employeeB,
+          endingOdometerKm: 1260,
+          expectedVehicleRevision: 3,
+          expectedDailyRevision: 2,
+          now: fixedNow,
+        });
+        const state = await getDailyMileageState(employeeB, fixedNow);
+        const undoRecord = state.reopenableRecords.find(
+          (record) => record._id.toString() === closed._id.toString(),
+        );
+        assert.ok(undoRecord, "the employee should see the undo action");
+        const reopened = await reopenDailyMileage({
+          dailyMileageId: closed._id,
+          user: employeeB,
+          expectedVehicleRevision: undoRecord.vehicleRevision,
+          expectedDailyRevision: undoRecord.revision,
+          now: fixedNow,
+        });
+        assert.equal(reopened.status, "OPEN");
+        assert.equal(reopened.latestOdometerKm, 1260);
+        assert.equal(reopened.segments.at(-1).startOdometerKm, 1260);
+        assert.deepEqual(
+          reopened.auditHistory
+            .filter((entry) => ["HANDOVER", "JOINED", "CLOSED", "REOPENED"].includes(entry.action))
+            .map((entry) => entry.action),
+          ["HANDOVER", "JOINED", "CLOSED", "REOPENED"],
+        );
+        assert.equal(handedOver.status, "OPEN");
+        assert.equal(joined.status, "OPEN");
+      },
+    );
+
+    await t.test(
       "reopen continues the same reading history without another baseline",
       async () => {
         const { user } = await createEmployee();

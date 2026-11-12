@@ -15,6 +15,7 @@ import {
   startDailyMileageUsageSession,
 } from "./vehicleDailyMileage.service.js";
 import { reconcileAndDeliverVehicleReminders } from "./vehicleReminderWorker.js";
+import { publishVehicleEventSafely } from "../../realtime/domain-events.js";
 
 const reconcileAfterCommit = async (vehicleId) => {
   try {
@@ -53,6 +54,10 @@ export const postEmployeeDailyMileageStart = asyncHandler(
       user: req.user,
     });
     await reconcileAfterCommit(record.vehicleId);
+    await publishVehicleEventSafely({
+      vehicleId: record.vehicleId,
+      action: "daily-mileage-started",
+    });
     const result = {
       ...record.toObject(),
       vehicleRevision: (
@@ -73,6 +78,10 @@ export const postEmployeeDailyMileageHandover = asyncHandler(
       user: req.user,
     });
     await reconcileAfterCommit(record.vehicleId);
+    await publishVehicleEventSafely({
+      vehicleId: record.vehicleId,
+      action: "daily-mileage-handed-over",
+    });
     return res
       .status(200)
       .json(new ApiResponse(200, record, "Vehicle handover recorded"));
@@ -87,6 +96,10 @@ export const postEmployeeDailyMileageJoin = asyncHandler(
       user: req.user,
     });
     await reconcileAfterCommit(record.vehicleId);
+    await publishVehicleEventSafely({
+      vehicleId: record.vehicleId,
+      action: "daily-mileage-joined",
+    });
     return res
       .status(200)
       .json(new ApiResponse(200, record, "Daily mileage segment started"));
@@ -101,6 +114,10 @@ export const postEmployeeDailyMileageUsageSessionStart = asyncHandler(
       user: req.user,
     });
     await reconcileAfterCommit(record.vehicleId);
+    await publishVehicleEventSafely({
+      vehicleId: record.vehicleId,
+      action: "daily-mileage-session-started",
+    });
     return res
       .status(201)
       .json(new ApiResponse(201, record, "Usage session started"));
@@ -115,6 +132,10 @@ export const postEmployeeDailyMileageUsageSessionComplete = asyncHandler(
       user: req.user,
     });
     await reconcileAfterCommit(record.vehicleId);
+    await publishVehicleEventSafely({
+      vehicleId: record.vehicleId,
+      action: "daily-mileage-session-completed",
+    });
     return res
       .status(200)
       .json(new ApiResponse(200, record, "Usage session completed"));
@@ -129,6 +150,10 @@ export const postEmployeeDailyMileageClose = asyncHandler(
       user: req.user,
     });
     await reconcileAfterCommit(record.vehicleId);
+    await publishVehicleEventSafely({
+      vehicleId: record.vehicleId,
+      action: "daily-mileage-closed",
+    });
     return res
       .status(200)
       .json(new ApiResponse(200, record, "Daily mileage record closed"));
@@ -143,6 +168,10 @@ export const postEmployeeDailyMileageReopen = asyncHandler(
       user: req.user,
     });
     await reconcileAfterCommit(record.vehicleId);
+    await publishVehicleEventSafely({
+      vehicleId: record.vehicleId,
+      action: "daily-mileage-reopened",
+    });
     return res
       .status(200)
       .json(new ApiResponse(200, record, "Daily mileage record reopened"));
@@ -164,6 +193,10 @@ export const postAdminDailyMileageRolloverRecovery = asyncHandler(
       user: req.user,
     });
     await reconcileAfterCommit(result.dailyRecord.vehicleId);
+    await publishVehicleEventSafely({
+      vehicleId: result.dailyRecord.vehicleId,
+      action: "daily-mileage-rollover-recovered",
+    });
     return res
       .status(result.replayed ? 200 : 201)
       .json(

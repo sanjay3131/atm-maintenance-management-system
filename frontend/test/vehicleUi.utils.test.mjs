@@ -82,8 +82,12 @@ test("employee mileage input submits its controlled prefill without a fallback-o
   assert.match(page, /value=\{startingOdometerKm\}/);
   assert.match(page, /getStartingOdometerForVehicleSelection\(/);
   assert.match(page, /parseStartingOdometer\(\s*startingOdometerKm/);
-  assert.match(page, /"Reopen today's record"/);
+  assert.match(page, /"Undo close and continue"/);
   assert.match(page, /\["CLOSED", "REOPENED"\]/);
+  assert.match(page, /<Select\s+name="vehicleId"\s+required/);
+  assert.match(page, /<SelectContent[\s\S]*?rounded-lg border-border\/70/);
+  assert.match(page, /<SelectItem[\s\S]*?min-h-12 cursor-pointer/);
+  assert.doesNotMatch(page, /<select[\s\S]*?Choose an active bike/);
 });
 
 test("legacy mileage start helper uses daily record creation instead of the retired endpoint", async () => {
@@ -97,6 +101,35 @@ test("legacy mileage start helper uses daily record creation instead of the reti
   );
   assert.match(legacyStart, /startDailyMileage\(\{/);
   assert.doesNotMatch(legacyStart, /\/vehicles\/employee\/usage\/start/);
+});
+
+test("vehicle account data is user-scoped and cleared when authentication changes", async () => {
+  const [hooks, auth] = await Promise.all([
+    readFile(
+      new URL("../src/features/vehicles/hooks/useVehicles.ts", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../src/features/auth/auth-context.tsx", import.meta.url),
+      "utf8",
+    ),
+  ]);
+  assert.match(hooks, /DAILY_MILEAGE_QUERY_KEY, user\?\._id/);
+  assert.match(hooks, /VEHICLE_SESSION_QUERY_KEY, user\?\._id/);
+  assert.match(auth, /queryClient\.clear\(\)/);
+});
+
+test("employee can undo today's close and continue from its accepted odometer", async () => {
+  const page = await readFile(
+    new URL("../src/pages/employee/EmployeeMileagePage.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(page, /t\("Undo close and continue"\)/);
+  assert.match(
+    page,
+    /Reopening starts a new usage segment from the closed odometer/,
+  );
+  assert.match(page, /reopenMutation\.mutateAsync/);
 });
 
 test("historical correction success messaging reflects remaining review conflicts", () => {

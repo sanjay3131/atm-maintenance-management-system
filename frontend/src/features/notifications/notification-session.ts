@@ -29,6 +29,7 @@ interface NotificationSocketEvents {
   "domain:job:updated": (event: RealtimeEvent) => void;
   "domain:atm-location-task:updated": (event: RealtimeEvent) => void;
   "domain:atm-location-request:updated": (event: RealtimeEvent) => void;
+  "domain:vehicle:updated": (event: RealtimeEvent) => void;
 }
 
 export interface NotificationSnapshot {
@@ -134,6 +135,11 @@ export class NotificationSession {
             event,
             REALTIME_EVENTS.LOCATION_REQUEST_UPDATED,
           ),
+      );
+      this.listen(
+        REALTIME_EVENTS.VEHICLE_UPDATED,
+        (event) =>
+          this.handleRealtimeEvent(event, REALTIME_EVENTS.VEHICLE_UPDATED),
       );
     } catch (error) {
       this.options.onError?.(error);

@@ -3,6 +3,7 @@ import Employee from "../employees/employee.model.js";
 import Vehicle from "./vehicle.model.js";
 import VehicleDailyMileage from "./vehicleDailyMileage.model.js";
 import VehicleUsageSession from "./vehicleUsageSession.model.js";
+import { publishVehicleEventSafely } from "../../realtime/domain-events.js";
 import {
   casVehicle,
   getVehicle,
@@ -430,15 +431,21 @@ export const markExpiredDailyMileageForRollover = async ({
     status: "OPEN",
     businessDate: { $lt: businessDate },
   })
-    .select("_id")
+    .select("_id vehicleId")
     .lean();
   for (const record of expiredRecords) {
-    await markRecordRolloverPending({
+    const changed = await markRecordRolloverPending({
       dailyMileageId: record._id,
       actorId,
       now,
       businessDate,
     });
+    if (changed) {
+      await publishVehicleEventSafely({
+        vehicleId: record.vehicleId,
+        action: "daily-mileage-rollover-pending",
+      });
+    }
   }
 };
 
@@ -522,10 +529,7 @@ export const getDailyMileageState = async (user, now = new Date()) => {
   const reopenableRecords = vehicleRecords.flatMap((record) => {
     if (
       record.status !== "CLOSED" ||
-      record.businessDate !== businessDate ||
-      record.auditHistory.some((event) =>
-        ["HANDOVER", "JOINED"].includes(event.action),
-      )
+      record.businessDate !== businessDate
     ) {
       return [];
     }
@@ -1579,17 +1583,6 @@ export const reopenDailyMileage = async ({
           409,
           "DAILY_MILEAGE_DATE_CLOSED",
           "Only today's closed mileage record can be reopened",
-        );
-      }
-      if (
-        record.auditHistory.some((event) =>
-          ["HANDOVER", "JOINED"].includes(event.action),
-        )
-      ) {
-        throw vehicleError(
-          409,
-          "DAILY_MILEAGE_HANDOVER_NOT_REOPENABLE",
-          "A record that included a bike handover cannot be reopened",
         );
       }
       const lastUsageAction = [...record.auditHistory]

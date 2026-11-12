@@ -4,6 +4,8 @@ import {
   JOB_EVENT,
   LOCATION_REQUEST_EVENT,
   LOCATION_TASK_EVENT,
+  VEHICLE_EVENT,
+  emitToRoles,
 } from "./socket.js";
 
 export const DOMAIN_EVENT_VERSION = 1;
@@ -12,6 +14,7 @@ export const DOMAIN_EVENTS = {
   JOB_UPDATED: JOB_EVENT,
   LOCATION_TASK_UPDATED: LOCATION_TASK_EVENT,
   LOCATION_REQUEST_UPDATED: LOCATION_REQUEST_EVENT,
+  VEHICLE_UPDATED: VEHICLE_EVENT,
 };
 
 const uniqueRecipients = (recipients) => [
@@ -69,6 +72,25 @@ export const publishDomainEventSafely = async (options) => {
   } catch (error) {
     console.error(
       `Realtime event publish failed for ${options.event}:`,
+      error.message,
+    );
+    return null;
+  }
+};
+
+export const publishVehicleEventSafely = async ({ vehicleId, action }) => {
+  try {
+    const payload = createDomainEvent({
+      event: VEHICLE_EVENT,
+      entityType: "vehicle",
+      entityId: vehicleId,
+      action,
+    });
+    emitToRoles(["employee", "admin", "superAdmin"], VEHICLE_EVENT, payload);
+    return payload;
+  } catch (error) {
+    console.error(
+      `Realtime vehicle event publish failed for ${action}:`,
       error.message,
     );
     return null;

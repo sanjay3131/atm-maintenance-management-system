@@ -33,6 +33,7 @@ import {
   processVehicleReminders,
   reconcileAndDeliverVehicleReminders,
 } from "./vehicleReminderWorker.js";
+import { publishVehicleEventSafely } from "../../realtime/domain-events.js";
 
 const publicVehicle = (vehicle) => {
   if (!vehicle) return vehicle;
@@ -73,6 +74,10 @@ export const postVehicle = asyncHandler(async (req, res) => {
     input: req.body,
     actorId: req.user._id,
   });
+  await publishVehicleEventSafely({
+    vehicleId: vehicle._id,
+    action: "vehicle-created",
+  });
   return res
     .status(201)
     .json(new ApiResponse(201, publicVehicle(vehicle), "Vehicle created"));
@@ -92,6 +97,10 @@ export const patchVehicle = asyncHandler(async (req, res) => {
     input: req.body,
     actorId: req.user._id,
   });
+  await publishVehicleEventSafely({
+    vehicleId: vehicle._id,
+    action: "vehicle-updated",
+  });
   return res
     .status(200)
     .json(new ApiResponse(200, publicVehicle(vehicle), "Vehicle updated"));
@@ -105,6 +114,10 @@ export const patchVehicleStatus = asyncHandler(async (req, res) => {
     actorId: req.user._id,
   });
   await reconcileAfterCommit(vehicle._id);
+  await publishVehicleEventSafely({
+    vehicleId: vehicle._id,
+    action: "vehicle-status-changed",
+  });
   return res
     .status(200)
     .json(
@@ -144,6 +157,10 @@ export const postVehicleAssignment = asyncHandler(async (req, res) => {
     reason: req.body.reason,
     actorId: req.user._id,
   });
+  await publishVehicleEventSafely({
+    vehicleId: assignment.vehicleId,
+    action: "vehicle-assigned",
+  });
   return res
     .status(201)
     .json(new ApiResponse(201, assignment, "Vehicle assigned"));
@@ -156,6 +173,10 @@ export const postVehicleUnassignment = asyncHandler(async (req, res) => {
     reason: req.body.reason,
     actorId: req.user._id,
   });
+  await publishVehicleEventSafely({
+    vehicleId: assignment.vehicleId,
+    action: "vehicle-unassigned",
+  });
   return res
     .status(200)
     .json(new ApiResponse(200, assignment, "Vehicle unassigned"));
@@ -166,6 +187,14 @@ export const postVehicleTransfer = asyncHandler(async (req, res) => {
     ...req.body,
     actorId: req.user._id,
   });
+  await Promise.all(
+    [req.body.sourceVehicleId, req.body.targetVehicleId].map((vehicleId) =>
+      publishVehicleEventSafely({
+        vehicleId,
+        action: "vehicle-assignment-transferred",
+      }),
+    ),
+  );
   return res
     .status(200)
     .json(new ApiResponse(200, assignment, "Vehicle assignment transferred"));
@@ -210,6 +239,10 @@ export const postVehicleSessionComplete = asyncHandler(async (req, res) => {
     ...req.body,
   });
   await reconcileAfterCommit(session.vehicleId);
+  await publishVehicleEventSafely({
+    vehicleId: session.vehicleId,
+    action: "vehicle-session-completed",
+  });
   const vehicle = await Vehicle.findById(session.vehicleId).select(
     "serviceStateRevision",
   );
@@ -249,6 +282,10 @@ export const postVehicleSessionRecovery = asyncHandler(async (req, res) => {
     actorId: req.user._id,
   });
   await reconcileAfterCommit(session.vehicleId);
+  await publishVehicleEventSafely({
+    vehicleId: session.vehicleId,
+    action: "vehicle-session-recovered",
+  });
   return res
     .status(200)
     .json(new ApiResponse(200, session, "Vehicle session recovered"));
@@ -261,6 +298,10 @@ export const postVehicleOdometerCorrection = asyncHandler(async (req, res) => {
     actorId: req.user._id,
   });
   await reconcileAfterCommit(req.validatedParams.vehicleId);
+  await publishVehicleEventSafely({
+    vehicleId: req.validatedParams.vehicleId,
+    action: "vehicle-odometer-corrected",
+  });
   return res
     .status(201)
     .json(new ApiResponse(201, correction, "Odometer correction recorded"));
@@ -293,6 +334,10 @@ export const postVehicleService = asyncHandler(async (req, res) => {
     actorId: req.user._id,
   });
   await reconcileAfterCommit(req.validatedParams.vehicleId);
+  await publishVehicleEventSafely({
+    vehicleId: req.validatedParams.vehicleId,
+    action: "vehicle-service-recorded",
+  });
   return res
     .status(201)
     .json(new ApiResponse(201, result, "Oil service recorded"));
@@ -305,6 +350,10 @@ export const postVehicleServiceReview = asyncHandler(async (req, res) => {
     actorId: req.user._id,
   });
   await reconcileAfterCommit(req.validatedParams.vehicleId);
+  await publishVehicleEventSafely({
+    vehicleId: req.validatedParams.vehicleId,
+    action: "vehicle-service-reviewed",
+  });
   return res
     .status(200)
     .json(new ApiResponse(200, result, "Service timeline review recorded"));
@@ -330,6 +379,10 @@ export const patchVehicleServicePolicy = asyncHandler(async (req, res) => {
       error,
     );
   }
+  await publishVehicleEventSafely({
+    vehicleId: "service-policy",
+    action: "vehicle-service-policy-updated",
+  });
   return res
     .status(200)
     .json(new ApiResponse(200, policy, "Service policy updated"));

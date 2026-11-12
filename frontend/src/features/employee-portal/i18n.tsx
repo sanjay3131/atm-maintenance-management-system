@@ -312,6 +312,9 @@ export const employeeEnglish = {
     "Handover reading saved. The next employee can join at this reading.",
   "Daily mileage record closed.": "Daily mileage record closed.",
   "Closed records for today": "Closed records for today",
+  "Reopening starts a new usage segment from the closed odometer. The closure stays in the record history.":
+    "Reopening starts a new usage segment from the closed odometer. The closure stays in the record history.",
+  "Undo close and continue": "Undo close and continue",
   "Closed at": "Closed at",
   "Reopen today's record": "Reopen today's record",
   "Reopening...": "Reopening...",
@@ -1125,6 +1128,9 @@ const employeeTamil: Dictionary = {
     "ஒப்படைப்பு அளவு சேமிக்கப்பட்டது. அடுத்த பணியாளர் இதே அளவில் சேரலாம்.",
   "Daily mileage record closed.": "தினசரி மைலேஜ் பதிவு மூடப்பட்டது.",
   "Closed records for today": "இன்றைய மூடப்பட்ட பதிவுகள்",
+  "Reopening starts a new usage segment from the closed odometer. The closure stays in the record history.":
+    "மீண்டும் திறப்பது மூடப்பட்ட ஓடோமீட்டர் அளவிலிருந்து புதிய பயன்பாட்டுப் பகுதியைத் தொடங்கும். மூடல் பதிவு வரலாற்றில் பாதுகாக்கப்படும்.",
+  "Undo close and continue": "மூடலை ரத்து செய்து தொடரவும்",
   "Closed at": "மூடிய நேரம்",
   "Reopen today's record": "இன்றைய பதிவை மீண்டும் திறக்கவும்",
   "Reopening...": "மீண்டும் திறக்கப்படுகிறது...",

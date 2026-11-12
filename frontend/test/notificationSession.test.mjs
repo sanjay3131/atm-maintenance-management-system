@@ -170,6 +170,22 @@ test("deduplicates domain events and removes them on logout cleanup", () => {
   assert.equal(calls.realtime.length, 1);
 });
 
+test("vehicle domain events are delivered to realtime invalidation", () => {
+  const { session, socket, calls } = createHarness();
+  session.start();
+  socket.emit("domain:vehicle:updated", {
+    eventVersion: 1,
+    eventId: "vehicle-event",
+    entityType: "vehicle",
+    entityId: "vehicle-1",
+    action: "daily-mileage-closed",
+    occurredAt: "2026-10-28T00:00:00.000Z",
+    data: {},
+  });
+  assert.equal(calls.realtime.length, 1);
+  session.dispose();
+});
+
 test("ignores malformed and unsupported domain events without blocking later events", () => {
   const { session, socket, calls } = createHarness();
   session.start();

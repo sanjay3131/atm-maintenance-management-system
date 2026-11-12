@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   getCurrentUser,
   loginAdmin,
@@ -35,6 +36,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(
     localStorage.getItem("accessToken"),
@@ -59,8 +61,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const userData = await getCurrentUser();
 
+        queryClient.clear();
         setUser(userData.user);
       } catch {
+        queryClient.clear();
         localStorage.removeItem("accessToken");
         setAccessToken(null);
         setUser(null);
@@ -75,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (payload: LoginPayload): Promise<User> => {
     const data = await loginAdmin(payload);
 
+    queryClient.clear();
     localStorage.setItem("accessToken", data.accessToken);
 
     setAccessToken(data.accessToken);
@@ -87,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await logoutUser();
     } finally {
+      queryClient.clear();
       localStorage.removeItem("accessToken");
       setAccessToken(null);
       setUser(null);
