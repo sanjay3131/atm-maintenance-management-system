@@ -1,16 +1,27 @@
 import mongoose from "mongoose";
 import dotenv from "dotenv";
+import { validateMongoDatabaseTarget } from "./databaseTarget.js";
 
 dotenv.config();
 
 const connectDb = async () => {
-  try {
-    await mongoose.connect(process.env.MONGODB_URL);
+  const expectedDatabase = process.env.MONGODB_EXPECTED_DATABASE;
+  const databaseName = validateMongoDatabaseTarget({
+    mongodbUrl: process.env.MONGODB_URL,
+    expectedDatabase,
+  });
 
-    console.log("MongoDB connected successfully");
-  } catch {
-    console.error("Error connecting to MongoDB");
+  await mongoose.connect(process.env.MONGODB_URL);
+
+  if (mongoose.connection.name !== databaseName) {
+    await mongoose.disconnect();
+    throw new Error(
+      `Connected database "${mongoose.connection.name}" does not match expected database "${databaseName}"`,
+    );
   }
+
+  console.log(`MongoDB connected successfully (database: ${databaseName})`);
+  return mongoose.connection;
 };
 
 export default connectDb;
