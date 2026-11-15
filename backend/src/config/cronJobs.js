@@ -10,7 +10,45 @@ import { generateRecurringJobs } from "../modules/jobs/recurringMaintenance.serv
 import { MAINTENANCE_TIMEZONE } from "../modules/jobs/recurringMaintenance.utils.js";
 import { processVehicleReminders } from "../modules/vehicles/vehicleReminderWorker.js";
 
-export const initCronJobs = () => {
+export const initCronJobs = async () => {
+  const tasks = [];
+  let vehicleReminderPromise;
+  let cleanupPromise;
+
+  const cleanupTasks = () => {
+    if (!cleanupPromise) {
+      cleanupPromise = (async () => {
+        let cleanupError;
+
+        for (const task of tasks) {
+          try {
+            await task.stop();
+          } catch (error) {
+            cleanupError ??= error;
+          }
+
+          try {
+            await task.destroy();
+          } catch (error) {
+            cleanupError ??= error;
+          }
+        }
+
+        if (vehicleReminderPromise) {
+          try {
+            await vehicleReminderPromise;
+          } catch (error) {
+            cleanupError ??= error;
+          }
+        }
+
+        if (cleanupError) throw cleanupError;
+      })();
+    }
+
+    return cleanupPromise;
+  };
+
   const runVehicleReminderWorker = async () => {
     try {
       const result = await processVehicleReminders();
@@ -20,69 +58,93 @@ export const initCronJobs = () => {
     }
   };
 
-  void runVehicleReminderWorker();
-  cron.schedule("*/15 * * * *", runVehicleReminderWorker, {
-    timezone: "Asia/Kolkata",
-  });
+  try {
+    tasks.push(
+      cron.schedule("*/15 * * * *", runVehicleReminderWorker, {
+        timezone: "Asia/Kolkata",
+      }),
+    );
 
-  // Cloudinary cleanup — daily at 2:00 AM
-  cron.schedule("0 2 * * *", async () => {
-    console.log("[Cron] Starting Cloudinary FIFO cleanup...");
-    const result = await cleanupOldPhotos();
-    console.log("[Cron] Cloudinary cleanup completed:", result);
-  });
+    // Cloudinary cleanup — daily at 2:00 AM
+    tasks.push(
+      cron.schedule("0 2 * * *", async () => {
+        console.log("[Cron] Starting Cloudinary FIFO cleanup...");
+        const result = await cleanupOldPhotos();
+        console.log("[Cron] Cloudinary cleanup completed:", result);
+      }),
+    );
 
-  // Generate today's daily/weekly recurring jobs at 12:05 AM India time.
-  cron.schedule(
-    "5 0 * * *",
-    async () => {
-      console.log("[Cron] Starting recurring maintenance job generation...");
-      try {
-        const result = await generateRecurringJobs();
-        console.log(
-          "[Cron] Recurring maintenance generation completed:",
-          result,
-        );
-      } catch (err) {
-        console.error("[Cron] Recurring maintenance generation failed:", err);
-      }
-    },
-    { timezone: MAINTENANCE_TIMEZONE },
-  );
+    // Generate today's daily/weekly recurring jobs at 12:05 AM India time.
+    tasks.push(
+      cron.schedule(
+        "5 0 * * *",
+        async () => {
+          console.log("[Cron] Starting recurring maintenance job generation...");
+          try {
+            const result = await generateRecurringJobs();
+            console.log(
+              "[Cron] Recurring maintenance generation completed:",
+              result,
+            );
+          } catch (err) {
+            console.error("[Cron] Recurring maintenance generation failed:", err);
+          }
+        },
+        { timezone: MAINTENANCE_TIMEZONE },
+      ),
+    );
 
-  // AMC generation — 1st of every month at 1:00 AM
-  cron.schedule(AMC_CONFIG.CRON.GENERATE, async () => {
-    console.log("[Cron] Starting monthly AMC generation...");
-    const now = new Date();
+    // AMC generation — 1st of every month at 1:00 AM
+    tasks.push(
+      cron.schedule(AMC_CONFIG.CRON.GENERATE, async () => {
+        console.log("[Cron] Starting monthly AMC generation...");
+        const now = new Date();
+        try {
+          const fallbackAdmin = await User.findOne({
+            userType: { $in: ["admin", "superAdmin"] },
+            status: "active",
+          }).select("_id");
+
+          const result = await generateMonthlyAMC(
+            now.getMonth() + 1,
+            now.getFullYear(),
+            fallbackAdmin?._id || null,
+          );
+          console.log("[Cron] AMC generation completed:", result);
+        } catch (err) {
+          console.error("[Cron] AMC generation failed:", err);
+        }
+      }),
+    );
+
+    // AMC overdue check — daily at 8:00 AM
+    tasks.push(
+      cron.schedule(AMC_CONFIG.CRON.OVERDUE_CHECK, async () => {
+        console.log("[Cron] Starting AMC overdue check...");
+        try {
+          const result = await markOverdueAMCs();
+          console.log("[Cron] AMC overdue check completed:", result);
+        } catch (err) {
+          console.error("[Cron] AMC overdue check failed:", err);
+        }
+      }),
+    );
+  } catch (error) {
     try {
-      const fallbackAdmin = await User.findOne({
-        userType: { $in: ["admin", "superAdmin"] },
-        status: "active",
-      }).select("_id");
-
-      const result = await generateMonthlyAMC(
-        now.getMonth() + 1,
-        now.getFullYear(),
-        fallbackAdmin?._id || null,
+      await cleanupTasks();
+    } catch (cleanupError) {
+      console.error(
+        "[Cron] Failed to clean up partially registered tasks:",
+        cleanupError,
       );
-      console.log("[Cron] AMC generation completed:", result);
-    } catch (err) {
-      console.error("[Cron] AMC generation failed:", err);
     }
-  });
-
-  // AMC overdue check — daily at 8:00 AM
-  cron.schedule(AMC_CONFIG.CRON.OVERDUE_CHECK, async () => {
-    console.log("[Cron] Starting AMC overdue check...");
-    try {
-      const result = await markOverdueAMCs();
-      console.log("[Cron] AMC overdue check completed:", result);
-    } catch (err) {
-      console.error("[Cron] AMC overdue check failed:", err);
-    }
-  });
+    throw error;
+  }
 
   console.log(
     "[Cron] Scheduled jobs: Cloudinary cleanup (2AM), recurring maintenance generation (12:05AM IST), AMC generation (1st @ 1AM), AMC overdue check (8AM)",
   );
+
+  vehicleReminderPromise = runVehicleReminderWorker();
+  return cleanupTasks;
 };

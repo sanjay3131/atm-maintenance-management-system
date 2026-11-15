@@ -8,6 +8,10 @@ import http from "http";
 import mongoose from "mongoose";
 import { fileURLToPath } from "url";
 import path from "path";
+import {
+  initSocketServer,
+  closeSocketConnections,
+} from "./realtime/socket.js";
 
 import connectDb from "./config/db.js";
 import { initializeDatabaseIndexes } from "./config/databaseIndexReadiness.js";
@@ -38,7 +42,6 @@ import { initializeItemNameIndex } from "./modules/items/itemIndexReadiness.js";
 import { initializeVehicleIndexes } from "./modules/vehicles/vehicleIndexReadiness.js";
 import { initializeDefaultVehiclePolicy } from "./modules/vehicles/vehicle.service.js";
 
-import { initSocketServer } from "./realtime/socket.js";
 import errorMiddleware from "./middlewares/error.middleware.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -164,37 +167,164 @@ app.use((req, res, next) => {
 app.use(errorMiddleware);
 
 const PORT = process.env.PORT || 5000;
+let shutdownRunningServer = async () => {};
 
 export const startServer = async () => {
-  await connectDb();
-
-  // Build every registered model index, including the explicitly managed
-  // District geography indexes, before marking write paths ready.
-  await initializeDatabaseIndexes();
-
-  // These are startup requirements, not optional background repairs.
-  // Do not accept traffic or start scheduled writers unless all are ready.
-  await initializeItemNameIndex();
-  await initializeVehicleIndexes();
-  await initializeDefaultVehiclePolicy();
-
-  const httpServer = http.createServer(app);
-  initSocketServer(httpServer, { allowedOrigins });
-
-  await new Promise((resolve, reject) => {
-    httpServer.once("error", reject);
-    httpServer.listen(PORT, resolve);
+  let httpServer;
+  let cleanupCronJobs = async () => {};
+  let shutdownPromise;
+  let httpClosePromise;
+  let shutdownRequested = false;
+  let startupFinished = false;
+  let finishStartup;
+  const startupComplete = new Promise((resolve) => {
+    finishStartup = () => {
+      if (startupFinished) return;
+      startupFinished = true;
+      resolve();
+    };
   });
 
-  console.log(`Server is running on port ${PORT}`);
-  initCronJobs();
-  return httpServer;
+  const stopAcceptingHttp = () => {
+    if (httpClosePromise) return httpClosePromise;
+
+    if (!httpServer?.listening) return Promise.resolve(null);
+
+    httpClosePromise = new Promise((resolve) => {
+      try {
+        httpServer.close((error) => resolve(error ?? null));
+      } catch (error) {
+        resolve(error);
+      }
+    });
+
+    return httpClosePromise;
+  };
+
+  const shutdown = () => {
+    shutdownRequested = true;
+    stopAcceptingHttp();
+
+    if (!shutdownPromise) {
+      shutdownPromise = (async () => {
+        await startupComplete;
+
+        const cleanupErrors = [];
+        const attemptCleanup = async (cleanup) => {
+          try {
+            await cleanup();
+          } catch (error) {
+            cleanupErrors.push(error);
+          }
+        };
+
+        stopAcceptingHttp();
+        await attemptCleanup(cleanupCronJobs);
+        await attemptCleanup(closeSocketConnections);
+        await attemptCleanup(async () => {
+          const error = await stopAcceptingHttp();
+          if (error) throw error;
+        });
+        if (mongoose.connection.readyState !== 0) {
+          await attemptCleanup(() => mongoose.disconnect());
+        }
+
+        if (cleanupErrors.length) {
+          throw new AggregateError(cleanupErrors, "Graceful shutdown failed");
+        }
+      })();
+    }
+
+    return shutdownPromise;
+  };
+
+  shutdownRunningServer = shutdown;
+
+  const stopStartupIfRequested = async () => {
+    if (!shutdownRequested) return false;
+    finishStartup();
+    await shutdown();
+    return true;
+  };
+
+  try {
+    await connectDb();
+    if (await stopStartupIfRequested()) return;
+
+    await initializeDatabaseIndexes();
+    if (await stopStartupIfRequested()) return;
+
+    await initializeItemNameIndex();
+    if (await stopStartupIfRequested()) return;
+
+    await initializeVehicleIndexes();
+    if (await stopStartupIfRequested()) return;
+
+    await initializeDefaultVehiclePolicy();
+    if (await stopStartupIfRequested()) return;
+
+    httpServer = http.createServer(app);
+    initSocketServer(httpServer, { allowedOrigins });
+
+    await new Promise((resolve, reject) => {
+      const onError = (error) => {
+        httpServer.removeListener("listening", onListening);
+        reject(error);
+      };
+
+      const onListening = () => {
+        httpServer.removeListener("error", onError);
+        resolve();
+      };
+
+      httpServer.once("error", onError);
+      httpServer.once("listening", onListening);
+      httpServer.listen(PORT);
+    });
+    if (await stopStartupIfRequested()) return;
+
+    console.log(`Server is running on port ${PORT}`);
+
+    cleanupCronJobs = await initCronJobs();
+    if (await stopStartupIfRequested()) return;
+
+    finishStartup();
+    return httpServer;
+  } catch (error) {
+    finishStartup();
+
+    try {
+      await shutdown();
+    } catch (cleanupError) {
+      console.error("[Startup] Cleanup failed:", cleanupError);
+    }
+
+    throw error;
+  }
 };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
-  startServer().catch(async (error) => {
+  let signalHandled = false;
+  const handleShutdownSignal = (signal) => {
+    if (signalHandled) return;
+    signalHandled = true;
+
+    void shutdownRunningServer().then(
+      () => {
+        console.log(`[Shutdown] Completed after ${signal}`);
+      },
+      (error) => {
+        console.error(`[Shutdown] Failed after ${signal}:`, error);
+        process.exitCode = 1;
+      },
+    );
+  };
+
+  process.on("SIGTERM", () => handleShutdownSignal("SIGTERM"));
+  process.on("SIGINT", () => handleShutdownSignal("SIGINT"));
+
+  startServer().catch((error) => {
     console.error("Application startup failed:", error);
-    await mongoose.disconnect().catch(() => {});
     process.exitCode = 1;
   });
 }
