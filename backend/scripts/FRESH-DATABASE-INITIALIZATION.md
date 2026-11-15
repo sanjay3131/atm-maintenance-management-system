@@ -52,5 +52,15 @@ Do not run this command against a database containing existing users unless the 
 ## Important limitations
 
 - The geography index repair script remains a separate maintenance tool for an existing database. It is not a data reset command.
-- A fresh empty database needs the intended geography indexes created before District writes are enabled.
+- Normal startup waits for every registered Mongoose model's indexes and explicitly creates the District indexes (District has Mongoose auto-indexing disabled).
 - No production database connection, deletion, migration, or bootstrap execution is part of this source-code change.
+
+## Focused local checks
+
+From the `backend` directory, run the focused, database-free tests:
+
+```sh
+node --test test/databaseTarget.test.js test/databaseIndexReadiness.test.js test/bootstrapFirstSuperAdmin.test.js
+```
+
+These tests do not connect to MongoDB. They validate target parsing, index initialization ordering/failure behavior, and bootstrap input validation.
