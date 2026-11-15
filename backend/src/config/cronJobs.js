@@ -12,37 +12,92 @@ import { processVehicleReminders } from "../modules/vehicles/vehicleReminderWork
 
 export const initCronJobs = async () => {
   const tasks = [];
+  const activeExecutions = new Map();
   let vehicleReminderPromise;
   let cleanupPromise;
+
+  const trackTaskExecutions = (task) => {
+    task.on("execution:started", (context) => {
+      const { id } = context.execution;
+      let resolveExecution;
+      let rejectExecution;
+      const promise = new Promise((resolve, reject) => {
+        resolveExecution = resolve;
+        rejectExecution = reject;
+      });
+
+      void promise.catch(() => {});
+      activeExecutions.set(id, {
+        promise,
+        resolve: resolveExecution,
+        reject: rejectExecution,
+      });
+    });
+
+    const settleExecution = (context, failed) => {
+      const { id, error } = context.execution;
+      const activeExecution = activeExecutions.get(id);
+      if (!activeExecution) return;
+
+      activeExecutions.delete(id);
+      if (failed) {
+        activeExecution.reject(error);
+      } else {
+        activeExecution.resolve();
+      }
+    };
+
+    task.on("execution:finished", (context) =>
+      settleExecution(context, false),
+    );
+    task.on("execution:failed", (context) => settleExecution(context, true));
+  };
+
+  const registerTask = (expression, callback, options) => {
+    const task = cron.createTask(expression, callback, options);
+    tasks.push(task);
+    trackTaskExecutions(task);
+    task.start();
+  };
 
   const cleanupTasks = () => {
     if (!cleanupPromise) {
       cleanupPromise = (async () => {
-        let cleanupError;
+        const cleanupErrors = [];
 
         for (const task of tasks) {
           try {
             await task.stop();
           } catch (error) {
-            cleanupError ??= error;
+            cleanupErrors.push(error);
           }
+        }
 
+        for (const task of tasks) {
           try {
             await task.destroy();
           } catch (error) {
-            cleanupError ??= error;
+            cleanupErrors.push(error);
           }
         }
 
+        const pendingExecutions = [
+          ...[...activeExecutions.values()].map(({ promise }) => promise),
+        ];
         if (vehicleReminderPromise) {
-          try {
-            await vehicleReminderPromise;
-          } catch (error) {
-            cleanupError ??= error;
+          pendingExecutions.push(vehicleReminderPromise);
+        }
+
+        const executionResults = await Promise.allSettled(pendingExecutions);
+        for (const result of executionResults) {
+          if (result.status === "rejected") {
+            cleanupErrors.push(result.reason);
           }
         }
 
-        if (cleanupError) throw cleanupError;
+        if (cleanupErrors.length) {
+          throw new AggregateError(cleanupErrors, "Cron task cleanup failed");
+        }
       })();
     }
 
@@ -59,76 +114,66 @@ export const initCronJobs = async () => {
   };
 
   try {
-    tasks.push(
-      cron.schedule("*/15 * * * *", runVehicleReminderWorker, {
-        timezone: "Asia/Kolkata",
-      }),
-    );
+    registerTask("*/15 * * * *", runVehicleReminderWorker, {
+      timezone: "Asia/Kolkata",
+    });
 
     // Cloudinary cleanup — daily at 2:00 AM
-    tasks.push(
-      cron.schedule("0 2 * * *", async () => {
-        console.log("[Cron] Starting Cloudinary FIFO cleanup...");
-        const result = await cleanupOldPhotos();
-        console.log("[Cron] Cloudinary cleanup completed:", result);
-      }),
-    );
+    registerTask("0 2 * * *", async () => {
+      console.log("[Cron] Starting Cloudinary FIFO cleanup...");
+      const result = await cleanupOldPhotos();
+      console.log("[Cron] Cloudinary cleanup completed:", result);
+    });
 
     // Generate today's daily/weekly recurring jobs at 12:05 AM India time.
-    tasks.push(
-      cron.schedule(
-        "5 0 * * *",
-        async () => {
-          console.log("[Cron] Starting recurring maintenance job generation...");
-          try {
-            const result = await generateRecurringJobs();
-            console.log(
-              "[Cron] Recurring maintenance generation completed:",
-              result,
-            );
-          } catch (err) {
-            console.error("[Cron] Recurring maintenance generation failed:", err);
-          }
-        },
-        { timezone: MAINTENANCE_TIMEZONE },
-      ),
+    registerTask(
+      "5 0 * * *",
+      async () => {
+        console.log("[Cron] Starting recurring maintenance job generation...");
+        try {
+          const result = await generateRecurringJobs();
+          console.log(
+            "[Cron] Recurring maintenance generation completed:",
+            result,
+          );
+        } catch (err) {
+          console.error("[Cron] Recurring maintenance generation failed:", err);
+        }
+      },
+      { timezone: MAINTENANCE_TIMEZONE },
     );
 
     // AMC generation — 1st of every month at 1:00 AM
-    tasks.push(
-      cron.schedule(AMC_CONFIG.CRON.GENERATE, async () => {
-        console.log("[Cron] Starting monthly AMC generation...");
-        const now = new Date();
-        try {
-          const fallbackAdmin = await User.findOne({
-            userType: { $in: ["admin", "superAdmin"] },
-            status: "active",
-          }).select("_id");
+    registerTask(AMC_CONFIG.CRON.GENERATE, async () => {
+      console.log("[Cron] Starting monthly AMC generation...");
+      const now = new Date();
+      try {
+        const fallbackAdmin = await User.findOne({
+          userType: { $in: ["admin", "superAdmin"] },
+          status: "active",
+        }).select("_id");
 
-          const result = await generateMonthlyAMC(
-            now.getMonth() + 1,
-            now.getFullYear(),
-            fallbackAdmin?._id || null,
-          );
-          console.log("[Cron] AMC generation completed:", result);
-        } catch (err) {
-          console.error("[Cron] AMC generation failed:", err);
-        }
-      }),
-    );
+        const result = await generateMonthlyAMC(
+          now.getMonth() + 1,
+          now.getFullYear(),
+          fallbackAdmin?._id || null,
+        );
+        console.log("[Cron] AMC generation completed:", result);
+      } catch (err) {
+        console.error("[Cron] AMC generation failed:", err);
+      }
+    });
 
     // AMC overdue check — daily at 8:00 AM
-    tasks.push(
-      cron.schedule(AMC_CONFIG.CRON.OVERDUE_CHECK, async () => {
-        console.log("[Cron] Starting AMC overdue check...");
-        try {
-          const result = await markOverdueAMCs();
-          console.log("[Cron] AMC overdue check completed:", result);
-        } catch (err) {
-          console.error("[Cron] AMC overdue check failed:", err);
-        }
-      }),
-    );
+    registerTask(AMC_CONFIG.CRON.OVERDUE_CHECK, async () => {
+      console.log("[Cron] Starting AMC overdue check...");
+      try {
+        const result = await markOverdueAMCs();
+        console.log("[Cron] AMC overdue check completed:", result);
+      } catch (err) {
+        console.error("[Cron] AMC overdue check failed:", err);
+      }
+    });
   } catch (error) {
     try {
       await cleanupTasks();
