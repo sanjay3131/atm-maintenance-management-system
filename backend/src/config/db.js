@@ -13,10 +13,11 @@ const connectDb = async () => {
 
   await mongoose.connect(process.env.MONGODB_URL);
 
-  if (mongoose.connection.name !== databaseName) {
+  const connectedDatabase = mongoose.connection.name;
+  if (connectedDatabase !== databaseName) {
     await mongoose.disconnect();
     throw new Error(
-      `Connected database "${mongoose.connection.name}" does not match expected database "${databaseName}"`,
+      `Connected database "${connectedDatabase}" does not match expected database "${databaseName}"`,
     );
   }
 
