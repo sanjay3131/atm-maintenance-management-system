@@ -5,6 +5,7 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import http from "http";
+import mongoose from "mongoose";
 import { fileURLToPath } from "url";
 import path from "path";
 
@@ -163,37 +164,34 @@ app.use(errorMiddleware);
 
 const PORT = process.env.PORT || 5000;
 
+export const startServer = async () => {
+  await connectDb();
+
+  // These are startup requirements, not optional background repairs.
+  // Do not accept traffic or start scheduled writers unless all are ready.
+  await initializeItemNameIndex();
+  await initializeVehicleIndexes();
+  await initializeDefaultVehiclePolicy();
+
+  const httpServer = http.createServer(app);
+  initSocketServer(httpServer, { allowedOrigins });
+
+  await new Promise((resolve, reject) => {
+    httpServer.once("error", reject);
+    httpServer.listen(PORT, resolve);
+  });
+
+  console.log(`Server is running on port ${PORT}`);
+  initCronJobs();
+  return httpServer;
+};
+
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
-  connectDb()
-    .then(async () => {
-      try {
-        await initializeItemNameIndex();
-      } catch {
-        console.error(
-          "Item Master unique-name index initialization failed; Item writes will remain disabled.",
-        );
-      }
-      try {
-        await initializeVehicleIndexes();
-        await initializeDefaultVehiclePolicy();
-      } catch (error) {
-        console.error(
-          "Vehicle index or initial service policy setup failed; vehicle writes will remain unavailable.",
-          error,
-        );
-      }
-
-      const httpServer = http.createServer(app);
-      initSocketServer(httpServer, { allowedOrigins });
-
-      httpServer.listen(PORT, () => {
-        console.log(`Server is running on port ${PORT}`);
-        initCronJobs();
-      });
-    })
-    .catch((err) => {
-      console.log("MongoDB connection failed !!!", err);
-    });
+  startServer().catch(async (error) => {
+    console.error("Application startup failed:", error);
+    await mongoose.disconnect().catch(() => {});
+    process.exitCode = 1;
+  });
 }
 
 export default app;
