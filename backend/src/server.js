@@ -10,6 +10,7 @@ import { fileURLToPath } from "url";
 import path from "path";
 
 import connectDb from "./config/db.js";
+import { initializeDatabaseIndexes } from "./config/databaseIndexReadiness.js";
 import { initCronJobs } from "./config/cronJobs.js";
 
 // Import all routers
@@ -166,6 +167,10 @@ const PORT = process.env.PORT || 5000;
 
 export const startServer = async () => {
   await connectDb();
+
+  // Build every registered model index, including the explicitly managed
+  // District geography indexes, before marking write paths ready.
+  await initializeDatabaseIndexes();
 
   // These are startup requirements, not optional background repairs.
   // Do not accept traffic or start scheduled writers unless all are ready.
