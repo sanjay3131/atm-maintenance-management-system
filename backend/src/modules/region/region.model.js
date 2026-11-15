@@ -2,11 +2,18 @@ import mongoose from "mongoose";
 
 const regionSchema = new mongoose.Schema(
   {
-    districtId: {
+    bankId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "District",
-      required: true,
+      ref: "Bank",
+      required: function () {
+        return this.geographyStatus === "MAPPED";
+      },
       index: true,
+    },
+    geographyStatus: {
+      type: String,
+      enum: ["MAPPED", "UNMAPPED"],
+      default: "UNMAPPED",
     },
 
     name: {
@@ -48,16 +55,19 @@ const regionSchema = new mongoose.Schema(
   },
 );
 
-// Prevent duplicate region names within the same district
-regionSchema.index({ districtId: 1, name: 1 }, { unique: true });
-
-// Prevent duplicate region codes within the same district
 regionSchema.index(
-  { districtId: 1, code: 1 },
+  { bankId: 1, name: 1 },
+  { unique: true, partialFilterExpression: { bankId: { $type: "objectId" } } },
+);
+
+// Codes are unique within a bank when supplied.
+regionSchema.index(
+  { bankId: 1, code: 1 },
   {
     unique: true,
     partialFilterExpression: {
-      code: { $exists: true, $type: "string" },
+      bankId: { $type: "objectId" },
+      code: { $type: "string", $gt: "" },
     },
   },
 );

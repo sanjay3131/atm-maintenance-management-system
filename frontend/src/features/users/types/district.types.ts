@@ -1,10 +1,16 @@
 export interface District {
   _id: string;
+  bankId?: string;
   districtName: string;
   pinCode: string;
   state: string;
   isActive: boolean;
-  regions: string[];
+  regionId: string | {
+    _id: string;
+    name: string;
+    bankId: string | { _id: string; bankName: string; bankCode: string };
+    isActive?: boolean;
+  };
   createdBy: string;
   updatedBy?: string;
   createdAt: string;
@@ -27,5 +33,5 @@ export interface DistrictFormValues {
   isActive: boolean;
 }
 
-export type CreateDistrictData = DistrictFormValues;
+export type CreateDistrictData = DistrictFormValues & { regionId: string };
 export type UpdateDistrictData = Partial<DistrictFormValues>;

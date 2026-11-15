@@ -5,6 +5,7 @@ import AMC from "../src/modules/amc/amc.model.js";
 import { AMC_STATUS } from "../src/modules/amc/amc.config.js";
 import ATM from "../src/modules/atms/atm.model.js";
 import { createATM, updateATM } from "../src/modules/atms/atm.controller.js";
+import Bank from "../src/modules/banks/bank.model.js";
 import Customer from "../src/modules/customers/customer.model.js";
 import District from "../src/modules/districts/district.models.js";
 import Employee from "../src/modules/employees/employee.model.js";
@@ -20,6 +21,7 @@ const regionId = "64b000000000000000000003";
 const otherRegionId = "64b000000000000000000004";
 const atmId = "64b000000000000000000005";
 const employeeId = "64b000000000000000000006";
+const bankId = "bank-id";
 
 function invoke(handler, req) {
   return new Promise((resolve, reject) => {
@@ -52,31 +54,75 @@ async function withOverrides(overrides, callback) {
   }
 }
 
+function makeQuery(value) {
+  return {
+    select() {
+      return this;
+    },
+    session() {
+      return this;
+    },
+    then(resolve, reject) {
+      return Promise.resolve(value).then(resolve, reject);
+    },
+  };
+}
+
 function createMocks({
-  districts = { [districtId]: { _id: districtId, isActive: true } },
-  regions = {
-    [regionId]: {
-      _id: regionId,
-      districtId,
+  districts = {
+    [districtId]: {
+      _id: districtId,
+      bankId,
+      regionId,
+      geographyStatus: "MAPPED",
+      isActive: true,
+    },
+    [otherDistrictId]: {
+      _id: otherDistrictId,
+      bankId,
+      regionId: otherRegionId,
+      geographyStatus: "MAPPED",
       isActive: true,
     },
   },
-  activeRegionCount = 1,
+  regions = {
+    [regionId]: {
+      _id: regionId,
+      bankId,
+      geographyStatus: "MAPPED",
+      isActive: true,
+    },
+    [otherRegionId]: {
+      _id: otherRegionId,
+      bankId,
+      geographyStatus: "MAPPED",
+      isActive: true,
+    },
+  },
   customer = { _id: "customer-id", isActive: true, isDeleted: false },
 } = {}) {
   const captured = {};
   const overrides = [
     [
+      Bank,
+      "findById",
+      () => makeQuery({ _id: bankId, isActive: true }),
+    ],
+    [
       District,
       "findById",
-      async (id) => districts[id.toString()] ?? null,
+      (id) => makeQuery(districts[String(id)] ?? null),
     ],
     [
       Region,
       "findById",
-      async (id) => regions[id.toString()] ?? null,
+      (id) => makeQuery(regions[String(id)] ?? null),
     ],
-    [Region, "countDocuments", async () => activeRegionCount],
+    [
+      District,
+      "updateOne",
+      async () => ({ matchedCount: 1 }),
+    ],
     [
       Customer,
       "findOne",
@@ -97,12 +143,27 @@ function createMocks({
     [
       ATM,
       "findOne",
-      () => ({
-        sort() {
-          return this;
-        },
-        select: async () => null,
-      }),
+      (filter) => {
+        if (filter?._id) {
+          return makeQuery({
+            _id: atmId,
+            bankId,
+            isDeleted: false,
+            districtId,
+            regionId,
+            assignedEmployeeId: [employeeId],
+            async save() {
+              captured.savedATM = this;
+            },
+          });
+        }
+        return {
+          sort() {
+            return this;
+          },
+          select: async () => null,
+        };
+      },
     ],
     [
       ATM,
@@ -148,9 +209,11 @@ function createMocks({
       "findById",
       async () => ({
         _id: atmId,
+        bankId,
         isDeleted: false,
         districtId,
         regionId,
+        geographyStatus: "MAPPED",
         assignedEmployeeId: [employeeId],
       }),
     ],
@@ -162,17 +225,17 @@ function createMocks({
         return { _id: atmId, ...update };
       },
     ],
-    [Job, "countDocuments", async (query) => {
+    [Job, "countDocuments", (query) => {
       captured.jobQuery = query;
-      return 0;
+      return makeQuery(0);
     }],
-    [AMC, "countDocuments", async (query) => {
+    [AMC, "countDocuments", (query) => {
       captured.amcQuery = query;
-      return 0;
+      return makeQuery(0);
     }],
-    [RecurringMaintenancePlan, "countDocuments", async (query) => {
+    [RecurringMaintenancePlan, "countDocuments", (query) => {
       captured.planQuery = query;
-      return 0;
+      return makeQuery(0);
     }],
     [
       Employee,
@@ -193,7 +256,7 @@ function createMocks({
 }
 
 const createBody = (changes = {}) => ({
-  bankId: "bank-id",
+  bankId,
   customerId: "customer-id",
   districtId,
   regionId,
@@ -226,15 +289,15 @@ function updateRequest(body) {
   };
 }
 
-test("create validation accepts an explicit null Region and validates IDs", () => {
-  assert.equal(createAtmSchema.safeParse(createBody({ regionId: null })).success, true);
+test("ATM validation requires a Region and validates geographic IDs", () => {
+  assert.equal(createAtmSchema.safeParse(createBody({ regionId: null })).success, false);
   assert.equal(
     createAtmSchema.safeParse(createBody({ districtId: "invalid" })).success,
     false,
   );
   assert.equal(
     updateAtmSchema.safeParse({ regionId: null }).success,
-    true,
+    false,
   );
 });
 
@@ -258,8 +321,15 @@ test("rejects inactive or missing destination Districts and Regions", async (t) 
   const scenarios = [
     {
       name: "inactive District",
-      districts: { [districtId]: { _id: districtId, isActive: false } },
-      regions: {},
+      districts: {
+        [districtId]: {
+          _id: districtId,
+          bankId,
+          regionId,
+          geographyStatus: "MAPPED",
+          isActive: false,
+        },
+      },
       body: createBody(),
       message: "Destination district is inactive",
     },
@@ -281,7 +351,12 @@ test("rejects inactive or missing destination Districts and Regions", async (t) 
       name: "inactive Region",
       districts: undefined,
       regions: {
-        [regionId]: { _id: regionId, districtId, isActive: false },
+        [regionId]: {
+          _id: regionId,
+          bankId,
+          geographyStatus: "MAPPED",
+          isActive: false,
+        },
       },
       body: createBody(),
       message: "Destination region is inactive",
@@ -309,7 +384,17 @@ test("rejects a Region from a different District", async () => {
     regions: {
       [regionId]: {
         _id: regionId,
-        districtId: otherDistrictId,
+        bankId,
+        geographyStatus: "MAPPED",
+        isActive: true,
+      },
+    },
+    districts: {
+      [districtId]: {
+        _id: districtId,
+        bankId,
+        regionId: otherRegionId,
+        geographyStatus: "MAPPED",
         isActive: true,
       },
     },
@@ -322,133 +407,79 @@ test("rejects a Region from a different District", async () => {
       }),
       (error) =>
         error.message ===
-        "Destination region does not belong to the selected district",
+        "Selected district does not belong to the selected region",
     );
   });
 });
 
-test("allows a Region-less ATM only when the District has no active Regions", async (t) => {
-  await t.test("District has none", async () => {
-    const { captured, overrides } = createMocks({ activeRegionCount: 0 });
-    await withOverrides(overrides, async () => {
-      const { body } = await invoke(createATM, {
+test("ATM creation rejects a missing Region", async () => {
+  const { overrides } = createMocks({ regions: {} });
+  await withOverrides(overrides, async () => {
+    await assert.rejects(
+      invoke(createATM, {
         body: createBody({ regionId: null }),
         user: { _id: "admin-id" },
-      });
-      assert.equal(body.data.regionId, null);
-      assert.equal(captured.created.regionId, null);
-    });
-  });
-
-  await t.test("District has active Regions", async () => {
-    const { overrides } = createMocks({ activeRegionCount: 2 });
-    await withOverrides(overrides, async () => {
-      await assert.rejects(
-        invoke(createATM, {
-          body: createBody({ regionId: null }),
-          user: { _id: "admin-id" },
-        }),
-        (error) =>
-          error.message ===
-          "Select an active region because this district has active regions",
-      );
-    });
+      }),
+      /Destination region was not found/,
+    );
   });
 });
 
 test("partial geographic updates validate the effective District and Region", async (t) => {
-  await t.test("changing only Region validates it against the existing District", async () => {
-    const { captured, overrides } = createMocks({
-      regions: {
-        [otherRegionId]: {
-          _id: otherRegionId,
-          districtId,
-          isActive: true,
-        },
-      },
-    });
+  await t.test("changing only Region is rejected when District belongs elsewhere", async () => {
+    const { overrides } = createMocks();
     await withOverrides(overrides, async () => {
-      await invoke(updateATM, updateRequest({ regionId: otherRegionId }));
-      assert.equal(captured.update.update.regionId, otherRegionId);
-      assert.equal(captured.update.update.districtId, undefined);
+      await assert.rejects(
+        invoke(updateATM, updateRequest({ regionId: otherRegionId })),
+        /Selected district does not belong to the selected region/,
+      );
     });
   });
 
-  await t.test("changing only District never carries the old Region across", async () => {
-    const { captured, overrides } = createMocks({
-      districts: {
-        [districtId]: { _id: districtId, isActive: true },
-        [otherDistrictId]: { _id: otherDistrictId, isActive: true },
-      },
-      activeRegionCount: 0,
+  await t.test("changing only District is rejected when its parent Region differs", async () => {
+    const { overrides } = createMocks();
+    await withOverrides(overrides, async () => {
+      await assert.rejects(
+        invoke(updateATM, updateRequest({ districtId: otherDistrictId })),
+        /Selected district does not belong to the selected region/,
+      );
     });
+  });
+
+  await t.test("changing District and Region together validates the full hierarchy", async () => {
+    const { captured, overrides } = createMocks();
     await withOverrides(overrides, async () => {
       await invoke(
         updateATM,
-        updateRequest({ districtId: otherDistrictId }),
+        updateRequest({
+          districtId: otherDistrictId,
+          regionId: otherRegionId,
+        }),
       );
-      assert.equal(captured.update.update.districtId, otherDistrictId);
-      assert.equal(captured.update.update.regionId, null);
+      assert.equal(captured.savedATM.districtId, otherDistrictId);
+      assert.equal(captured.savedATM.regionId, otherRegionId);
     });
   });
 
-  await t.test("changing only District with active Regions requires an explicit Region", async () => {
-    const { overrides } = createMocks({
-      districts: {
-        [districtId]: { _id: districtId, isActive: true },
-        [otherDistrictId]: { _id: otherDistrictId, isActive: true },
-      },
-      activeRegionCount: 1,
-    });
+  await t.test("clearing Region is rejected", async () => {
+    const { overrides } = createMocks();
     await withOverrides(overrides, async () => {
       await assert.rejects(
-        invoke(
-          updateATM,
-          updateRequest({ districtId: otherDistrictId }),
-        ),
-        (error) =>
-          error.message ===
-          "Select an active region because this district has active regions",
+        invoke(updateATM, updateRequest({ regionId: null })),
+        /Destination region was not found/,
       );
-    });
-  });
-
-  await t.test("clearing Region is allowed only when the District has no active Regions", async (t) => {
-    await t.test("District has none", async () => {
-      const { captured, overrides } = createMocks({ activeRegionCount: 0 });
-      await withOverrides(overrides, async () => {
-        await invoke(updateATM, updateRequest({ regionId: null }));
-        assert.equal(captured.update.update.regionId, null);
-      });
-    });
-
-    await t.test("District has an active Region", async () => {
-      const { overrides } = createMocks({ activeRegionCount: 1 });
-      await withOverrides(overrides, async () => {
-        await assert.rejects(
-          invoke(updateATM, updateRequest({ regionId: null })),
-          (error) =>
-            error.message ===
-            "Select an active region because this district has active regions",
-        );
-      });
     });
   });
 });
 
 test("geographic move preserves employee assignment and reciprocal relationship records", async () => {
-  const { captured, overrides } = createMocks({
-    regions: {
-      [otherRegionId]: {
-        _id: otherRegionId,
-        districtId,
-        isActive: true,
-      },
-    },
-  });
+  const { captured, overrides } = createMocks();
   await withOverrides(overrides, async () => {
-    await invoke(updateATM, updateRequest({ regionId: otherRegionId }));
-    assert.equal(captured.update.update.assignedEmployeeId, undefined);
+    await invoke(
+      updateATM,
+      updateRequest({ districtId: otherDistrictId, regionId: otherRegionId }),
+    );
+    assert.equal(captured.savedATM.assignedEmployeeId[0], employeeId);
     assert.equal(captured.employeeUpdateMany, undefined);
     assert.equal(captured.employeeUpdateOne, undefined);
   });
@@ -475,34 +506,34 @@ test("blocks moves with unresolved Jobs, AMC records, or active recurring plans"
   for (const scenario of cases) {
     await t.test(scenario.name, async () => {
       const { captured, overrides } = createMocks({
-        regions: {
-          [otherRegionId]: {
-            _id: otherRegionId,
-            districtId,
-            isActive: true,
-          },
-        },
+        regions: undefined,
       });
       overrides.find(([target, key]) => target === Job && key === "countDocuments")[2] =
-        async (query) => {
+        (query) => {
           captured.jobQuery = query;
-          return scenario.counts.jobs ?? 0;
+          return makeQuery(scenario.counts.jobs ?? 0);
         };
       overrides.find(([target, key]) => target === AMC && key === "countDocuments")[2] =
-        async (query) => {
+        (query) => {
           captured.amcQuery = query;
-          return scenario.counts.amcs ?? 0;
+          return makeQuery(scenario.counts.amcs ?? 0);
         };
       overrides.find(
         ([target, key]) =>
           target === RecurringMaintenancePlan && key === "countDocuments",
-      )[2] = async (query) => {
+      )[2] = (query) => {
         captured.planQuery = query;
-        return scenario.counts.plans ?? 0;
+        return makeQuery(scenario.counts.plans ?? 0);
       };
       await withOverrides(overrides, async () => {
         await assert.rejects(
-          invoke(updateATM, updateRequest({ regionId: otherRegionId })),
+          invoke(
+            updateATM,
+            updateRequest({
+              districtId: otherDistrictId,
+              regionId: otherRegionId,
+            }),
+          ),
           (error) =>
             error.statusCode === 409 && error.message.includes(scenario.message),
         );

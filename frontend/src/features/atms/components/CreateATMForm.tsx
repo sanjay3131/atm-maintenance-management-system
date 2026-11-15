@@ -7,7 +7,8 @@ import {
 } from "../types/create-atm.schema";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/axios";
-import { useAllRegionsByDistrict } from "@/features/users/hooks/useAllRegionsByDistrict";
+import { useRegionsByBank } from "@/features/users/hooks/useRegionsByBank";
+import { useDistricts } from "@/features/users/hooks/useDistricts";
 import { useCreateATM } from "../hooks/useCreateATM";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -28,9 +29,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import type { District } from "@/features/users/types/district.types";
-
-const NO_REGION = "NO_REGION";
 
 interface CreateATMFormProps {
   onClose: () => void;
@@ -59,17 +57,6 @@ export default function CreateATMForm({
     queryKey: ["customers"],
     queryFn: async () => {
       const response = await api.get("/customers");
-      return response.data.data;
-    },
-  });
-  const {
-    data: districts = [],
-    isLoading: districtsLoading,
-    isError: districtsError,
-  } = useQuery<District[]>({
-    queryKey: ["districts"],
-    queryFn: async () => {
-      const response = await api.get("/districts");
       return response.data.data;
     },
   });
@@ -112,7 +99,7 @@ export default function CreateATMForm({
           ? initialATM.customer
           : (initialATM.customer?._id ?? ""),
       districtId: initialATM.districtId?._id ?? "",
-      regionId: initialATM.regionId?._id ?? NO_REGION,
+      regionId: initialATM.regionId?._id ?? "",
       locationName: initialATM.locationName,
       address: initialATM.address,
       installationType: initialATM.installationType,
@@ -131,26 +118,27 @@ export default function CreateATMForm({
     });
   }, [initialATM, reset]);
 
+  const selectedBankId = watch("bankId");
+  const selectedRegionId = watch("regionId");
   const selectedDistrictId = watch("districtId");
 
   const {
     data: regions = [],
     isLoading: regionsLoading,
     isError: regionsError,
-  } = useAllRegionsByDistrict(selectedDistrictId);
+  } = useRegionsByBank(selectedBankId);
+  const {
+    data: districts = [],
+    isLoading: districtsLoading,
+    isError: districtsError,
+  } = useDistricts(Boolean(selectedRegionId), selectedRegionId);
   const activeRegions = regions.filter((region) => region.isActive);
-  const noRegionsLoaded =
-    Boolean(selectedDistrictId) &&
-    !regionsLoading &&
-    !regionsError &&
-    activeRegions.length === 0;
-  const selectedRegionId = watch("regionId");
-  const destinationRegionId =
-    selectedRegionId === NO_REGION ? null : selectedRegionId;
+  const destinationRegionId = selectedRegionId;
   const geographicAssignmentChanged =
     initialATM !== undefined &&
-    (initialATM.districtId?._id !== selectedDistrictId ||
-      (initialATM.regionId?._id ?? null) !== destinationRegionId);
+    (initialATM.bankId?._id !== selectedBankId ||
+      initialATM.districtId?._id !== watch("districtId") ||
+      initialATM.regionId?._id !== destinationRegionId);
 
   const invalidateATMGeographyQueries = async (includeJobs: boolean) => {
     const queryKeys = [
@@ -174,10 +162,11 @@ export default function CreateATMForm({
   const saveATM = async (data: CreateATMFormData) => {
     if (initialATM) {
       const targetRegionId =
-        data.regionId === NO_REGION ? null : data.regionId;
+        data.regionId;
       const hasGeographicChange =
+        initialATM.bankId?._id !== data.bankId ||
         initialATM.districtId?._id !== data.districtId ||
-        (initialATM.regionId?._id ?? null) !== targetRegionId;
+        initialATM.regionId?._id !== targetRegionId;
       const updateData: UpdateATMData = {
         customerId: data.customerId,
         bankId: data.bankId,
@@ -222,7 +211,7 @@ export default function CreateATMForm({
     }
 
     createATM.mutate(
-      { ...data, regionId: data.regionId === NO_REGION ? null : data.regionId },
+      data,
       {
         onSuccess: async (atm) => {
           toast.success(`ATM ${atm.atmId} created successfully!`);
@@ -302,9 +291,13 @@ export default function CreateATMForm({
         <label className="mb-2 block text-sm font-medium">Bank</label>
 
         <Select
-          value={watch("bankId")}
+          value={selectedBankId}
           onValueChange={(value) => {
-            if (value) setValue("bankId", value);
+            if (value && value !== selectedBankId) {
+              setValue("bankId", value);
+              setValue("regionId", "");
+              setValue("districtId", "");
+            }
           }}
           disabled={banksLoading}
         >
@@ -320,105 +313,21 @@ export default function CreateATMForm({
           </SelectTrigger>
 
           <SelectContent>
-            {banks.map((bank: { _id: string; bankName: string }) => (
+            {banks.filter((bank: { isActive: boolean }) => bank.isActive).map((bank: { _id: string; bankName: string }) => (
               <SelectItem key={bank._id} value={bank._id}>
                 {bank.bankName}
               </SelectItem>
             ))}
+            {initialATM?.bankId?._id === selectedBankId &&
+              !banks.some((bank: { _id: string; isActive?: boolean }) => bank._id === selectedBankId && bank.isActive) && (
+                <SelectItem value={selectedBankId} disabled>
+                  {initialATM.bankId.bankName} (inactive or unavailable)
+                </SelectItem>
+              )}
           </SelectContent>
         </Select>
         {errors.bankId && (
           <p className="mt-1 text-sm text-red-500">{errors.bankId.message}</p>
-        )}
-      </div>
-      {/* select customer */}
-      <div>
-        <label className="mb-1 block text-sm font-medium">Customer</label>
-
-        <Select
-          value={watch("customerId")}
-          onValueChange={(value) => {
-            if (value) setValue("customerId", value);
-          }}
-          disabled={customersLoading}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select customer">
-              {
-                customers.find(
-                  (customer: { _id: string; customerName: string }) =>
-                    customer._id === watch("customerId"),
-                )?.customerName
-              }
-            </SelectValue>
-          </SelectTrigger>
-
-          <SelectContent>
-            {customers.map(
-              (customer: { _id: string; customerName: string }) => (
-                <SelectItem key={customer._id} value={customer._id}>
-                  {customer.customerName}
-                </SelectItem>
-              ),
-            )}
-          </SelectContent>
-        </Select>
-        {errors.customerId && (
-          <p className="mt-1 text-sm text-red-500">
-            {errors.customerId.message}
-          </p>
-        )}
-      </div>
-      {/* select district */}
-      <div>
-        <label className="mb-1 block text-sm font-medium">District</label>
-
-        <Select
-          value={watch("districtId")}
-          onValueChange={(value) => {
-            if (value && value !== selectedDistrictId) {
-              setValue("districtId", value);
-              setValue("regionId", "");
-            }
-          }}
-          disabled={districtsLoading || districtsError}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Select district">
-              {
-                districts.find((district) => district._id === watch("districtId"))
-                  ?.districtName ??
-                (initialATM?.districtId?._id === watch("districtId")
-                  ? `${initialATM.districtId.districtName} (inactive or unavailable)`
-                  : null)
-              }
-            </SelectValue>
-          </SelectTrigger>
-
-          <SelectContent>
-            {initialATM?.districtId?._id &&
-              !districts.some(
-                (district) =>
-                  district._id === initialATM.districtId._id &&
-                  district.isActive,
-              ) && (
-                <SelectItem value={initialATM.districtId._id} disabled>
-                  {initialATM.districtId.districtName} (inactive or unavailable)
-                </SelectItem>
-              )}
-            {districts
-              .filter((district) => district.isActive)
-              .map((district) => (
-                <SelectItem key={district._id} value={district._id}>
-                  {district.districtName}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
-        {errors.districtId && (
-          <p className="mt-1 text-sm text-red-500">
-            {errors.districtId.message}
-          </p>
         )}
       </div>
       {/* select region */}
@@ -426,22 +335,20 @@ export default function CreateATMForm({
         <label className="mb-1 block text-sm font-medium">Region</label>
 
         <Select
-          value={watch("regionId")}
+          value={selectedRegionId}
           onValueChange={(value) => {
-            if (value) setValue("regionId", value);
+            if (value && value !== selectedRegionId) {
+              setValue("regionId", value);
+              setValue("districtId", "");
+            }
           }}
-          disabled={
-            !selectedDistrictId ||
-            regionsLoading ||
-            regionsError ||
-            districtsError
-          }
+          disabled={!selectedBankId || regionsLoading || regionsError}
         >
           <SelectTrigger className="w-full">
             <SelectValue
               placeholder={
-                !selectedDistrictId
-                  ? "Select district first"
+                !selectedBankId
+                  ? "Select bank first"
                   : regionsLoading
                     ? "Loading regions..."
                     : regionsError
@@ -449,19 +356,10 @@ export default function CreateATMForm({
                       : "Select region"
               }
             >
-              {
-                selectedRegionId === NO_REGION
-                  ? noRegionsLoaded
-                  ? "No Region"
-                  : initialATM?.regionId
-                    ? `${initialATM.regionId.name} (existing assignment)`
-                    : "Select region"
-                  : regions.find((region) => region._id === selectedRegionId)
-                    ?.name ??
-                  (initialATM?.regionId?._id === selectedRegionId
-                    ? `${initialATM.regionId.name} (inactive or unavailable)`
-                    : null)
-              }
+              {regions.find((region) => region._id === selectedRegionId)?.name ??
+                (initialATM?.regionId?._id === selectedRegionId
+                  ? `${initialATM.regionId.name} (inactive or unavailable)`
+                  : null)}
             </SelectValue>
           </SelectTrigger>
 
@@ -472,31 +370,73 @@ export default function CreateATMForm({
               </SelectItem>
             ))}
             {initialATM?.regionId?._id === selectedRegionId &&
-              !activeRegions.some(
-                (region) => region._id === selectedRegionId,
-              ) && (
+              !activeRegions.some((region) => region._id === selectedRegionId) && (
                 <SelectItem value={selectedRegionId} disabled>
-                  {regions.find((region) => region._id === selectedRegionId)
-                    ?.name || initialATM.regionId.name}{" "}
-                  (inactive or unavailable)
-                </SelectItem>
-              )}
-            {noRegionsLoaded && (
-              <SelectItem value={NO_REGION}>No Region (no active regions)</SelectItem>
-            )}
-            {selectedRegionId === NO_REGION &&
-              activeRegions.length > 0 &&
-              !regionsLoading &&
-              !regionsError && (
-                <SelectItem value={NO_REGION} disabled>
-                  No Region (existing assignment; select an active region)
+                  {initialATM.regionId.name} (inactive or unavailable)
                 </SelectItem>
               )}
           </SelectContent>
         </Select>
-        {errors.regionId && (
-          <p className="mt-1 text-sm text-red-500">{errors.regionId.message}</p>
-        )}
+        {errors.regionId && <p className="mt-1 text-sm text-red-500">{errors.regionId.message}</p>}
+      </div>
+      {/* select district */}
+      <div>
+        <label className="mb-1 block text-sm font-medium">District</label>
+
+        <Select
+          value={watch("districtId")}
+          onValueChange={(value) => {
+            if (value) setValue("districtId", value);
+          }}
+          disabled={
+            !selectedRegionId || districtsLoading || districtsError
+          }
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder={!selectedRegionId ? "Select region first" : districtsLoading ? "Loading districts..." : "Select district"}>
+              {districts.find((district) => district._id === watch("districtId"))?.districtName ??
+                (initialATM?.districtId?._id === watch("districtId")
+                  ? `${initialATM.districtId.districtName} (inactive or unavailable)`
+                  : null)}
+            </SelectValue>
+          </SelectTrigger>
+
+          <SelectContent>
+            {initialATM?.districtId?._id === watch("districtId") &&
+              !districts.some((district) => district._id === watch("districtId") && district.isActive) && (
+                <SelectItem value={watch("districtId")} disabled>
+                  {initialATM.districtId.districtName} (inactive or unavailable)
+                </SelectItem>
+              )}
+            {districts.filter((district) => district.isActive).map((district) => (
+              <SelectItem key={district._id} value={district._id}>{district.districtName}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {errors.districtId && <p className="mt-1 text-sm text-red-500">{errors.districtId.message}</p>}
+      </div>
+      {/* select customer */}
+      <div>
+        <label className="mb-1 block text-sm font-medium">Customer</label>
+        <Select
+          value={watch("customerId")}
+          onValueChange={(value) => {
+            if (value) setValue("customerId", value);
+          }}
+          disabled={customersLoading}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select customer">
+              {customers.find((customer: { _id: string; customerName: string }) => customer._id === watch("customerId"))?.customerName}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {customers.map((customer: { _id: string; customerName: string }) => (
+              <SelectItem key={customer._id} value={customer._id}>{customer.customerName}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {errors.customerId && <p className="mt-1 text-sm text-red-500">{errors.customerId.message}</p>}
       </div>
       {/* select location name */}
       <div>

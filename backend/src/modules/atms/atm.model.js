@@ -17,19 +17,31 @@ const atmSchema = new mongoose.Schema(
     bankId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Bank",
-      required: true,
+      required: function () {
+        return this.geographyStatus === "MAPPED";
+      },
+    },
+
+    geographyStatus: {
+      type: String,
+      enum: ["MAPPED", "UNMAPPED"],
+      default: "UNMAPPED",
     },
 
     districtId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "District",
-      required: true,
+      required: function () {
+        return this.geographyStatus === "MAPPED";
+      },
     },
 
     regionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Region",
-      default: null,
+      required: function () {
+        return this.geographyStatus === "MAPPED";
+      },
     },
 
     locationName: {

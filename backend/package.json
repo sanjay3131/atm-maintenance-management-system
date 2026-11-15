@@ -17,7 +17,9 @@
     "job-photos:ensure-indexes": "node scripts/ensureJobPhotoUploadIndexes.js",
     "job-photos:backfill-fence": "node scripts/backfillJobPhotoUploadFence.js",
     "employees:ensure-user-id-index": "node scripts/ensureEmployeeUserIdUniqueIndex.js",
-    "attendance:ensure-supervisor-indexes": "node scripts/ensureSupervisorAttendanceIndexes.js"
+    "attendance:ensure-supervisor-indexes": "node scripts/ensureSupervisorAttendanceIndexes.js",
+    "geography:setup-indexes": "node scripts/setupGeographyIndexes.js",
+    "geography:verify": "node scripts/verifyGeographySetup.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

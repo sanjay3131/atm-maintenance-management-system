@@ -2,7 +2,8 @@ import { useATMs } from "@/features/atms/hooks/useATMs";
 import ATMTable from "@/features/atms/components/ATMTable";
 import CreateATMForm from "@/features/atms/components/CreateATMForm";
 import { useDistricts } from "@/features/users/hooks/useDistricts";
-import { useRegionsByDistrict } from "@/features/users/hooks/useRegionsByDistrict";
+import { useRegionsByBank } from "@/features/users/hooks/useRegionsByBank";
+import { useBanks } from "@/features/banks/hooks/useBanks";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -30,19 +31,22 @@ export default function AtmsPage() {
     refetch,
     isFetching,
   } = useATMs();
-  const { data: districts = [], isLoading: isDistrictsLoading } =
-    useDistricts();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] =
     useState<StatusFilter>(ALL_FILTER_VALUE);
-  const [districtFilter, setDistrictFilter] = useState(ALL_FILTER_VALUE);
+  const [bankFilter, setBankFilter] = useState(ALL_FILTER_VALUE);
   const [regionFilter, setRegionFilter] = useState(ALL_FILTER_VALUE);
+  const [districtFilter, setDistrictFilter] = useState(ALL_FILTER_VALUE);
 
-  const { data: regions = [], isLoading: isRegionsLoading } =
-    useRegionsByDistrict(
-      districtFilter === ALL_FILTER_VALUE ? "" : districtFilter,
-    );
+  const { data: districts = [], isLoading: isDistrictsLoading } = useDistricts(
+    regionFilter !== ALL_FILTER_VALUE,
+    regionFilter !== ALL_FILTER_VALUE ? regionFilter : undefined,
+  );
+  const { data: banks = [], isLoading: isBanksLoading } = useBanks({ isActive: true });
+  const { data: regions = [], isLoading: isRegionsLoading } = useRegionsByBank(
+    bankFilter === ALL_FILTER_VALUE ? "" : bankFilter,
+  );
 
   const filteredATMs = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -55,25 +59,29 @@ export default function AtmsPage() {
         : true;
       const matchesStatus =
         statusFilter === ALL_FILTER_VALUE || atm.status === statusFilter;
+      const matchesBank =
+        bankFilter === ALL_FILTER_VALUE || atm.bankId?._id === bankFilter;
       const matchesDistrict =
         districtFilter === ALL_FILTER_VALUE ||
         atm.districtId?._id === districtFilter;
       const matchesRegion =
         regionFilter === ALL_FILTER_VALUE || atm.regionId?._id === regionFilter;
 
-      return matchesSearch && matchesStatus && matchesDistrict && matchesRegion;
+      return matchesSearch && matchesStatus && matchesBank && matchesDistrict && matchesRegion;
     });
-  }, [atms, districtFilter, regionFilter, search, statusFilter]);
+  }, [atms, bankFilter, districtFilter, regionFilter, search, statusFilter]);
 
   const hasActiveFilters =
     Boolean(search.trim()) ||
     statusFilter !== ALL_FILTER_VALUE ||
+    bankFilter !== ALL_FILTER_VALUE ||
     districtFilter !== ALL_FILTER_VALUE ||
     regionFilter !== ALL_FILTER_VALUE;
 
   const clearFilters = () => {
     setSearch("");
     setStatusFilter(ALL_FILTER_VALUE);
+    setBankFilter(ALL_FILTER_VALUE);
     setDistrictFilter(ALL_FILTER_VALUE);
     setRegionFilter(ALL_FILTER_VALUE);
   };
@@ -125,7 +133,7 @@ export default function AtmsPage() {
         </Button>
       </div>
 
-      <div className="mt-6 grid gap-4 rounded-lg border bg-card p-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-6 grid gap-4 rounded-lg border bg-card p-4 md:grid-cols-2 lg:grid-cols-5">
         <div className="md:col-span-2 lg:col-span-1">
           <label
             htmlFor="atm-search"
@@ -169,17 +177,53 @@ export default function AtmsPage() {
         </div>
 
         <div>
+          <label className="mb-2 block text-sm font-medium">Bank</label>
+          <Select
+            value={bankFilter}
+            onValueChange={(value) => {
+              setBankFilter(value ?? ALL_FILTER_VALUE);
+              setRegionFilter(ALL_FILTER_VALUE);
+              setDistrictFilter(ALL_FILTER_VALUE);
+            }}
+            disabled={isBanksLoading}
+          >
+            <SelectTrigger className="w-full"><SelectValue placeholder="All banks" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_FILTER_VALUE}>All</SelectItem>
+              {banks.map((bank) => <SelectItem key={bank._id} value={bank._id}>{bank.bankName}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium">Region</label>
+          <Select
+            value={regionFilter}
+            onValueChange={(value) => {
+              setRegionFilter(value ?? ALL_FILTER_VALUE);
+              setDistrictFilter(ALL_FILTER_VALUE);
+            }}
+            disabled={bankFilter === ALL_FILTER_VALUE || isRegionsLoading}
+          >
+            <SelectTrigger className="w-full"><SelectValue placeholder="All regions" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_FILTER_VALUE}>All</SelectItem>
+              {regions.map((region) => <SelectItem key={region._id} value={region._id}>{region.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
           <label className="mb-2 block text-sm font-medium">District</label>
           <Select
             value={districtFilter}
             onValueChange={(value) => {
               setDistrictFilter(value ?? ALL_FILTER_VALUE);
-              setRegionFilter(ALL_FILTER_VALUE);
             }}
-            disabled={isDistrictsLoading}
+            disabled={regionFilter === ALL_FILTER_VALUE || isDistrictsLoading}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="All districts">
+              <SelectValue placeholder={regionFilter === ALL_FILTER_VALUE ? "Select region first" : "All districts"}>
                 {districtFilter === ALL_FILTER_VALUE
                   ? "All"
                   : districts.find(
@@ -198,40 +242,6 @@ export default function AtmsPage() {
           </Select>
         </div>
 
-        <div>
-          <label className="mb-2 block text-sm font-medium">Region</label>
-          <Select
-            value={regionFilter}
-            onValueChange={(value) =>
-              setRegionFilter(value ?? ALL_FILTER_VALUE)
-            }
-            disabled={districtFilter === ALL_FILTER_VALUE || isRegionsLoading}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue
-                placeholder={
-                  districtFilter === ALL_FILTER_VALUE
-                    ? "Select district first"
-                    : isRegionsLoading
-                      ? "Loading regions..."
-                      : "All regions"
-                }
-              >
-                {regionFilter === ALL_FILTER_VALUE
-                  ? "All"
-                  : regions.find((region) => region._id === regionFilter)?.name}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL_FILTER_VALUE}>All</SelectItem>
-              {regions.map((region) => (
-                <SelectItem key={region._id} value={region._id}>
-                  {region.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
 
         <div className="flex items-end md:col-span-2 lg:col-span-4">
           <Button

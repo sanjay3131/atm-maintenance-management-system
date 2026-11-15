@@ -1,13 +1,9 @@
 import { useState } from "react";
 import { isAxiosError } from "axios";
-import { useQueries } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useDistricts } from "@/features/users/hooks/useDistricts";
-import {
-  getAllRegionsByDistrict,
-  type Region,
-} from "@/features/users/services/region.service";
+import { useAllRegions } from "@/features/users/hooks/useAllRegions";
 import {
   type Employee,
   type UpdateEmployeePayload,
@@ -82,6 +78,7 @@ export default function EmployeeEditForm({
 }) {
   const updateMutation = useUpdateEmployee();
   const districtsQuery = useDistricts();
+  const regionsQuery = useAllRegions(true);
   const [values, setValues] = useState<EmployeeEditValues>(() => ({
     designation: employee.designation,
     department: employee.department,
@@ -98,20 +95,7 @@ export default function EmployeeEditForm({
     issues: ApiValidationIssue[];
   } | null>(null);
 
-  const regionQueries = useQueries({
-    queries: values.districtIds.map((districtId) => ({
-      queryKey: ["regions", districtId, "all"],
-      queryFn: () => getAllRegionsByDistrict(districtId),
-      enabled: Boolean(districtId),
-      staleTime: 1000 * 60 * 10,
-    })),
-  });
-  const regions = regionQueries
-    .flatMap((query) => query.data ?? [])
-    .filter(
-      (region, index, list) =>
-        list.findIndex((item) => item._id === region._id) === index,
-    );
+  const regions = regionsQuery.data ?? [];
   const regionsById = new Map(regions.map((region) => [region._id, region]));
   const availableDistrictIds = new Set(
     (districtsQuery.data ?? []).map((district) => district._id),
@@ -122,8 +106,8 @@ export default function EmployeeEditForm({
   const unresolvedRegionIds = values.regionIds.filter(
     (regionId) => !regionsById.has(regionId),
   );
-  const regionsLoading = regionQueries.some((query) => query.isLoading);
-  const regionsError = regionQueries.some((query) => query.isError);
+  const regionsLoading = regionsQuery.isLoading;
+  const regionsError = regionsQuery.isError;
   const locationsUnavailable =
     districtsQuery.isLoading || districtsQuery.isError || regionsLoading || regionsError;
 
@@ -136,17 +120,9 @@ export default function EmployeeEditForm({
   };
 
   const handleDistrictChange = (districtId: string, selected: boolean) => {
-    const regionIdsForDistrict = regions
-      .filter((region) => getDistrictId(region) === districtId)
-      .map((region) => region._id);
     setValues((current) => ({
       ...current,
       districtIds: selectionWithId(current.districtIds, districtId, selected),
-      regionIds: selected
-        ? current.regionIds
-        : current.regionIds.filter(
-            (regionId) => !regionIdsForDistrict.includes(regionId),
-          ),
     }));
     setServerError(null);
   };
@@ -192,9 +168,7 @@ export default function EmployeeEditForm({
 
   const retryLocationOptions = () => {
     if (districtsQuery.isError) void districtsQuery.refetch();
-    regionQueries.forEach((query) => {
-      if (query.isError) void query.refetch();
-    });
+    if (regionsQuery.isError) void regionsQuery.refetch();
   };
 
   return (
@@ -535,10 +509,4 @@ export default function EmployeeEditForm({
       </div>
     </form>
   );
-}
-
-function getDistrictId(region: Region) {
-  return typeof region.districtId === "string"
-    ? region.districtId
-    : region.districtId._id;
 }

@@ -1,5 +1,6 @@
 import Customer from "../modules/customers/customer.model.js";
 import { isCustomerVisibleJob } from "../modules/customers/customerAccess.js";
+import ATM from "../modules/atms/atm.model.js";
 import Employee from "../modules/employees/employee.model.js";
 import User from "../modules/users/user.model.js";
 
@@ -120,4 +121,18 @@ export const resolveATMRecipients = async (atm) => {
     ...(await activeAdminIds()),
     ...relationshipIds,
   ]);
+};
+
+export const resolveDistrictTransferRecipients = async (districtId) => {
+  const [atms, adminIds] = await Promise.all([
+    ATM.find({ districtId, isDeleted: false })
+      .select("assignedEmployeeId")
+      .lean(),
+    activeAdminIds(),
+  ]);
+  const relationshipIds = await employeeRelationshipUserIds(
+    atms.flatMap((atm) => atm.assignedEmployeeId ?? []),
+  );
+
+  return activeUserIds([...adminIds, ...relationshipIds]);
 };

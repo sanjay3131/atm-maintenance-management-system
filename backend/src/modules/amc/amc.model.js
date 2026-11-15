@@ -41,6 +41,20 @@ const amcSchema = new mongoose.Schema(
       ref: "District",
       default: null,
     },
+    regionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Region",
+      default: null,
+    },
+    geographySnapshot: {
+      bankId: { type: mongoose.Schema.Types.ObjectId, ref: "Bank" },
+      bankName: { type: String, trim: true },
+      regionId: { type: mongoose.Schema.Types.ObjectId, ref: "Region" },
+      regionName: { type: String, trim: true },
+      districtId: { type: mongoose.Schema.Types.ObjectId, ref: "District" },
+      districtName: { type: String, trim: true },
+      capturedAt: { type: Date },
+    },
 
     month: {
       type: Number,
@@ -158,6 +172,7 @@ amcSchema.index({ supervisorId: 1, status: 1 });
 amcSchema.index({ customerId: 1, status: 1 });
 amcSchema.index({ bankId: 1, status: 1 });
 amcSchema.index({ districtId: 1, status: 1 });
+amcSchema.index({ regionId: 1, status: 1 });
 amcSchema.index({ isDeleted: 1 });
 
 const AMC = mongoose.model("AMC", amcSchema);

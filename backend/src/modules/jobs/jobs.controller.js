@@ -30,6 +30,8 @@ import {
 } from "../complaints/complaintJobIntegrity.service.js";
 import { myJobPerformanceQuerySchema } from "./jobs.validation.js";
 import { getJobPerformanceForUser } from "./jobPerformance.service.js";
+import { captureATMGeographySnapshot } from "../../utils/geographySnapshot.js";
+import { withDistrictGeographyFence } from "../districts/districtGeography.service.js";
 import {
   publishDomainEventSafely,
 } from "../../realtime/domain-events.js";
@@ -306,35 +308,44 @@ export const createJob = asyncHandler(async (req, res) => {
 
   const atm = await ATM.findById(atmId);
   if (!atm || atm.isDeleted) throw new ApiError(404, "ATM not found");
-  const atmCustomerId = atm.customer?._id ?? atm.customer;
-  if (customerId) {
-    if (!sameCustomerId(customerId, atmCustomerId)) {
-      throw new ApiError(400, "Customer must match the ATM's assigned customer");
-    }
-  }
-
   const jobId = await generateJobId();
 
-  const jobData = {
-    jobId,
-    jobNumber: jobId,
-    title,
-    description,
-    atmId,
-    complaintId,
-    customerId: atmCustomerId,
-    workType: workType || "repair",
-    ...(acSubType ? { acSubType } : {}),
-    priority: priority || "medium",
-    status: JOB_STATUS.PENDING,
-    createdBy: req.user._id,
-  };
-  const job = complaintId
-    ? await createJobWithComplaint({
+  const job = await withDistrictGeographyFence([atm.districtId], async (session) => {
+    const currentATM = await ATM.findById(atmId).session(session);
+    if (!currentATM || currentATM.isDeleted) throw new ApiError(404, "ATM not found");
+    if (String(currentATM.districtId) !== String(atm.districtId)) {
+      throw new ApiError(409, "ATM geography changed; retry job creation");
+    }
+
+    const atmCustomerId = currentATM.customer?._id ?? currentATM.customer;
+    if (customerId && !sameCustomerId(customerId, atmCustomerId)) {
+      throw new ApiError(400, "Customer must match the ATM's assigned customer");
+    }
+    const jobData = {
+      jobId,
+      jobNumber: jobId,
+      title,
+      description,
+      atmId,
+      complaintId,
+      customerId: atmCustomerId,
+      geographySnapshot: await captureATMGeographySnapshot(currentATM, session),
+      workType: workType || "repair",
+      ...(acSubType ? { acSubType } : {}),
+      priority: priority || "medium",
+      status: JOB_STATUS.PENDING,
+      createdBy: req.user._id,
+    };
+    if (complaintId) {
+      return createJobWithComplaint({
         jobData,
         updatedBy: req.user._id,
-      })
-    : await Job.create(jobData);
+        session,
+      });
+    }
+    const [createdJob] = await Job.create([jobData], { session });
+    return createdJob;
+  });
 
   await logJobHistory({
     jobId: job._id,

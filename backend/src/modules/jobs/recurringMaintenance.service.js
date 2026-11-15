@@ -14,6 +14,8 @@ import {
 } from "./recurringMaintenance.utils.js";
 import { publishDomainEventSafely } from "../../realtime/domain-events.js";
 import { resolveJobRecipients } from "../../realtime/recipient-resolver.js";
+import { captureATMGeographySnapshot } from "../../utils/geographySnapshot.js";
+import { withDistrictGeographyFence } from "../districts/districtGeography.service.js";
 
 const NON_DUE_JOB_STATUSES = [
   JOB_STATUS.COMPLETED,
@@ -98,22 +100,26 @@ const addSkip = (result, counter, plan, atmId, reason) => {
 
 const normalizeId = (id) => String(id?._id ?? id ?? "").toLowerCase();
 
-const validatePlanEmployee = async (atmId, employeeId) => {
+const validatePlanEmployee = async (atmId, employeeId, session) => {
   if (!employeeId) {
     throw new ApiError(400, "An Employee must be selected for the recurring plan");
   }
 
-  const atm = await ATM.findOne({
+  const atmQuery = ATM.findOne({
     _id: atmId,
     isDeleted: false,
     status: { $in: ["ACTIVE", "UNDER_MAINTENANCE"] },
-  }).select("_id assignedEmployeeId");
+  }).select("_id districtId assignedEmployeeId");
+  if (session) atmQuery.session(session);
+  const atm = await atmQuery;
   if (!atm) throw new ApiError(404, "Active ATM not found");
 
-  const employee = await Employee.findById(employeeId).populate(
+  const employeeQuery = Employee.findById(employeeId).populate(
     "userId",
     "userType status",
   );
+  if (session) employeeQuery.session(session);
+  const employee = await employeeQuery;
   if (!employee) throw new ApiError(404, "Employee not found");
   if (employee.status !== "active") {
     throw new ApiError(400, "Employee is inactive");
@@ -139,17 +145,19 @@ const validatePlanEmployee = async (atmId, employeeId) => {
   return employee;
 };
 
-const validateGeneratedPlanEmployee = async (plan, atm) => {
+const validateGeneratedPlanEmployee = async (plan, atm, session) => {
   if (!plan.assignedEmployeeId) {
     return {
       counter: "skippedNoSelectedEmployee",
       reason: "Recurring plan has no Employee selected",
     };
   }
-  const employee = await Employee.findById(plan.assignedEmployeeId).populate(
+  const employeeQuery = Employee.findById(plan.assignedEmployeeId).populate(
     "userId",
     "userType status",
   );
+  if (session) employeeQuery.session(session);
+  const employee = await employeeQuery;
   if (!employee) {
     return {
       counter: "skippedInactiveEmployee",
@@ -194,7 +202,7 @@ const validateGeneratedPlanEmployee = async (plan, atm) => {
   return { employee };
 };
 
-const addJobHistory = async (job, createdBy, atm, maintenanceType) => {
+const addJobHistory = async (job, createdBy, atm, maintenanceType, session) => {
   await JobHistory.create([
     {
       jobId: job._id,
@@ -220,7 +228,7 @@ const addJobHistory = async (job, createdBy, atm, maintenanceType) => {
         source: "RECURRING",
       },
     },
-  ]);
+  ], { session });
 };
 
 export const generateRecurringJobs = async ({
@@ -334,29 +342,82 @@ export const generateRecurringJobs = async ({
 
       let job;
       try {
-        job = await Job.create({
-          jobId: jobNumber,
-          jobNumber,
-          title,
-          description: `${description} ATM: ${atm.atmId}. Occurrence: ${businessDate.dateKey}.`,
-          atmId: atm._id,
-          customerId: atm.customer || undefined,
-          workType: "maintenance",
-          priority: "medium",
-          status: JOB_STATUS.ASSIGNED,
-          assignedEmployeeId: assignedEmployee.userId._id,
-          assignedBy: adminId,
-          assignedAt: now,
-          createdBy: adminId,
-          recurringMaintenance: {
-            source: "RECURRING",
-            planId: plan._id,
-            maintenanceType: plan.maintenanceType,
-            occurrenceKey,
-            scheduledDate: dayStart,
-            dueAt: dayEnd,
+        const creation = await withDistrictGeographyFence(
+          [atm.districtId],
+          async (session) => {
+            const currentPlan = await RecurringMaintenancePlan.findOne({
+              _id: plan._id,
+              isActive: true,
+            }).session(session);
+            const currentATM = await ATM.findOne({
+              _id: atm._id,
+              isDeleted: false,
+            }).session(session);
+            if (!currentPlan || !currentATM) return { skipped: true };
+            if (String(currentATM.districtId) !== String(atm.districtId)) {
+              throw new ApiError(409, "ATM geography changed during recurring job generation");
+            }
+            const currentEligibility = await validateGeneratedPlanEmployee(
+              currentPlan,
+              currentATM,
+              session,
+            );
+            if (!currentEligibility.employee) {
+              return {
+                skipped: true,
+                counter: currentEligibility.counter,
+                reason: currentEligibility.reason,
+              };
+            }
+            const currentEmployee = currentEligibility.employee;
+            const snapshot = await captureATMGeographySnapshot(currentATM, session);
+            const [createdJob] = await Job.create(
+              [{
+                jobId: jobNumber,
+                jobNumber,
+                title,
+                description: `${description} ATM: ${currentATM.atmId}. Occurrence: ${businessDate.dateKey}.`,
+                atmId: currentATM._id,
+                customerId: currentATM.customer || undefined,
+                geographySnapshot: snapshot,
+                workType: "maintenance",
+                priority: "medium",
+                status: JOB_STATUS.ASSIGNED,
+                assignedEmployeeId: currentEmployee.userId._id,
+                assignedBy: adminId,
+                assignedAt: now,
+                createdBy: adminId,
+                recurringMaintenance: {
+                  source: "RECURRING",
+                  planId: currentPlan._id,
+                  maintenanceType: currentPlan.maintenanceType,
+                  occurrenceKey,
+                  scheduledDate: dayStart,
+                  dueAt: dayEnd,
+                },
+              }],
+              { session },
+            );
+            await addJobHistory(
+              createdJob,
+              adminId,
+              currentATM,
+              currentPlan.maintenanceType,
+              session,
+            );
+            return { job: createdJob, atm: currentATM };
           },
-        });
+        );
+        if (creation.skipped) {
+          if (creation.counter) {
+            addSkip(result, creation.counter, plan, atm._id, creation.reason);
+          } else {
+            result.skippedNotStarted++;
+          }
+          continue;
+        }
+        job = creation.job;
+        generatedJobs.push(job);
       } catch (error) {
         if (
           error.code === 11000 &&
@@ -371,17 +432,6 @@ export const generateRecurringJobs = async ({
       }
 
       result.created++;
-      try {
-        await addJobHistory(job, adminId, atm, plan.maintenanceType);
-      } catch (error) {
-        result.errors.push({
-          planId: plan._id.toString(),
-          atmId: atm.atmId,
-          jobId: job._id.toString(),
-          error: `Job created but history could not be recorded: ${error.message}`,
-        });
-      }
-      generatedJobs.push(job);
       if (generatedJobs.length === REALTIME_PUBLISH_CONCURRENCY) {
         await publishGeneratedJobEvents(
           generatedJobs.splice(0),
@@ -441,12 +491,35 @@ export const getRecurringMaintenancePlans = async () =>
     .sort({ createdAt: -1 });
 
 export const createRecurringMaintenancePlan = async (planData, createdBy) => {
-  await validatePlanEmployee(planData.atmId, planData.assignedEmployeeId);
-
   try {
-    return await RecurringMaintenancePlan.create({
-      ...planData,
-      createdBy,
+    const atm = await ATM.findOne({
+      _id: planData.atmId,
+      isDeleted: false,
+      status: { $in: ["ACTIVE", "UNDER_MAINTENANCE"] },
+    }).select("_id districtId");
+    if (!atm) throw new ApiError(404, "Active ATM not found");
+
+    return await withDistrictGeographyFence([atm.districtId], async (session) => {
+      const currentATM = await ATM.findOne({
+        _id: planData.atmId,
+        isDeleted: false,
+        status: { $in: ["ACTIVE", "UNDER_MAINTENANCE"] },
+      })
+        .select("_id districtId")
+        .session(session);
+      if (!currentATM) throw new ApiError(404, "Active ATM not found");
+      if (String(currentATM.districtId) !== String(atm.districtId)) {
+        throw new ApiError(409, "ATM geography changed; retry plan creation");
+      }
+
+      await validatePlanEmployee(planData.atmId, planData.assignedEmployeeId, session);
+      const fullATM = await ATM.findById(planData.atmId).session(session);
+      const geographySnapshot = await captureATMGeographySnapshot(fullATM, session);
+      const [plan] = await RecurringMaintenancePlan.create(
+        [{ ...planData, geographySnapshot, createdBy }],
+        { session },
+      );
+      return plan;
     });
   } catch (error) {
     if (error.code === 11000) {
@@ -466,28 +539,48 @@ export const updateRecurringMaintenancePlan = async (
 ) => {
   const plan = await RecurringMaintenancePlan.findById(planId);
   if (!plan) return null;
+  const atm = await ATM.findById(plan.atmId).select("_id districtId");
+  if (!atm) throw new ApiError(404, "ATM not found");
 
-  const newDayOfWeek = Object.hasOwn(updates, "dayOfWeek")
-    ? updates.dayOfWeek
-    : plan.dayOfWeek;
-  if (
-    plan.maintenanceType === "WEEKLY_MOPPING" &&
-    (newDayOfWeek == null || newDayOfWeek < 0 || newDayOfWeek > 6)
-  ) {
-    throw new ApiError(
-      400,
-      "A weekday between 0 (Sunday) and 6 (Saturday) is required",
+  return withDistrictGeographyFence([atm.districtId], async (session) => {
+    const currentPlan = await RecurringMaintenancePlan.findById(planId).session(
+      session,
     );
-  }
-  if (plan.maintenanceType === "DAILY_CLEANING" && newDayOfWeek != null) {
-    throw new ApiError(400, "Daily cleaning cannot have a weekday");
-  }
+    if (!currentPlan) return null;
+    const currentATM = await ATM.findById(currentPlan.atmId)
+      .select("_id districtId")
+      .session(session);
+    if (!currentATM) throw new ApiError(404, "ATM not found");
+    if (String(currentATM.districtId) !== String(atm.districtId)) {
+      throw new ApiError(409, "ATM geography changed; retry plan update");
+    }
 
-  if (Object.hasOwn(updates, "assignedEmployeeId")) {
-    await validatePlanEmployee(plan.atmId, updates.assignedEmployeeId);
-  }
+    const newDayOfWeek = Object.hasOwn(updates, "dayOfWeek")
+      ? updates.dayOfWeek
+      : currentPlan.dayOfWeek;
+    if (
+      currentPlan.maintenanceType === "WEEKLY_MOPPING" &&
+      (newDayOfWeek == null || newDayOfWeek < 0 || newDayOfWeek > 6)
+    ) {
+      throw new ApiError(
+        400,
+        "A weekday between 0 (Sunday) and 6 (Saturday) is required",
+      );
+    }
+    if (currentPlan.maintenanceType === "DAILY_CLEANING" && newDayOfWeek != null) {
+      throw new ApiError(400, "Daily cleaning cannot have a weekday");
+    }
 
-  Object.assign(plan, updates, { updatedBy });
-  await plan.save();
-  return plan;
+    if (updates.isActive === true || Object.hasOwn(updates, "assignedEmployeeId")) {
+      await validatePlanEmployee(
+        currentPlan.atmId,
+        updates.assignedEmployeeId ?? currentPlan.assignedEmployeeId,
+        session,
+      );
+    }
+
+    Object.assign(currentPlan, updates, { updatedBy });
+    await currentPlan.save({ session });
+    return currentPlan;
+  });
 };

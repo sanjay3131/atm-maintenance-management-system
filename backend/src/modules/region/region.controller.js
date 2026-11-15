@@ -1,224 +1,152 @@
 import asyncHandler from "../../utils/asyncHandler.js";
 import ApiError from "../../utils/ApiError.js";
 import ApiResponse from "../../utils/ApiResponse.js";
-import Region from "./region.model.js";
+import Bank from "../banks/bank.model.js";
 import District from "../districts/district.models.js";
+import Region from "./region.model.js";
+
+const isDuplicateKey = (error) => error?.code === 11000;
+const isBankScopedRegionDuplicate = (error) => {
+  const keyPattern = error?.keyPattern ?? {};
+  const indexName = `${error?.index ?? ""} ${error?.message ?? ""}`;
+  return (
+    (keyPattern.bankId && (keyPattern.name || keyPattern.code)) ||
+    indexName.includes("bankId_1_name_1") ||
+    indexName.includes("bankId_1_code_1")
+  );
+};
+
+const throwRegionDuplicateError = (error) => {
+  if (!isDuplicateKey(error)) throw error;
+  throw new ApiError(
+    409,
+    isBankScopedRegionDuplicate(error)
+      ? "Region name or code already exists in this bank"
+      : "Region index conflict; verify the installed geography indexes",
+  );
+};
 
 export const createRegion = asyncHandler(async (req, res) => {
-  const { districtId, name, code, description, isActive = true } = req.body;
+  const { bankId, name, code, description, isActive = true } = req.body;
+  const bank = await Bank.findById(bankId).select("_id isActive");
+  if (!bank) throw new ApiError(404, "Bank not found");
+  if (!bank.isActive) throw new ApiError(400, "Cannot add a region to an inactive bank");
 
-  const district = await District.findById(districtId);
-
-  if (!district) {
-    throw new ApiError(404, "District not found");
-  }
-
-  const existingRegion = await Region.findOne({ districtId, name });
-
-  if (existingRegion) {
-    throw new ApiError(
-      409,
-      "Region with this name already exists in this district",
-    );
-  }
-
-  if (code) {
-    const duplicateCode = await Region.findOne({
-      districtId,
-      code: code.toUpperCase(),
+  try {
+    const region = await Region.create({
+      bankId,
+      geographyStatus: "MAPPED",
+      name,
+      code: code?.toUpperCase() || undefined,
+      description: description || "",
+      isActive,
+      createdBy: req.user._id,
     });
-
-    if (duplicateCode) {
-      throw new ApiError(
-        409,
-        "Region with this code already exists in this district",
-      );
-    }
+    return res
+      .status(201)
+      .json(new ApiResponse(201, region, "Region created successfully"));
+  } catch (error) {
+    throwRegionDuplicateError(error);
   }
-
-  const region = await Region.create({
-    districtId,
-    name,
-    code: code ? code.toUpperCase() : undefined,
-    description: description || "",
-    isActive,
-    createdBy: req.user._id,
-  });
-
-  await District.findByIdAndUpdate(
-    districtId,
-    {
-      $addToSet: { regions: region._id },
-    },
-    { new: true },
-  );
-
-  return res
-    .status(201)
-    .json(new ApiResponse(201, region, "Region created successfully"));
 });
 
 export const getAllRegions = asyncHandler(async (req, res) => {
-  const regions = await Region.find({ isActive: true })
-    .populate("districtId", "districtName pinCode state")
+  const query =
+    req.query.includeInactive === "true"
+      ? {}
+      : { isActive: true, geographyStatus: "MAPPED" };
+  const regions = await Region.find(query)
+    .populate("bankId", "bankName bankCode")
     .sort({ name: 1 });
+  return res
+    .status(200)
+    .json(new ApiResponse(200, regions, "Regions retrieved successfully"));
+});
 
+export const getRegionsByBank = asyncHandler(async (req, res) => {
+  const { bankId } = req.params;
+  const bank = await Bank.findById(bankId).select("_id");
+  if (!bank) throw new ApiError(404, "Bank not found");
+
+  const query = { bankId };
+  if (req.query.includeInactive !== "true") {
+    query.isActive = true;
+    query.geographyStatus = "MAPPED";
+  }
+  const regions = await Region.find(query).populate("bankId", "bankName bankCode").sort({ name: 1 });
   return res
     .status(200)
     .json(new ApiResponse(200, regions, "Regions retrieved successfully"));
 });
 
 export const getRegionById = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-
-  const region = await Region.findById(id).populate(
-    "districtId",
-    "districtName pinCode state",
+  const region = await Region.findById(req.params.id).populate(
+    "bankId",
+    "bankName bankCode",
   );
-
-  if (!region) {
-    throw new ApiError(404, "Region not found");
-  }
-
+  if (!region) throw new ApiError(404, "Region not found");
   return res
     .status(200)
     .json(new ApiResponse(200, region, "Region retrieved successfully"));
 });
 
-export const getRegionsByDistrict = asyncHandler(async (req, res) => {
-  const { districtId } = req.params;
-
-  const district = await District.findById(districtId);
-
-  if (!district) {
-    throw new ApiError(404, "District not found");
-  }
-
-  const regions = await Region.find({ districtId, isActive: true })
-    .populate("districtId", "districtName pinCode state")
-    .sort({ name: 1 });
-
-  return res
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        regions,
-        "Regions for district retrieved successfully",
-      ),
-    );
-});
-
-export const getAllRegionsByDistrict = asyncHandler(async (req, res) => {
-  const { districtId } = req.params;
-
-  const district = await District.findById(districtId);
-
-  if (!district) {
-    throw new ApiError(404, "District not found");
-  }
-
-  const regions = await Region.find({ districtId })
-    .populate("districtId", "districtName pinCode state")
-    .sort({ name: 1 });
-
-  return res
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        regions,
-        "All regions for district retrieved successfully",
-      ),
-    );
-});
-
 export const updateRegion = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { name, code, description, isActive } = req.body;
-
-  const region = await Region.findById(id);
-
-  if (!region) {
-    throw new ApiError(404, "Region not found");
+  const region = await Region.findById(req.params.id);
+  if (!region) throw new ApiError(404, "Region not found");
+  if (
+    req.body.isActive === true &&
+    (!region.bankId || region.geographyStatus !== "MAPPED")
+  ) {
+    throw new ApiError(409, "Map the region to a bank before activating it");
   }
 
-  if (name && name !== region.name) {
-    const duplicateName = await Region.findOne({
-      districtId: region.districtId,
-      name,
-    });
+  Object.assign(region, req.body);
+  if (req.body.code !== undefined) region.code = req.body.code.toUpperCase() || undefined;
+  region.updatedBy = req.user._id;
 
-    if (
-      duplicateName &&
-      duplicateName._id.toString() !== region._id.toString()
-    ) {
-      throw new ApiError(
-        409,
-        "Region with this name already exists in this district",
-      );
-    }
+  try {
+    await region.save();
+  } catch (error) {
+    throwRegionDuplicateError(error);
   }
+  await region.populate("bankId", "bankName bankCode");
+  return res
+    .status(200)
+    .json(new ApiResponse(200, region, "Region updated successfully"));
+});
 
-  if (code && code.toUpperCase() !== (region.code || "")) {
-    const duplicateCode = await Region.findOne({
-      districtId: region.districtId,
-      code: code.toUpperCase(),
-    });
-
-    if (
-      duplicateCode &&
-      duplicateCode._id.toString() !== region._id.toString()
-    ) {
-      throw new ApiError(
-        409,
-        "Region with this code already exists in this district",
-      );
-    }
-  }
-
-  const updatedRegion = await Region.findByIdAndUpdate(
-    id,
-    {
-      ...(name && { name }),
-      ...(code && { code: code.toUpperCase() }),
-      ...(typeof description === "string" && { description }),
-      ...(typeof isActive === "boolean" && { isActive }),
-      updatedBy: req.user._id,
-    },
+export const deactivateRegion = asyncHandler(async (req, res) => {
+  const region = await Region.findByIdAndUpdate(
+    req.params.id,
+    { $set: { isActive: false, updatedBy: req.user._id } },
     { new: true, runValidators: true },
-  ).populate("districtId", "districtName pinCode state");
-
-  return res
-    .status(200)
-    .json(new ApiResponse(200, updatedRegion, "Region updated successfully"));
-});
-
-export const deleteRegion = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-
-  const region = await Region.findOneAndUpdate(
-    { _id: id, isActive: true },
-    {
-      isActive: false,
-      updatedBy: req.user._id,
-    },
-    { new: true },
   );
-
-  if (!region) {
-    throw new ApiError(404, "Region not found");
-  }
-
-  //   await District.findByIdAndUpdate(
-  //     region.districtId,
-  //     {
-  //       $pull: { regions: region._id },
-  //     },
-  //     { new: true },
-  //   );
-
+  if (!region) throw new ApiError(404, "Region not found");
   return res
     .status(200)
-    .json(new ApiResponse(200, region, "Region deleted successfully"));
+    .json(new ApiResponse(200, region, "Region deactivated successfully"));
 });
+
+const listDistrictParentRegion = async (req, res, includeInactive) => {
+  const district = await District.findById(req.params.districtId).select("regionId");
+  if (!district) throw new ApiError(404, "District not found");
+  const region = district.regionId
+    ? await Region.findById(district.regionId).populate("bankId", "bankName bankCode")
+    : null;
+  const result = region && (includeInactive || region.isActive)
+    ? [region]
+    : [];
+  return res
+    .status(200)
+    .json(new ApiResponse(200, result, "District's parent region retrieved successfully"));
+};
+
+export const listRegionsByDistrict = asyncHandler((req, res) =>
+  listDistrictParentRegion(req, res, false),
+);
+export const listAllRegionsByDistrict = asyncHandler((req, res) =>
+  listDistrictParentRegion(req, res, true),
+);
+export const getRegionsByDistrict = listRegionsByDistrict;
+export const getAllRegionsByDistrict = listAllRegionsByDistrict;
+export const deleteRegion = deactivateRegion;

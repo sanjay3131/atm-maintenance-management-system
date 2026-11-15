@@ -99,10 +99,9 @@ export interface MyEmployeeProfile {
   regions: Array<{
     name: string;
     code?: string;
-    district: {
-      districtName: string;
-      pinCode: string;
-      state?: string;
+    bank: {
+      bankName: string;
+      bankCode?: string;
     } | null;
   }>;
   assignedAtms: Array<{

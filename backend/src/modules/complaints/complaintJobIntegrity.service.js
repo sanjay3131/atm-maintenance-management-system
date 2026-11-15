@@ -146,8 +146,9 @@ export const unlinkComplaintAndJob = async ({ complaintId, updatedBy }) =>
 export const createJobWithComplaint = async ({
   jobData,
   updatedBy,
-}) =>
-  withComplaintJobTransaction(async (session) => {
+  session: existingSession,
+}) => {
+  const operation = async (session) => {
     const complaint = await findActiveComplaint(jobData.complaintId, session);
     if (["CLOSED", "CANCELLED"].includes(complaint.status)) {
       throw new ApiError(
@@ -168,7 +169,12 @@ export const createJobWithComplaint = async ({
     complaint.updatedBy = updatedBy;
     await complaint.save({ session });
     return job;
-  });
+  };
+
+  return existingSession
+    ? operation(existingSession)
+    : withComplaintJobTransaction(operation);
+};
 
 export const closeJobAndComplaint = async ({ jobId, closedBy }) =>
   withComplaintJobTransaction(async (session) => {

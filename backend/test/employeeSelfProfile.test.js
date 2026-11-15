@@ -100,10 +100,10 @@ test("employee self-profile resolves the authenticated User to a safe readable E
         _id: "64b000000000000000000011",
         name: "Central Region",
         code: "CTR",
-        districtId: {
-          _id: "64b000000000000000000010",
-          districtName: "Central",
-          pinCode: "560001",
+        bankId: {
+          _id: "64b000000000000000000020",
+          bankName: "Example Bank",
+          bankCode: "EX",
         },
       },
     ],
@@ -163,9 +163,9 @@ test("employee self-profile resolves the authenticated User to a safe readable E
         {
           name: "Central Region",
           code: "CTR",
-          district: {
-            districtName: "Central",
-            pinCode: "560001",
+          bank: {
+            bankName: "Example Bank",
+            bankCode: "EX",
           },
         },
       ]);

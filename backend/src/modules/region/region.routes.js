@@ -1,72 +1,54 @@
 import express from "express";
 import {
   createRegion,
-  deleteRegion,
-  getAllRegionsByDistrict,
+  deactivateRegion,
   getAllRegions,
+  getAllRegionsByDistrict,
   getRegionById,
+  getRegionsByBank,
   getRegionsByDistrict,
   updateRegion,
 } from "./region.controller.js";
 import {
   createRegionSchema,
+  regionBankParamsSchema,
+  regionDistrictParamsSchema,
+  regionIdParamsSchema,
+  regionListQuerySchema,
   updateRegionSchema,
-  validateRequest,
 } from "./region.validate.js";
 import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
 import { authorizeRoles } from "../../middlewares/role.middleware.js";
+import { validateRequest } from "../../middlewares/validate.middleware.js";
 
 const router = express.Router();
+router.use(verifyAccessToken, authorizeRoles("admin", "superAdmin"));
 
-router.post(
-  "/",
-  validateRequest(createRegionSchema),
-  verifyAccessToken,
-  authorizeRoles("admin", "superAdmin"),
-  createRegion,
-);
-
+router.post("/", validateRequest(createRegionSchema), createRegion);
+router.get("/", validateRequest(regionListQuerySchema, "query"), getAllRegions);
+router.get("/:id", validateRequest(regionIdParamsSchema, "params"), getRegionById);
 router.get(
-  "/",
-  verifyAccessToken,
-  authorizeRoles("admin", "superAdmin"),
-  getAllRegions,
+  "/bank/:bankId",
+  validateRequest(regionBankParamsSchema, "params"),
+  validateRequest(regionListQuerySchema, "query"),
+  getRegionsByBank,
 );
-
 router.get(
   "/district/:districtId",
-  verifyAccessToken,
-  authorizeRoles("admin", "superAdmin"),
+  validateRequest(regionDistrictParamsSchema, "params"),
   getRegionsByDistrict,
 );
-
 router.get(
   "/district/:districtId/all",
-  verifyAccessToken,
-  authorizeRoles("admin", "superAdmin"),
+  validateRequest(regionDistrictParamsSchema, "params"),
   getAllRegionsByDistrict,
 );
-
-router.get(
-  "/:id",
-  verifyAccessToken,
-  authorizeRoles("admin", "superAdmin"),
-  getRegionById,
-);
-
 router.patch(
   "/:id",
+  validateRequest(regionIdParamsSchema, "params"),
   validateRequest(updateRegionSchema),
-  verifyAccessToken,
-  authorizeRoles("admin", "superAdmin"),
   updateRegion,
 );
-
-router.delete(
-  "/:id",
-  verifyAccessToken,
-  authorizeRoles("admin", "superAdmin"),
-  deleteRegion,
-);
+router.delete("/:id", validateRequest(regionIdParamsSchema, "params"), deactivateRegion);
 
 export default router;

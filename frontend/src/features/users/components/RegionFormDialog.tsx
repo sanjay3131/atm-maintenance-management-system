@@ -29,19 +29,19 @@ function getErrorMessage(error: unknown) {
 
 export default function RegionFormDialog({
   open,
-  districtId,
+  bankId,
   region,
   onOpenChange,
   onSaved,
 }: {
   open: boolean;
-  districtId: string;
+  bankId: string;
   region: Region | null;
   onOpenChange: (open: boolean) => void;
   onSaved?: (region: Region) => void;
 }) {
-  const createMutation = useCreateRegion(districtId);
-  const updateMutation = useUpdateRegion(districtId);
+  const createMutation = useCreateRegion(bankId);
+  const updateMutation = useUpdateRegion(bankId);
   const isPending = createMutation.isPending || updateMutation.isPending;
   const {
     register,
@@ -82,7 +82,7 @@ export default function RegionFormDialog({
             regionId: region._id,
             data,
           })
-        : await createMutation.mutateAsync({ districtId, ...data });
+        : await createMutation.mutateAsync({ bankId, ...data });
       toast.success(
         region
           ? "Region updated successfully."
@@ -115,7 +115,7 @@ export default function RegionFormDialog({
           <DialogDescription>
             {region
               ? "Update this region's information."
-              : "Add a region to this district."}
+              : "Add a region to this bank."}
           </DialogDescription>
         </div>
         <form onSubmit={handleSubmit(onSubmit)} className="mt-5 space-y-4">

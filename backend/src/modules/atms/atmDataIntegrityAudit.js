@@ -50,6 +50,7 @@ export const classifyATMDataIntegrity = ({
   atms,
   districts,
   regions,
+  banks = [],
   employees,
   users = [],
   customers,
@@ -61,6 +62,7 @@ export const classifyATMDataIntegrity = ({
     atms,
     districts,
     regions,
+    banks,
     employees,
     users,
     customers,
@@ -93,19 +95,50 @@ export const classifyATMDataIntegrity = ({
 
   const districtById = mapById(districts);
   const regionById = mapById(regions);
+  const bankById = mapById(banks);
   const employeeById = mapById(employees);
   const userById = mapById(users);
   const customerById = mapById(customers);
   const atmById = mapById(atms);
-  const activeRegionCounts = new Map();
   for (const region of regions) {
-    if (region.isActive !== true) continue;
-    const districtKey = keyOf(region.districtId);
-    if (districtKey) {
-      activeRegionCounts.set(
-        districtKey,
-        (activeRegionCounts.get(districtKey) ?? 0) + 1,
-      );
+    const bankValue = hasField(region, "bankId") ? region.bankId : null;
+    const bankKey = keyOf(bankValue);
+    if (bankValue == null) {
+      report("region_bank_missing", region);
+    } else if (!bankKey) {
+      report("region_bank_malformed", region);
+    } else if (!bankById.has(bankKey)) {
+      report("region_bank_dangling", region, [bankValue]);
+    }
+  }
+
+  for (const district of districts) {
+    const regionValue = hasField(district, "regionId") ? district.regionId : null;
+    const regionKey = keyOf(regionValue);
+    if (regionValue == null) {
+      report("district_region_missing", district);
+    } else if (!regionKey) {
+      report("district_region_malformed", district, [regionValue]);
+    } else if (!regionById.has(regionKey)) {
+      report("district_region_dangling", district, [regionValue]);
+    }
+
+    const bankValue = hasField(district, "bankId") ? district.bankId : null;
+    const bankKey = keyOf(bankValue);
+    if (bankValue == null) {
+      report("district_bank_missing", district);
+    } else if (!bankKey) {
+      report("district_bank_malformed", district, [bankValue]);
+    } else if (!bankById.has(bankKey)) {
+      report("district_bank_dangling", district, [bankValue]);
+    }
+    const region = regionKey && regionById.get(regionKey);
+    const regionBankKey = keyOf(region?.bankId);
+    if (region && bankKey && regionBankKey && bankKey !== regionBankKey) {
+      report("district_region_bank_mismatch", district, [
+        regionValue,
+        region.bankId,
+      ]);
     }
   }
 
@@ -124,6 +157,15 @@ export const classifyATMDataIntegrity = ({
     );
     const districtValue = districtValues[0];
     const districtKey = keyOf(districtValue);
+    const bankValue = hasField(atm, "bankId") ? atm.bankId : null;
+    const bankKey = keyOf(bankValue);
+    if (bankValue == null) {
+      report("atm_bank_missing", atm);
+    } else if (!bankKey) {
+      report("atm_bank_malformed", atm, [bankValue]);
+    } else if (!bankById.has(bankKey)) {
+      report("atm_bank_dangling", atm, [bankValue]);
+    }
     if (districtValue != null && !districtKey) {
       report("atm_district_malformed", atm);
     } else if (districtKey && !districtById.has(districtKey)) {
@@ -145,32 +187,38 @@ export const classifyATMDataIntegrity = ({
         } else if (region.isActive !== true) {
           report("atm_region_active_status_unknown", atm, [regionValue], "manual-review");
         }
-        const regionDistrictKey = keyOf(region.districtId);
-        if (districtKey && regionDistrictKey && regionDistrictKey !== districtKey) {
+        const districtRegionKey = keyOf(districtById.get(districtKey)?.regionId);
+        if (districtKey && districtRegionKey && districtRegionKey !== regionKey) {
           report("atm_region_district_mismatch", atm, [
             regionValue,
-            region.districtId,
+            districtById.get(districtKey).regionId,
           ]);
         }
-        if (
-          districtExists &&
-          (activeRegionCounts.get(districtKey) ?? 0) === 0
-        ) {
+        if (districtExists && !districtRegionKey) {
           report(
-            "atm_has_region_but_district_has_no_active_regions",
+            "atm_has_region_but_district_has_no_region",
             atm,
             [regionValue, districtValue],
           );
         }
+        if (bankKey && keyOf(region.bankId) && bankKey !== keyOf(region.bankId)) {
+          report("atm_bank_region_mismatch", atm, [bankValue, region.bankId]);
+        }
+        const district = districtById.get(districtKey);
+        if (
+          bankKey &&
+          district &&
+          keyOf(district.bankId) &&
+          bankKey !== keyOf(district.bankId)
+        ) {
+          report("atm_bank_district_mismatch", atm, [bankValue, district.bankId]);
+        }
       }
-    } else if (
-      districtExists &&
-      (activeRegionCounts.get(districtKey) ?? 0) > 0
-    ) {
+    } else if (districtExists && keyOf(districtById.get(districtKey).regionId)) {
       report(
-        "atm_has_no_region_but_district_has_active_regions",
+        "atm_has_no_region_but_district_has_region",
         atm,
-        [districtValue],
+        [districtValue, districtById.get(districtKey).regionId],
       );
     }
 

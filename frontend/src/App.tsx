@@ -39,6 +39,7 @@ import BankDetailPage from "@/pages/admin/BankDetailPage";
 import DistrictsPage from "@/pages/admin/DistrictsPage";
 import DistrictDetailPage from "@/pages/admin/DistrictDetailPage";
 import RegionDetailPage from "@/pages/admin/RegionDetailPage";
+import RegionsPage from "@/pages/admin/RegionsPage";
 import CustomersPage from "@/pages/admin/CustomersPage";
 import CustomerDetailsPage from "@/pages/admin/CustomerDetailsPage";
 import ItemsPage from "@/pages/admin/ItemsPage";
@@ -108,6 +109,7 @@ export default function App() {
             />
             <Route path="/admin/banks" element={<BanksPage />} />
             <Route path="/admin/banks/:bankId" element={<BankDetailPage />} />
+            <Route path="/admin/regions" element={<RegionsPage />} />
             <Route path="/admin/districts" element={<DistrictsPage />} />
             <Route
               path="/admin/districts/:districtId"

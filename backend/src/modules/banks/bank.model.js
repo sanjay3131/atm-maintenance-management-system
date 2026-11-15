@@ -6,13 +6,11 @@ const bankSchema = new mongoose.Schema(
       type: String,
       required: [true, "Bank name is required"],
       trim: true,
-      unique: true,
     },
     bankCode: {
       type: String,
       required: [true, "Bank code is required"],
       trim: true,
-      unique: true,
       uppercase: true,
     },
     contactEmail: {
@@ -47,8 +45,7 @@ const bankSchema = new mongoose.Schema(
   },
 );
 
-// Indexes
-bankSchema.index({ bankName: 1 });
+bankSchema.index({ bankName: 1 }, { unique: true });
 bankSchema.index({ bankCode: 1 }, { unique: true });
 bankSchema.index({ isActive: 1 });
 

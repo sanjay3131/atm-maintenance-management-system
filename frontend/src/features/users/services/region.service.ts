@@ -1,11 +1,5 @@
 import api from "@/lib/axios";
-
-export interface DistrictReference {
-  _id: string;
-  districtName: string;
-  pinCode: string;
-  state: string;
-}
+import type { Bank } from "@/features/banks/types/bank.types";
 
 export interface Region {
   _id: string;
@@ -13,7 +7,7 @@ export interface Region {
   code?: string;
   description?: string;
   isActive: boolean;
-  districtId: string | DistrictReference;
+  bankId: string | Pick<Bank, "_id" | "bankName" | "bankCode">;
 }
 
 export interface RegionFormValues {
@@ -24,10 +18,42 @@ export interface RegionFormValues {
 }
 
 export interface CreateRegionData extends RegionFormValues {
-  districtId: string;
+  bankId: string;
 }
 
-export type UpdateRegionData = RegionFormValues;
+export type UpdateRegionData = Partial<RegionFormValues>;
+
+export const getRegionsByBank = async (
+  bankId: string,
+  includeInactive = false,
+): Promise<Region[]> => {
+  const response = await api.get<{ data: Region[] }>(
+    `/regions/bank/${bankId}`,
+    { params: includeInactive ? { includeInactive: true } : undefined },
+  );
+
+  return response.data.data;
+};
+
+export const getAllRegionsByBank = async (
+  bankId: string,
+): Promise<Region[]> => {
+  const response = await api.get<{ data: Region[] }>(
+    `/regions/bank/${bankId}`,
+    { params: { includeInactive: true } },
+  );
+
+  return response.data.data;
+};
+
+export const getAllRegions = async (
+  includeInactive = false,
+): Promise<Region[]> => {
+  const response = await api.get<{ data: Region[] }>("/regions", {
+    params: includeInactive ? { includeInactive: true } : undefined,
+  });
+  return response.data.data;
+};
 
 export const getRegionsByDistrict = async (
   districtId: string,
@@ -35,7 +61,6 @@ export const getRegionsByDistrict = async (
   const response = await api.get<{ data: Region[] }>(
     `/regions/district/${districtId}`,
   );
-
   return response.data.data;
 };
 
@@ -45,7 +70,6 @@ export const getAllRegionsByDistrict = async (
   const response = await api.get<{ data: Region[] }>(
     `/regions/district/${districtId}/all`,
   );
-
   return response.data.data;
 };
 

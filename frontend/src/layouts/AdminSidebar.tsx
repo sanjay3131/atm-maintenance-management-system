@@ -8,6 +8,7 @@ import {
   MessageSquareWarning,
   Repeat,
   Landmark,
+  Map,
   MapPinned,
   UserRound,
   Package,
@@ -67,6 +68,11 @@ const navItems = [
     label: "Banks",
     path: "/admin/banks",
     icon: Landmark,
+  },
+  {
+    label: "Regions",
+    path: "/admin/regions",
+    icon: Map,
   },
   {
     label: "Districts",

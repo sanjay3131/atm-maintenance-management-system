@@ -651,14 +651,8 @@ export const getDistrictSummary = asyncHandler(async (req, res) => {
     {
       $lookup: {
         from: "regions",
-        let: { districtId: "$_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: { $eq: ["$districtId", "$$districtId"] },
-            },
-          },
-        ],
+        localField: "regionId",
+        foreignField: "_id",
         as: "regions",
       },
     },

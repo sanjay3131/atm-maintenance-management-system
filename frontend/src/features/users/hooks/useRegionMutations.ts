@@ -7,15 +7,15 @@ import {
 } from "../services/region.service";
 import { DISTRICT_GEOGRAPHIC_SUMMARIES_QUERY_KEY } from "./useDistrictGeographicSummaries";
 
-export const useCreateRegion = (districtId: string) => {
+export const useCreateRegion = (bankId: string) => {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (data: CreateRegionData) => createRegion(data),
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["regions", districtId] }),
-        queryClient.invalidateQueries({ queryKey: ["district", districtId] }),
+        queryClient.invalidateQueries({ queryKey: ["regions", "bank", bankId] }),
+        queryClient.invalidateQueries({ queryKey: ["bank"] }),
         queryClient.invalidateQueries({
           queryKey: DISTRICT_GEOGRAPHIC_SUMMARIES_QUERY_KEY,
         }),
@@ -24,7 +24,7 @@ export const useCreateRegion = (districtId: string) => {
   });
 };
 
-export const useUpdateRegion = (districtId: string) => {
+export const useUpdateRegion = (bankId: string) => {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -40,8 +40,8 @@ export const useUpdateRegion = (districtId: string) => {
         queryClient.invalidateQueries({
           queryKey: ["region", variables.regionId],
         }),
-        queryClient.invalidateQueries({ queryKey: ["regions", districtId] }),
-        queryClient.invalidateQueries({ queryKey: ["district", districtId] }),
+        queryClient.invalidateQueries({ queryKey: ["regions", "bank", bankId] }),
+        queryClient.invalidateQueries({ queryKey: ["bank"] }),
         queryClient.invalidateQueries({
           queryKey: DISTRICT_GEOGRAPHIC_SUMMARIES_QUERY_KEY,
         }),

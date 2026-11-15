@@ -10,6 +10,7 @@ const emptyInput = () => ({
   atms: [],
   districts: [],
   regions: [],
+  banks: [],
   employees: [],
   users: [],
   customers: [],
@@ -88,21 +89,23 @@ test("reports invalid AMC responsibility membership, reference, and eligibility"
 
 test("classifies missing, malformed, dangling, and inconsistent geography", () => {
   const input = emptyInput();
-  const district = record(1);
-  const otherDistrict = record(2);
-  const activeRegion = record(3, { districtId: district._id, isActive: true });
-  const inactiveRegion = record(4, { districtId: otherDistrict._id, isActive: false });
+  const bank = record(20);
+  const district = record(1, { bankId: bank._id, regionId: id(3) });
+  const otherDistrict = record(2, { bankId: bank._id, regionId: id(4) });
+  const activeRegion = record(3, { bankId: bank._id, isActive: true });
+  const inactiveRegion = record(4, { bankId: bank._id, isActive: false });
+  input.banks.push(bank);
   input.districts.push(district, otherDistrict);
   input.regions.push(activeRegion, inactiveRegion);
   input.atms.push(
-    record(5, { districtId: district._id, regionId: activeRegion._id }),
-    record(6, { districtId: district._id, regionId: inactiveRegion._id }),
-    record(7, { districtId: "invalid-id", regionId: null }),
-    record(8, { districtId: id(9), regionId: id(10) }),
-    record(11, { districtId: district._id, regionId: null }),
-    record(12, { districtId: otherDistrict._id, regionId: inactiveRegion._id }),
-    record(13, { districtId: district._id, regionId: "invalid-region-id" }),
-    record(14, { regionId: null }),
+    record(5, { bankId: bank._id, districtId: district._id, regionId: activeRegion._id }),
+    record(6, { bankId: bank._id, districtId: district._id, regionId: inactiveRegion._id }),
+    record(7, { bankId: bank._id, districtId: "invalid-id", regionId: null }),
+    record(8, { bankId: bank._id, districtId: id(9), regionId: id(10) }),
+    record(11, { bankId: bank._id, districtId: district._id, regionId: null }),
+    record(12, { bankId: bank._id, districtId: otherDistrict._id, regionId: inactiveRegion._id }),
+    record(13, { bankId: bank._id, districtId: district._id, regionId: "invalid-region-id" }),
+    record(14, { bankId: bank._id, regionId: null }),
   );
 
   const { issues } = classifyATMDataIntegrity(input);
@@ -114,8 +117,7 @@ test("classifies missing, malformed, dangling, and inconsistent geography", () =
   assert.equal(counts.atm_region_dangling, 1);
   assert.equal(counts.atm_region_inactive, 2);
   assert.equal(counts.atm_region_district_mismatch, 1);
-  assert.equal(counts.atm_has_no_region_but_district_has_active_regions, 1);
-  assert.equal(counts.atm_has_region_but_district_has_no_active_regions, 1);
+  assert.equal(counts.atm_has_no_region_but_district_has_region, 1);
 });
 
 test("accepts multiple distinct Employees when both sides are reciprocal", () => {

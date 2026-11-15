@@ -1,8 +1,7 @@
 import { useForm } from "react-hook-form";
 import type { EmployeeDetailsForm } from "../types/user.types";
 import { useDistricts } from "../hooks/useDistricts";
-import { useQueries } from "@tanstack/react-query";
-import { getRegionsByDistrict } from "../services/region.service";
+import { useAllRegions } from "../hooks/useAllRegions";
 import { useATMs } from "../../atms/hooks/useATMs";
 import { useEffect } from "react";
 import SupervisorSelect from "@/features/employees/components/SupervisorSelect";
@@ -34,22 +33,7 @@ export default function EmployeeDetailsStep({
   const selectedAtmIds = watch("assignedAtmIds");
 
   const { data: atms = [], isLoading: isATMsLoading } = useATMs();
-  const regionQueries = useQueries({
-    queries: selectedDistrictIds.map((districtId) => ({
-      queryKey: ["regions", districtId],
-      queryFn: () => getRegionsByDistrict(districtId),
-      enabled: Boolean(districtId),
-      staleTime: 1000 * 60 * 10,
-    })),
-  });
-  const regions = regionQueries
-    .flatMap((query) => query.data ?? [])
-    .filter(
-      (region, index, self) =>
-        index === self.findIndex((item) => item._id === region._id),
-    );
-
-  const isRegionsLoading = regionQueries.some((query) => query.isLoading);
+  const { data: regions = [], isLoading: isRegionsLoading } = useAllRegions();
 
   const filteredATMs = atms.filter((atm) => {
     const districtMatch =
@@ -204,17 +188,13 @@ export default function EmployeeDetailsStep({
               </summary>
 
               <div className="max-h-48 overflow-y-auto border-t p-2">
-                {selectedDistrictIds.length === 0 ? (
-                  <p className="px-2 py-2 text-sm text-gray-500">
-                    Select a district first
-                  </p>
-                ) : isRegionsLoading ? (
+                {isRegionsLoading ? (
                   <p className="px-2 py-2 text-sm text-gray-500">
                     Loading regions...
                   </p>
                 ) : regions.length === 0 ? (
                   <p className="px-2 py-2 text-sm text-gray-500">
-                    No regions found
+                    No active regions found
                   </p>
                 ) : (
                   regions.map((region) => {

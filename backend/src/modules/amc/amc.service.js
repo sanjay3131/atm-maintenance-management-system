@@ -10,6 +10,8 @@ import { validateChecklist } from "./amcChecklist.js";
 import { validateGpsProximity } from "../../utils/haversine.js";
 import ApiError from "../../utils/ApiError.js";
 import { createNotification } from "../notification/notification.service.js";
+import { captureATMGeographySnapshot } from "../../utils/geographySnapshot.js";
+import { withDistrictGeographyFence } from "../districts/districtGeography.service.js";
 
 /**
  * Generate AMC ID: AMC-YYYY-MM-NNN
@@ -134,22 +136,52 @@ export const generateMonthlyAMC = async (month, year, createdBy) => {
         59,
       );
 
-      await AMC.create({
-        amcId,
-        atmId: atm._id,
-        employeeId: employee.userId._id,
-        supervisorId: employee.supervisorId || null,
-        customerId: atm.customer || null,
-        bankId: atm.bankId || null,
-        districtId: atm.districtId || null,
-        month,
-        year,
-        status: AMC_STATUS.PENDING,
-        deadlineDate,
-        createdBy: creatorId,
-      });
+      const creation = await withDistrictGeographyFence(
+        [atm.districtId],
+        async (session) => {
+          const currentATM = await ATM.findOne({
+            _id: atm._id,
+            isDeleted: false,
+            status: { $in: ["ACTIVE", "UNDER_MAINTENANCE"] },
+          }).session(session);
+          if (
+            !currentATM ||
+            String(currentATM.districtId) !== String(atm.districtId)
+          ) {
+            return { skipped: true };
+          }
 
-      results.created++;
+          const geographySnapshot = await captureATMGeographySnapshot(
+            currentATM,
+            session,
+          );
+          await AMC.create(
+            [
+              {
+                amcId,
+                atmId: currentATM._id,
+                employeeId: employee.userId._id,
+                supervisorId: employee.supervisorId || null,
+                customerId: currentATM.customer || null,
+                bankId: currentATM.bankId,
+                regionId: currentATM.regionId,
+                districtId: currentATM.districtId,
+                geographySnapshot,
+                month,
+                year,
+                status: AMC_STATUS.PENDING,
+                deadlineDate,
+                createdBy: creatorId,
+              },
+            ],
+            { session },
+          );
+          return { created: true };
+        },
+      );
+
+      if (creation.created) results.created++;
+      else results.skipped++;
     } catch (err) {
       // Unique index violation = already exists, skip silently
       if (err.code === 11000) {

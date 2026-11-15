@@ -13,6 +13,7 @@ mongoose.set("autoCreate", false);
 const loadModelCollections = async () => {
   const modelPaths = [
     ["atms", "../src/modules/atms/atm.model.js"],
+    ["banks", "../src/modules/banks/bank.model.js"],
     ["districts", "../src/modules/districts/district.models.js"],
     ["regions", "../src/modules/region/region.model.js"],
     ["employees", "../src/modules/employees/employee.model.js"],
@@ -38,14 +39,16 @@ const loadModelCollections = async () => {
 const projection = {
   atms: {
     _id: 1,
+    bankId: 1,
     districtId: 1,
     regionId: 1,
     assignedEmployeeId: 1,
     amcResponsibleEmployeeId: 1,
     customer: 1,
   },
-  districts: { _id: 1 },
-  regions: { _id: 1, districtId: 1, isActive: 1 },
+  banks: { _id: 1 },
+  districts: { _id: 1, bankId: 1, regionId: 1 },
+  regions: { _id: 1, bankId: 1, isActive: 1 },
   employees: { _id: 1, assignedAtmIds: 1, userId: 1, status: 1 },
   users: { _id: 1, status: 1, userType: 1 },
   customers: { _id: 1, atmIds: 1 },

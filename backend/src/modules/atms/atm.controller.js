@@ -5,12 +5,14 @@ import Customer from "../customers/customer.model.js";
 import District from "../districts/district.models.js";
 import Employee from "../employees/employee.model.js";
 import Region from "../region/region.model.js";
+import Bank from "../banks/bank.model.js";
 import AMC from "../amc/amc.model.js";
 import { AMC_STATUS } from "../amc/amc.config.js";
 import { setATMAMCResponsibleEmployee } from "../amc/amcResponsibility.service.js";
 import Job from "../jobs/jobs.model.js";
 import { JOB_STATUS } from "../../utils/jobStatus.js";
 import RecurringMaintenancePlan from "../jobs/recurringMaintenancePlan.model.js";
+import { withDistrictGeographyFence } from "../districts/districtGeography.service.js";
 import {
   assignATMCustomerInTransaction,
   softDeleteATMAndUnlinkCustomer,
@@ -121,40 +123,62 @@ export const publishATMRequestsReopened = async (
   });
 };
 
-const validateActiveATMGeography = async (districtId, regionId) => {
-  const district = await District.findById(districtId);
+export const validateActiveATMGeography = async (
+  bankId,
+  districtId,
+  regionId,
+  session,
+) => {
+  const bankQuery = Bank.findById(bankId).select("_id isActive");
+  if (session) bankQuery.session(session);
+  const bank = await bankQuery;
+  if (!bank) throw new ApiError(404, "Selected bank was not found");
+  if (!bank.isActive) throw new ApiError(400, "Selected bank is inactive");
+  const districtQuery = District.findById(districtId).select(
+    "_id bankId regionId geographyStatus isActive",
+  );
+  if (session) districtQuery.session(session);
+  const district = await districtQuery;
   if (!district) {
     throw new ApiError(404, "Destination district was not found");
   }
   if (!district.isActive) {
     throw new ApiError(400, "Destination district is inactive");
   }
-
-  if (regionId == null) {
-    const activeRegionCount = await Region.countDocuments({
-      districtId,
-      isActive: true,
-    });
-    if (activeRegionCount > 0) {
-      throw new ApiError(
-        400,
-        "Select an active region because this district has active regions",
-      );
-    }
-    return;
+  if (district.geographyStatus !== "MAPPED") {
+    throw new ApiError(400, "Destination district is not mapped");
   }
 
-  const region = await Region.findById(regionId);
+  const regionQuery = Region.findById(regionId).select(
+    "_id bankId isActive geographyStatus",
+  );
+  if (session) regionQuery.session(session);
+  const region = await regionQuery;
   if (!region) {
     throw new ApiError(404, "Destination region was not found");
   }
   if (!region.isActive) {
     throw new ApiError(400, "Destination region is inactive");
   }
-  if (region.districtId.toString() !== districtId.toString()) {
+  if (region.geographyStatus !== "MAPPED") {
+    throw new ApiError(400, "Destination region is not mapped");
+  }
+  if (String(region.bankId) !== String(bankId)) {
     throw new ApiError(
       400,
-      "Destination region does not belong to the selected district",
+      "Selected region does not belong to the selected bank",
+    );
+  }
+  if (String(district.regionId) !== String(regionId)) {
+    throw new ApiError(400, "Selected district does not belong to the selected region");
+  }
+  if (
+    String(district.bankId) !== String(bankId) ||
+    String(district.bankId) !== String(region.bankId)
+  ) {
+    throw new ApiError(
+      400,
+      "Selected district does not belong to the selected bank",
     );
   }
 };
@@ -164,26 +188,31 @@ const idOrNull = (value) => {
   return (typeof value === "object" ? value._id : value).toString();
 };
 
-const ensureATMCanMove = async (atmId) => {
-  const [unresolvedJobs, unresolvedAmcs, activePlans] = await Promise.all([
-    Job.countDocuments({
-      atmId,
-      isDeleted: false,
-      status: { $nin: [JOB_STATUS.CLOSED, JOB_STATUS.CANCELLED] },
-    }),
-    AMC.countDocuments({
-      atmId,
-      isDeleted: false,
-      status: {
-        $in: [
-          AMC_STATUS.PENDING,
-          AMC_STATUS.IN_PROGRESS,
-          AMC_STATUS.OVERDUE,
-        ],
-      },
-    }),
-    RecurringMaintenancePlan.countDocuments({ atmId, isActive: true }),
-  ]);
+const ensureATMCanMove = async (atmId, session) => {
+  const unresolvedJobsQuery = Job.countDocuments({
+    atmId,
+    isDeleted: false,
+    status: { $nin: [JOB_STATUS.CLOSED, JOB_STATUS.CANCELLED] },
+  });
+  const unresolvedAmcsQuery = AMC.countDocuments({
+    atmId,
+    isDeleted: false,
+    status: {
+      $in: [AMC_STATUS.PENDING, AMC_STATUS.IN_PROGRESS, AMC_STATUS.OVERDUE],
+    },
+  });
+  const activePlansQuery = RecurringMaintenancePlan.countDocuments({
+    atmId,
+    isActive: true,
+  });
+  if (session) {
+    unresolvedJobsQuery.session(session);
+    unresolvedAmcsQuery.session(session);
+    activePlansQuery.session(session);
+  }
+  const unresolvedJobs = await unresolvedJobsQuery;
+  const unresolvedAmcs = await unresolvedAmcsQuery;
+  const activePlans = await activePlansQuery;
 
   const blockers = [];
   if (unresolvedJobs > 0) {
@@ -227,14 +256,13 @@ export const createATM = asyncHandler(async (req, res) => {
     ...new Set((assignedEmployeeId || []).map((id) => String(id).toLowerCase())),
   ];
 
-  await validateActiveATMGeography(districtId, regionId);
-
   const resolvedCustomerId = customerId;
   const atmId = await generateATMId();
 
   const atmData = {
     atmId,
     bankId,
+    geographyStatus: "MAPPED",
     customer: resolvedCustomerId,
     districtId,
     regionId,
@@ -245,7 +273,8 @@ export const createATM = asyncHandler(async (req, res) => {
     assignedEmployeeId: [],
     createdBy: req.user._id,
   };
-  const atm = await withCustomerAssignmentTransaction(async (session) => {
+  const atm = await withDistrictGeographyFence([districtId], async (session) => {
+    await validateActiveATMGeography(bankId, districtId, regionId, session);
     const [createdATM] = await ATM.create([atmData], { session });
     await assignATMCustomerInTransaction({
       atm: createdATM,
@@ -484,6 +513,10 @@ export const updateATM = asyncHandler(async (req, res) => {
     throw new ApiError(404, "ATM not found");
   }
 
+  const hasBankUpdate = Object.prototype.hasOwnProperty.call(
+    updatePayload,
+    "bankId",
+  );
   const hasDistrictUpdate = Object.prototype.hasOwnProperty.call(
     updatePayload,
     "districtId",
@@ -492,11 +525,10 @@ export const updateATM = asyncHandler(async (req, res) => {
     updatePayload,
     "regionId",
   );
-  const hasGeographyUpdate = hasDistrictUpdate || hasRegionUpdate;
-  const districtChanged =
-    hasDistrictUpdate &&
-    idOrNull(updatePayload.districtId) !== idOrNull(atm.districtId);
-  let geographyChanged = false;
+  const hasGeographyUpdate = hasBankUpdate || hasDistrictUpdate || hasRegionUpdate;
+  const destinationBankId = hasBankUpdate ? updatePayload.bankId : atm.bankId;
+  let geographyChanged = hasBankUpdate &&
+    idOrNull(updatePayload.bankId) !== idOrNull(atm.bankId);
 
   if (hasGeographyUpdate) {
     const destinationDistrictId = hasDistrictUpdate
@@ -504,11 +536,10 @@ export const updateATM = asyncHandler(async (req, res) => {
       : atm.districtId;
     const destinationRegionId = hasRegionUpdate
       ? updatePayload.regionId
-      : districtChanged
-        ? null
-        : atm.regionId;
+      : atm.regionId;
 
     await validateActiveATMGeography(
+      destinationBankId,
       destinationDistrictId,
       destinationRegionId,
     );
@@ -517,13 +548,6 @@ export const updateATM = asyncHandler(async (req, res) => {
       idOrNull(destinationDistrictId) !== idOrNull(atm.districtId) ||
       idOrNull(destinationRegionId) !== idOrNull(atm.regionId);
 
-    if (districtChanged && !hasRegionUpdate) {
-      updatePayload.regionId = destinationRegionId;
-    }
-
-    if (geographyChanged) {
-      await ensureATMCanMove(atm._id);
-    }
   }
 
   let assignedEmployeeIds;
@@ -551,23 +575,43 @@ export const updateATM = asyncHandler(async (req, res) => {
   }
 
   let updatedATM;
-  if (hasCustomerUpdate) {
-    updatedATM = await withCustomerAssignmentTransaction(async (session) => {
+  if (geographyChanged || hasCustomerUpdate) {
+    const districtsToFence = geographyChanged
+      ? [atm.districtId, updatePayload.districtId ?? atm.districtId]
+      : [];
+    const operation = async (session) => {
       const currentATM = await ATM.findOne({
         _id: req.params.id,
         isDeleted: false,
       }).session(session);
       if (!currentATM) throw new ApiError(404, "ATM not found");
+      if (geographyChanged) {
+        await validateActiveATMGeography(
+          updatePayload.bankId ?? currentATM.bankId,
+          updatePayload.districtId ?? currentATM.districtId,
+          updatePayload.regionId ?? currentATM.regionId,
+          session,
+        );
+        await ensureATMCanMove(currentATM._id, session);
+      }
       Object.assign(currentATM, updatePayload);
+      if (geographyChanged) currentATM.geographyStatus = "MAPPED";
       currentATM.updatedBy = req.user._id;
-      return assignATMCustomerInTransaction({
-        atm: currentATM,
-        atmId: currentATM._id,
-        customerId,
-        updatedBy: req.user._id,
-        session,
-      });
-    });
+      if (hasCustomerUpdate) {
+        return assignATMCustomerInTransaction({
+          atm: currentATM,
+          atmId: currentATM._id,
+          customerId,
+          updatedBy: req.user._id,
+          session,
+        });
+      }
+      await currentATM.save({ session });
+      return currentATM;
+    };
+    updatedATM = geographyChanged
+      ? await withDistrictGeographyFence(districtsToFence, operation)
+      : await withCustomerAssignmentTransaction(operation);
   } else {
     updatedATM = await ATM.findByIdAndUpdate(
       req.params.id,

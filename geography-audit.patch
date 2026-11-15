@@ -1,0 +1,4116 @@
+diff --git a/backend/package.json b/backend/package.json
+index 9650034..7cb547d 100644
+--- a/backend/package.json
++++ b/backend/package.json
+@@ -17,7 +17,8 @@
+     "job-photos:ensure-indexes": "node scripts/ensureJobPhotoUploadIndexes.js",
+     "job-photos:backfill-fence": "node scripts/backfillJobPhotoUploadFence.js",
+     "employees:ensure-user-id-index": "node scripts/ensureEmployeeUserIdUniqueIndex.js",
+-    "attendance:ensure-supervisor-indexes": "node scripts/ensureSupervisorAttendanceIndexes.js"
++    "attendance:ensure-supervisor-indexes": "node scripts/ensureSupervisorAttendanceIndexes.js",
++    "geography:migrate": "node scripts/migrateGeography.js"
+   },
+   "dependencies": {
+     "bcryptjs": "^3.0.3",
+diff --git a/backend/src/modules/amc/amc.model.js b/backend/src/modules/amc/amc.model.js
+index d0e4962..8ddd309 100644
+--- a/backend/src/modules/amc/amc.model.js
++++ b/backend/src/modules/amc/amc.model.js
+@@ -41,6 +41,20 @@ const amcSchema = new mongoose.Schema(
+       ref: "District",
+       default: null,
+     },
++    regionId: {
++      type: mongoose.Schema.Types.ObjectId,
++      ref: "Region",
++      default: null,
++    },
++    geographySnapshot: {
++      bankId: { type: mongoose.Schema.Types.ObjectId, ref: "Bank" },
++      bankName: { type: String, trim: true },
++      regionId: { type: mongoose.Schema.Types.ObjectId, ref: "Region" },
++      regionName: { type: String, trim: true },
++      districtId: { type: mongoose.Schema.Types.ObjectId, ref: "District" },
++      districtName: { type: String, trim: true },
++      capturedAt: { type: Date },
++    },
+ 
+     month: {
+       type: Number,
+@@ -158,6 +172,7 @@ amcSchema.index({ supervisorId: 1, status: 1 });
+ amcSchema.index({ customerId: 1, status: 1 });
+ amcSchema.index({ bankId: 1, status: 1 });
+ amcSchema.index({ districtId: 1, status: 1 });
++amcSchema.index({ regionId: 1, status: 1 });
+ amcSchema.index({ isDeleted: 1 });
+ 
+ const AMC = mongoose.model("AMC", amcSchema);
+diff --git a/backend/src/modules/amc/amc.service.js b/backend/src/modules/amc/amc.service.js
+index 74e4f07..fd7a9da 100644
+--- a/backend/src/modules/amc/amc.service.js
++++ b/backend/src/modules/amc/amc.service.js
+@@ -10,6 +10,8 @@ import { validateChecklist } from "./amcChecklist.js";
+ import { validateGpsProximity } from "../../utils/haversine.js";
+ import ApiError from "../../utils/ApiError.js";
+ import { createNotification } from "../notification/notification.service.js";
++import { captureATMGeographySnapshot } from "../../utils/geographySnapshot.js";
++import { withDistrictGeographyFence } from "../districts/districtGeography.service.js";
+ 
+ /**
+  * Generate AMC ID: AMC-YYYY-MM-NNN
+@@ -134,22 +136,52 @@ export const generateMonthlyAMC = async (month, year, createdBy) => {
+         59,
+       );
+ 
+-      await AMC.create({
+-        amcId,
+-        atmId: atm._id,
+-        employeeId: employee.userId._id,
+-        supervisorId: employee.supervisorId || null,
+-        customerId: atm.customer || null,
+-        bankId: atm.bankId || null,
+-        districtId: atm.districtId || null,
+-        month,
+-        year,
+-        status: AMC_STATUS.PENDING,
+-        deadlineDate,
+-        createdBy: creatorId,
+-      });
++      const creation = await withDistrictGeographyFence(
++        [atm.districtId],
++        async (session) => {
++          const currentATM = await ATM.findOne({
++            _id: atm._id,
++            isDeleted: false,
++            status: { $in: ["ACTIVE", "UNDER_MAINTENANCE"] },
++          }).session(session);
++          if (
++            !currentATM ||
++            String(currentATM.districtId) !== String(atm.districtId)
++          ) {
++            return { skipped: true };
++          }
++
++          const geographySnapshot = await captureATMGeographySnapshot(
++            currentATM,
++            session,
++          );
++          await AMC.create(
++            [
++              {
++                amcId,
++                atmId: currentATM._id,
++                employeeId: employee.userId._id,
++                supervisorId: employee.supervisorId || null,
++                customerId: currentATM.customer || null,
++                bankId: currentATM.bankId,
++                regionId: currentATM.regionId,
++                districtId: currentATM.districtId,
++                geographySnapshot,
++                month,
++                year,
++                status: AMC_STATUS.PENDING,
++                deadlineDate,
++                createdBy: creatorId,
++              },
++            ],
++            { session },
++          );
++          return { created: true };
++        },
++      );
+ 
+-      results.created++;
++      if (creation.created) results.created++;
++      else results.skipped++;
+     } catch (err) {
+       // Unique index violation = already exists, skip silently
+       if (err.code === 11000) {
+diff --git a/backend/src/modules/atms/atm.controller.js b/backend/src/modules/atms/atm.controller.js
+index cb36910..31c7103 100644
+--- a/backend/src/modules/atms/atm.controller.js
++++ b/backend/src/modules/atms/atm.controller.js
+@@ -5,12 +5,14 @@ import Customer from "../customers/customer.model.js";
+ import District from "../districts/district.models.js";
+ import Employee from "../employees/employee.model.js";
+ import Region from "../region/region.model.js";
++import Bank from "../banks/bank.model.js";
+ import AMC from "../amc/amc.model.js";
+ import { AMC_STATUS } from "../amc/amc.config.js";
+ import { setATMAMCResponsibleEmployee } from "../amc/amcResponsibility.service.js";
+ import Job from "../jobs/jobs.model.js";
+ import { JOB_STATUS } from "../../utils/jobStatus.js";
+ import RecurringMaintenancePlan from "../jobs/recurringMaintenancePlan.model.js";
++import { withDistrictGeographyFence } from "../districts/districtGeography.service.js";
+ import {
+   assignATMCustomerInTransaction,
+   softDeleteATMAndUnlinkCustomer,
+@@ -121,8 +123,22 @@ export const publishATMRequestsReopened = async (
+   });
+ };
+ 
+-const validateActiveATMGeography = async (districtId, regionId) => {
+-  const district = await District.findById(districtId);
++const validateActiveATMGeography = async (
++  bankId,
++  districtId,
++  regionId,
++  session,
++) => {
++  const bankQuery = Bank.findById(bankId).select("_id isActive");
++  if (session) bankQuery.session(session);
++  const bank = await bankQuery;
++  if (!bank) throw new ApiError(404, "Selected bank was not found");
++  if (!bank.isActive) throw new ApiError(400, "Selected bank is inactive");
++  const districtQuery = District.findById(districtId).select(
++    "_id regionId isActive",
++  );
++  if (session) districtQuery.session(session);
++  const district = await districtQuery;
+   if (!district) {
+     throw new ApiError(404, "Destination district was not found");
+   }
+@@ -130,33 +146,24 @@ const validateActiveATMGeography = async (districtId, regionId) => {
+     throw new ApiError(400, "Destination district is inactive");
+   }
+ 
+-  if (regionId == null) {
+-    const activeRegionCount = await Region.countDocuments({
+-      districtId,
+-      isActive: true,
+-    });
+-    if (activeRegionCount > 0) {
+-      throw new ApiError(
+-        400,
+-        "Select an active region because this district has active regions",
+-      );
+-    }
+-    return;
+-  }
+-
+-  const region = await Region.findById(regionId);
++  const regionQuery = Region.findById(regionId).select("_id bankId isActive");
++  if (session) regionQuery.session(session);
++  const region = await regionQuery;
+   if (!region) {
+     throw new ApiError(404, "Destination region was not found");
+   }
+   if (!region.isActive) {
+     throw new ApiError(400, "Destination region is inactive");
+   }
+-  if (region.districtId.toString() !== districtId.toString()) {
++  if (region.bankId.toString() !== bankId.toString()) {
+     throw new ApiError(
+       400,
+-      "Destination region does not belong to the selected district",
++      "Selected region does not belong to the selected bank",
+     );
+   }
++  if (district.regionId.toString() !== regionId.toString()) {
++    throw new ApiError(400, "Selected district does not belong to the selected region");
++  }
+ };
+ 
+ const idOrNull = (value) => {
+@@ -164,26 +171,31 @@ const idOrNull = (value) => {
+   return (typeof value === "object" ? value._id : value).toString();
+ };
+ 
+-const ensureATMCanMove = async (atmId) => {
+-  const [unresolvedJobs, unresolvedAmcs, activePlans] = await Promise.all([
+-    Job.countDocuments({
+-      atmId,
+-      isDeleted: false,
+-      status: { $nin: [JOB_STATUS.CLOSED, JOB_STATUS.CANCELLED] },
+-    }),
+-    AMC.countDocuments({
+-      atmId,
+-      isDeleted: false,
+-      status: {
+-        $in: [
+-          AMC_STATUS.PENDING,
+-          AMC_STATUS.IN_PROGRESS,
+-          AMC_STATUS.OVERDUE,
+-        ],
+-      },
+-    }),
+-    RecurringMaintenancePlan.countDocuments({ atmId, isActive: true }),
+-  ]);
++const ensureATMCanMove = async (atmId, session) => {
++  const unresolvedJobsQuery = Job.countDocuments({
++    atmId,
++    isDeleted: false,
++    status: { $nin: [JOB_STATUS.CLOSED, JOB_STATUS.CANCELLED] },
++  });
++  const unresolvedAmcsQuery = AMC.countDocuments({
++    atmId,
++    isDeleted: false,
++    status: {
++      $in: [AMC_STATUS.PENDING, AMC_STATUS.IN_PROGRESS, AMC_STATUS.OVERDUE],
++    },
++  });
++  const activePlansQuery = RecurringMaintenancePlan.countDocuments({
++    atmId,
++    isActive: true,
++  });
++  if (session) {
++    unresolvedJobsQuery.session(session);
++    unresolvedAmcsQuery.session(session);
++    activePlansQuery.session(session);
++  }
++  const unresolvedJobs = await unresolvedJobsQuery;
++  const unresolvedAmcs = await unresolvedAmcsQuery;
++  const activePlans = await activePlansQuery;
+ 
+   const blockers = [];
+   if (unresolvedJobs > 0) {
+@@ -227,14 +239,13 @@ export const createATM = asyncHandler(async (req, res) => {
+     ...new Set((assignedEmployeeId || []).map((id) => String(id).toLowerCase())),
+   ];
+ 
+-  await validateActiveATMGeography(districtId, regionId);
+-
+   const resolvedCustomerId = customerId;
+   const atmId = await generateATMId();
+ 
+   const atmData = {
+     atmId,
+     bankId,
++    geographyStatus: "MAPPED",
+     customer: resolvedCustomerId,
+     districtId,
+     regionId,
+@@ -245,7 +256,8 @@ export const createATM = asyncHandler(async (req, res) => {
+     assignedEmployeeId: [],
+     createdBy: req.user._id,
+   };
+-  const atm = await withCustomerAssignmentTransaction(async (session) => {
++  const atm = await withDistrictGeographyFence([districtId], async (session) => {
++    await validateActiveATMGeography(bankId, districtId, regionId, session);
+     const [createdATM] = await ATM.create([atmData], { session });
+     await assignATMCustomerInTransaction({
+       atm: createdATM,
+@@ -484,6 +496,10 @@ export const updateATM = asyncHandler(async (req, res) => {
+     throw new ApiError(404, "ATM not found");
+   }
+ 
++  const hasBankUpdate = Object.prototype.hasOwnProperty.call(
++    updatePayload,
++    "bankId",
++  );
+   const hasDistrictUpdate = Object.prototype.hasOwnProperty.call(
+     updatePayload,
+     "districtId",
+@@ -492,11 +508,10 @@ export const updateATM = asyncHandler(async (req, res) => {
+     updatePayload,
+     "regionId",
+   );
+-  const hasGeographyUpdate = hasDistrictUpdate || hasRegionUpdate;
+-  const districtChanged =
+-    hasDistrictUpdate &&
+-    idOrNull(updatePayload.districtId) !== idOrNull(atm.districtId);
+-  let geographyChanged = false;
++  const hasGeographyUpdate = hasBankUpdate || hasDistrictUpdate || hasRegionUpdate;
++  const destinationBankId = hasBankUpdate ? updatePayload.bankId : atm.bankId;
++  let geographyChanged = hasBankUpdate &&
++    idOrNull(updatePayload.bankId) !== idOrNull(atm.bankId);
+ 
+   if (hasGeographyUpdate) {
+     const destinationDistrictId = hasDistrictUpdate
+@@ -504,11 +519,10 @@ export const updateATM = asyncHandler(async (req, res) => {
+       : atm.districtId;
+     const destinationRegionId = hasRegionUpdate
+       ? updatePayload.regionId
+-      : districtChanged
+-        ? null
+-        : atm.regionId;
++      : atm.regionId;
+ 
+     await validateActiveATMGeography(
++      destinationBankId,
+       destinationDistrictId,
+       destinationRegionId,
+     );
+@@ -517,13 +531,9 @@ export const updateATM = asyncHandler(async (req, res) => {
+       idOrNull(destinationDistrictId) !== idOrNull(atm.districtId) ||
+       idOrNull(destinationRegionId) !== idOrNull(atm.regionId);
+ 
+-    if (districtChanged && !hasRegionUpdate) {
+-      updatePayload.regionId = destinationRegionId;
+-    }
+-
+-    if (geographyChanged) {
+-      await ensureATMCanMove(atm._id);
+-    }
++    geographyChanged = geographyChanged ||
++      idOrNull(destinationDistrictId) !== idOrNull(atm.districtId) ||
++      idOrNull(destinationRegionId) !== idOrNull(atm.regionId);
+   }
+ 
+   let assignedEmployeeIds;
+@@ -551,23 +561,43 @@ export const updateATM = asyncHandler(async (req, res) => {
+   }
+ 
+   let updatedATM;
+-  if (hasCustomerUpdate) {
+-    updatedATM = await withCustomerAssignmentTransaction(async (session) => {
++  if (geographyChanged || hasCustomerUpdate) {
++    const districtsToFence = geographyChanged
++      ? [atm.districtId, updatePayload.districtId ?? atm.districtId]
++      : [];
++    const operation = async (session) => {
+       const currentATM = await ATM.findOne({
+         _id: req.params.id,
+         isDeleted: false,
+       }).session(session);
+       if (!currentATM) throw new ApiError(404, "ATM not found");
++      if (geographyChanged) {
++        await validateActiveATMGeography(
++          updatePayload.bankId ?? currentATM.bankId,
++          updatePayload.districtId ?? currentATM.districtId,
++          updatePayload.regionId ?? currentATM.regionId,
++          session,
++        );
++        await ensureATMCanMove(currentATM._id, session);
++      }
+       Object.assign(currentATM, updatePayload);
++      if (geographyChanged) currentATM.geographyStatus = "MAPPED";
+       currentATM.updatedBy = req.user._id;
+-      return assignATMCustomerInTransaction({
+-        atm: currentATM,
+-        atmId: currentATM._id,
+-        customerId,
+-        updatedBy: req.user._id,
+-        session,
+-      });
+-    });
++      if (hasCustomerUpdate) {
++        return assignATMCustomerInTransaction({
++          atm: currentATM,
++          atmId: currentATM._id,
++          customerId,
++          updatedBy: req.user._id,
++          session,
++        });
++      }
++      await currentATM.save({ session });
++      return currentATM;
++    };
++    updatedATM = geographyChanged
++      ? await withDistrictGeographyFence(districtsToFence, operation)
++      : await withCustomerAssignmentTransaction(operation);
+   } else {
+     updatedATM = await ATM.findByIdAndUpdate(
+       req.params.id,
+diff --git a/backend/src/modules/atms/atm.model.js b/backend/src/modules/atms/atm.model.js
+index e7e20e1..8e9773e 100644
+--- a/backend/src/modules/atms/atm.model.js
++++ b/backend/src/modules/atms/atm.model.js
+@@ -17,19 +17,31 @@ const atmSchema = new mongoose.Schema(
+     bankId: {
+       type: mongoose.Schema.Types.ObjectId,
+       ref: "Bank",
+-      required: true,
++      required: function () {
++        return this.geographyStatus === "MAPPED";
++      },
++    },
++
++    geographyStatus: {
++      type: String,
++      enum: ["MAPPED", "UNMAPPED"],
++      default: "UNMAPPED",
+     },
+ 
+     districtId: {
+       type: mongoose.Schema.Types.ObjectId,
+       ref: "District",
+-      required: true,
++      required: function () {
++        return this.geographyStatus === "MAPPED";
++      },
+     },
+ 
+     regionId: {
+       type: mongoose.Schema.Types.ObjectId,
+       ref: "Region",
+-      default: null,
++      required: function () {
++        return this.geographyStatus === "MAPPED";
++      },
+     },
+ 
+     locationName: {
+diff --git a/backend/src/modules/atms/atm.validation.js b/backend/src/modules/atms/atm.validation.js
+index 9522d22..47f1a78 100644
+--- a/backend/src/modules/atms/atm.validation.js
++++ b/backend/src/modules/atms/atm.validation.js
+@@ -14,10 +14,10 @@ const uniqueObjectIds = (ids) => [
+ ];
+ 
+ export const createAtmSchema = z.object({
+-  bankId: z.string().trim().min(1, "Bank ID is required"),
++  bankId: objectIdSchema,
+   customerId: z.string().trim().min(1, "Customer ID is required"),
+   districtId: objectIdSchema,
+-  regionId: objectIdSchema.nullable(),
++  regionId: objectIdSchema,
+   locationName: z.string().trim().min(1, "Location name is required"),
+   address: z.string().trim().min(1, "Address is required"),
+   installationType: z.enum(["ONSITE", "OFFSITE"], {
+@@ -47,10 +47,10 @@ export const createAtmSchema = z.object({
+ });
+ // update atm schema
+ export const updateAtmSchema = z.object({
+-  bankId: z.string().trim().min(1, "Bank ID is required").optional(),
++  bankId: objectIdSchema.optional(),
+   customerId: z.string().trim().min(1, "Customer ID is required").optional(),
+   districtId: objectIdSchema.optional(),
+-  regionId: objectIdSchema.nullable().optional(),
++  regionId: objectIdSchema.optional(),
+   locationName: z
+     .string()
+     .trim()
+diff --git a/backend/src/modules/banks/bank.model.js b/backend/src/modules/banks/bank.model.js
+index a57e752..ba265d6 100644
+--- a/backend/src/modules/banks/bank.model.js
++++ b/backend/src/modules/banks/bank.model.js
+@@ -6,13 +6,11 @@ const bankSchema = new mongoose.Schema(
+       type: String,
+       required: [true, "Bank name is required"],
+       trim: true,
+-      unique: true,
+     },
+     bankCode: {
+       type: String,
+       required: [true, "Bank code is required"],
+       trim: true,
+-      unique: true,
+       uppercase: true,
+     },
+     contactEmail: {
+@@ -47,8 +45,7 @@ const bankSchema = new mongoose.Schema(
+   },
+ );
+ 
+-// Indexes
+-bankSchema.index({ bankName: 1 });
++bankSchema.index({ bankName: 1 }, { unique: true });
+ bankSchema.index({ bankCode: 1 }, { unique: true });
+ bankSchema.index({ isActive: 1 });
+ 
+diff --git a/backend/src/modules/banks/bank.routes.js b/backend/src/modules/banks/bank.routes.js
+index 5f3df31..5005f14 100644
+--- a/backend/src/modules/banks/bank.routes.js
++++ b/backend/src/modules/banks/bank.routes.js
+@@ -1,6 +1,12 @@
+ import { Router } from "express";
+ import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
+ import { authorizeRoles } from "../../middlewares/role.middleware.js";
++import { validateRequest } from "../../middlewares/validate.middleware.js";
++import {
++  createBankSchema,
++  updateBankSchema,
++} from "./bank.validation.js";
++import { z } from "zod";
+ import {
+   createBank,
+   getAllBanks,
+@@ -14,10 +20,19 @@ const router = Router();
+ // All routes require admin/superAdmin
+ router.use(verifyAccessToken, authorizeRoles("admin", "superAdmin"));
+ 
+-router.post("/", createBank);
++const bankIdParamsSchema = z.object({
++  id: z.string().regex(/^[a-fA-F0-9]{24}$/, "Invalid bank ID"),
++});
++
++router.post("/", validateRequest(createBankSchema), createBank);
+ router.get("/", getAllBanks);
+-router.get("/:id", getBankById);
+-router.put("/:id", updateBank);
+-router.delete("/:id", deleteBank);
++router.get("/:id", validateRequest(bankIdParamsSchema, "params"), getBankById);
++router.put(
++  "/:id",
++  validateRequest(bankIdParamsSchema, "params"),
++  validateRequest(updateBankSchema),
++  updateBank,
++);
++router.delete("/:id", validateRequest(bankIdParamsSchema, "params"), deleteBank);
+ 
+ export default router;
+diff --git a/backend/src/modules/complaints/complaintJobIntegrity.service.js b/backend/src/modules/complaints/complaintJobIntegrity.service.js
+index 903f5a0..0923826 100644
+--- a/backend/src/modules/complaints/complaintJobIntegrity.service.js
++++ b/backend/src/modules/complaints/complaintJobIntegrity.service.js
+@@ -146,8 +146,9 @@ export const unlinkComplaintAndJob = async ({ complaintId, updatedBy }) =>
+ export const createJobWithComplaint = async ({
+   jobData,
+   updatedBy,
+-}) =>
+-  withComplaintJobTransaction(async (session) => {
++  session: existingSession,
++}) => {
++  const operation = async (session) => {
+     const complaint = await findActiveComplaint(jobData.complaintId, session);
+     if (["CLOSED", "CANCELLED"].includes(complaint.status)) {
+       throw new ApiError(
+@@ -168,7 +169,12 @@ export const createJobWithComplaint = async ({
+     complaint.updatedBy = updatedBy;
+     await complaint.save({ session });
+     return job;
+-  });
++  };
++
++  return existingSession
++    ? operation(existingSession)
++    : withComplaintJobTransaction(operation);
++};
+ 
+ export const closeJobAndComplaint = async ({ jobId, closedBy }) =>
+   withComplaintJobTransaction(async (session) => {
+diff --git a/backend/src/modules/districts/district.controller.js b/backend/src/modules/districts/district.controller.js
+index 2f2a4dd..621f96d 100644
+--- a/backend/src/modules/districts/district.controller.js
++++ b/backend/src/modules/districts/district.controller.js
+@@ -1,224 +1,390 @@
+ import asyncHandler from "../../utils/asyncHandler.js";
+ import ApiError from "../../utils/ApiError.js";
+ import ApiResponse from "../../utils/ApiResponse.js";
+-import District from "./district.models.js";
++import { publishDomainEventSafely } from "../../realtime/domain-events.js";
+ import ATM from "../atms/atm.model.js";
+ import Customer from "../customers/customer.model.js";
+ import Employee from "../employees/employee.model.js";
++import Job from "../jobs/jobs.model.js";
++import RecurringMaintenancePlan from "../jobs/recurringMaintenancePlan.model.js";
++import AMC from "../amc/amc.model.js";
++import { AMC_STATUS } from "../amc/amc.config.js";
++import { JOB_STATUS } from "../../utils/jobStatus.js";
+ import Region from "../region/region.model.js";
++import District from "./district.models.js";
++import DistrictTransferAudit from "./districtTransferAudit.model.js";
++import { withDistrictGeographyFence } from "./districtGeography.service.js";
++import Bank from "../banks/bank.model.js";
+ 
+-export const createDistrict = asyncHandler(async (req, res) => {
+-  const { districtName, pinCode, state, isActive = true } = req.body;
+-
+-  const existingDistrict = await District.findOne({
+-    $or: [{ districtName }, { pinCode }],
+-  });
++const isDuplicateKey = (error) => error?.code === 11000;
+ 
+-  if (existingDistrict) {
+-    throw new ApiError(
+-      409,
+-      "District with this name or pin code already exists",
+-    );
++export const createDistrict = asyncHandler(async (req, res) => {
++  const { regionId, districtName, pinCode, state, isActive = true } = req.body;
++  const region = await Region.findById(regionId).populate("bankId", "isActive");
++  if (!region) throw new ApiError(404, "Region not found");
++  if (!region.isActive || !region.bankId?.isActive) {
++    throw new ApiError(400, "Cannot add a district to inactive geography");
+   }
+ 
+-  const district = await District.create({
+-    districtName,
+-    pinCode,
+-    state,
+-    isActive,
+-    createdBy: req.user._id,
+-  });
+-
+-  return res
+-    .status(201)
+-    .json(new ApiResponse(201, district, "District created successfully"));
++  try {
++    const district = await District.create({
++      regionId,
++      geographyStatus: "MAPPED",
++      districtName,
++      pinCode,
++      state,
++      isActive,
++      createdBy: req.user._id,
++    });
++    return res
++      .status(201)
++      .json(new ApiResponse(201, district, "District created successfully"));
++  } catch (error) {
++    if (isDuplicateKey(error)) {
++      throw new ApiError(409, "District name or PIN code already exists in this region");
++    }
++    throw error;
++  }
+ });
+ 
+ export const getAllDistricts = asyncHandler(async (req, res) => {
+-  const districts = await District.find().sort({ districtName: 1 });
+-
++  const query = {};
++  const regionId = req.validatedParams?.regionId ?? req.query.regionId;
++  const isActive = req.validatedQuery?.isActive ?? req.query.isActive;
++  if (regionId) query.regionId = regionId;
++  if (isActive !== undefined) query.isActive = isActive === "true";
++  const districts = await District.find(query)
++    .populate({
++      path: "regionId",
++      select: "name bankId isActive",
++      populate: { path: "bankId", select: "bankName bankCode isActive" },
++    })
++    .sort({ districtName: 1 });
+   return res
+     .status(200)
+     .json(new ApiResponse(200, districts, "Districts retrieved successfully"));
+ });
+ 
+-export const getDistrictGeographicSummaries = asyncHandler(
+-  async (_req, res) => {
+-    const [regionCounts, [atmCounts = {}]] = await Promise.all([
+-      Region.aggregate([
+-        { $match: { isActive: true } },
+-        { $group: { _id: "$districtId", total: { $sum: 1 } } },
+-      ]),
+-      ATM.aggregate([
+-        { $match: { isDeleted: false } },
+-        {
+-          $facet: {
+-            atms: [
+-              { $group: { _id: "$districtId", total: { $sum: 1 } } },
+-            ],
+-            employees: [
+-              { $unwind: "$assignedEmployeeId" },
+-              { $match: { assignedEmployeeId: { $ne: null } } },
+-              {
+-                $group: {
+-                  _id: {
+-                    districtId: "$districtId",
+-                    employeeId: "$assignedEmployeeId",
+-                  },
++export const getDistrictGeographicSummaries = asyncHandler(async (_req, res) => {
++  const [districts, [atmCounts = {}]] = await Promise.all([
++    District.find().select("_id regionId").lean(),
++    ATM.aggregate([
++      { $match: { isDeleted: false } },
++      {
++        $facet: {
++          atms: [{ $group: { _id: "$districtId", total: { $sum: 1 } } }],
++          employees: [
++            { $unwind: "$assignedEmployeeId" },
++            { $match: { assignedEmployeeId: { $ne: null } } },
++            {
++              $group: {
++                _id: {
++                  districtId: "$districtId",
++                  employeeId: "$assignedEmployeeId",
+                 },
+               },
+-              {
+-                $lookup: {
+-                  from: Employee.collection.name,
+-                  localField: "_id.employeeId",
+-                  foreignField: "_id",
+-                  as: "employee",
+-                },
+-              },
+-              { $match: { "employee.0": { $exists: true } } },
+-              {
+-                $group: {
+-                  _id: "$_id.districtId",
+-                  total: { $sum: 1 },
+-                },
++            },
++            {
++              $lookup: {
++                from: Employee.collection.name,
++                localField: "_id.employeeId",
++                foreignField: "_id",
++                as: "employee",
+               },
+-            ],
+-            customers: [
+-              { $match: { customer: { $ne: null } } },
+-              {
+-                $group: {
+-                  _id: {
+-                    districtId: "$districtId",
+-                    customerId: "$customer",
+-                  },
+-                },
++            },
++            { $match: { "employee.0": { $exists: true } } },
++            { $group: { _id: "$_id.districtId", total: { $sum: 1 } } },
++          ],
++          customers: [
++            { $match: { customer: { $ne: null } } },
++            {
++              $group: {
++                _id: { districtId: "$districtId", customerId: "$customer" },
+               },
+-              {
+-                $lookup: {
+-                  from: Customer.collection.name,
+-                  let: { customerId: "$_id.customerId" },
+-                  pipeline: [
+-                    {
+-                      $match: {
+-                        $expr: { $eq: ["$_id", "$$customerId"] },
+-                        isDeleted: false,
+-                      },
++            },
++            {
++              $lookup: {
++                from: Customer.collection.name,
++                let: { customerId: "$_id.customerId" },
++                pipeline: [
++                  {
++                    $match: {
++                      $expr: { $eq: ["$_id", "$$customerId"] },
++                      isDeleted: false,
+                     },
+-                  ],
+-                  as: "customer",
+-                },
+-              },
+-              { $match: { "customer.0": { $exists: true } } },
+-              {
+-                $group: {
+-                  _id: "$_id.districtId",
+-                  total: { $sum: 1 },
+-                },
++                  },
++                ],
++                as: "customer",
+               },
+-            ],
+-          },
++            },
++            { $match: { "customer.0": { $exists: true } } },
++            { $group: { _id: "$_id.districtId", total: { $sum: 1 } } },
++          ],
+         },
+-      ]),
+-    ]);
+-
+-    const summaries = new Map();
+-    const increment = (rows, field) => {
+-      for (const { _id, total } of rows) {
+-        const districtId = _id.toString();
+-        const summary = summaries.get(districtId) ?? {
+-          districtId,
+-          regions: 0,
+-          atms: 0,
+-          employees: 0,
+-          customers: 0,
+-        };
+-        summary[field] = total;
+-        summaries.set(districtId, summary);
+-      }
+-    };
++      },
++    ]),
++  ]);
+ 
+-    increment(regionCounts, "regions");
+-    increment(atmCounts.atms ?? [], "atms");
+-    increment(atmCounts.employees ?? [], "employees");
+-    increment(atmCounts.customers ?? [], "customers");
++  const summaries = new Map(
++    districts.map((district) => [
++      String(district._id),
++      {
++        districtId: String(district._id),
++        regions: district.regionId ? 1 : 0,
++        atms: 0,
++        employees: 0,
++        customers: 0,
++      },
++    ]),
++  );
++  const increment = (rows, field) => {
++    for (const { _id, total } of rows) {
++      const id = String(_id);
++      const summary = summaries.get(id) ?? {
++        districtId: id,
++        regions: 0,
++        atms: 0,
++        employees: 0,
++        customers: 0,
++      };
++      summary[field] = total;
++      summaries.set(id, summary);
++    }
++  };
++  increment(atmCounts.atms ?? [], "atms");
++  increment(atmCounts.employees ?? [], "employees");
++  increment(atmCounts.customers ?? [], "customers");
+ 
+-    return res.status(200).json(
++  return res
++    .status(200)
++    .json(
+       new ApiResponse(
+         200,
+         [...summaries.values()],
+         "District geographic summaries retrieved successfully",
+       ),
+     );
+-  },
+-);
++});
+ 
+ export const getDistrictById = asyncHandler(async (req, res) => {
+-  const { id } = req.params;
+-
+-  const district = await District.findById(id);
+-
+-  if (!district) {
+-    throw new ApiError(404, "District not found");
+-  }
+-
++  const district = await District.findById(req.params.id).populate({
++    path: "regionId",
++    select: "name bankId isActive",
++    populate: { path: "bankId", select: "bankName bankCode isActive" },
++  });
++  if (!district) throw new ApiError(404, "District not found");
+   return res
+     .status(200)
+     .json(new ApiResponse(200, district, "District retrieved successfully"));
+ });
+ 
+ export const updateDistrict = asyncHandler(async (req, res) => {
+-  const { id } = req.params;
+-  const { districtName, pinCode, state, isActive } = req.body;
+-
+-  const district = await District.findById(id);
+-
+-  if (!district) {
+-    throw new ApiError(404, "District not found");
++  const district = await District.findById(req.params.id);
++  if (!district) throw new ApiError(404, "District not found");
++  if (
++    req.body.isActive === true &&
++    (!district.regionId || district.geographyStatus !== "MAPPED")
++  ) {
++    throw new ApiError(409, "Map the district to a region before activating it");
+   }
++  Object.assign(district, req.body);
++  district.updatedBy = req.user._id;
+ 
+-  if (districtName && districtName !== district.districtName) {
+-    const duplicate = await District.findOne({ districtName });
+-    if (duplicate && duplicate._id.toString() !== district._id.toString()) {
+-      throw new ApiError(409, "District with this name already exists");
+-    }
+-  }
+-
+-  if (pinCode && pinCode !== district.pinCode) {
+-    const duplicate = await District.findOne({ pinCode });
+-    if (duplicate && duplicate._id.toString() !== district._id.toString()) {
+-      throw new ApiError(409, "District with this pin code already exists");
++  try {
++    await district.save();
++  } catch (error) {
++    if (isDuplicateKey(error)) {
++      throw new ApiError(409, "District name or PIN code already exists in this region");
+     }
++    throw error;
+   }
++  return res
++    .status(200)
++    .json(new ApiResponse(200, district, "District updated successfully"));
++});
+ 
+-  const updatedDistrict = await District.findByIdAndUpdate(
+-    id,
+-    {
+-      ...(districtName && { districtName }),
+-      ...(pinCode && { pinCode }),
+-      ...(state && { state }),
+-      ...(typeof isActive === "boolean" && { isActive }),
+-      updatedBy: req.user._id,
+-    },
++export const deactivateDistrict = asyncHandler(async (req, res) => {
++  const district = await District.findByIdAndUpdate(
++    req.params.id,
++    { $set: { isActive: false, updatedBy: req.user._id } },
+     { new: true, runValidators: true },
+   );
+-
++  if (!district) throw new ApiError(404, "District not found");
+   return res
+     .status(200)
+-    .json(
+-      new ApiResponse(200, updatedDistrict, "District updated successfully"),
+-    );
++    .json(new ApiResponse(200, district, "District deactivated successfully"));
+ });
+ 
+-export const deleteDistrict = asyncHandler(async (req, res) => {
+-  const { id } = req.params;
++export const transferDistrict = asyncHandler(async (req, res) => {
++  const { id: districtId } = req.params;
++  const { regionId: destinationRegionId, reason } = req.body;
+ 
+-  const district = await District.findByIdAndDelete(id);
++  const transfer = await withDistrictGeographyFence(
++    [districtId],
++    async (session) => {
++      const district = await District.findById(districtId).session(session);
++      if (!district) throw new ApiError(404, "District not found");
++      const sourceRegion = await Region.findById(district.regionId)
++        .select("bankId isActive name geographyStatus")
++        .session(session);
++      const destinationRegion = await Region.findById(destinationRegionId)
++        .select("bankId isActive name geographyStatus")
++        .session(session);
++      if (!sourceRegion) throw new ApiError(409, "District has no valid source region");
++      if (!destinationRegion) throw new ApiError(404, "Destination region not found");
++      if (
++        district.geographyStatus !== "MAPPED" ||
++        sourceRegion.geographyStatus !== "MAPPED" ||
++        destinationRegion.geographyStatus !== "MAPPED"
++      ) {
++        throw new ApiError(409, "Map the district and its regions before transferring");
++      }
++      if (!sourceRegion.isActive || !destinationRegion.isActive) {
++        throw new ApiError(400, "District transfers require active source and destination regions");
++      }
++      if (String(sourceRegion.bankId) !== String(destinationRegion.bankId)) {
++        throw new ApiError(400, "A district can only be transferred within the same bank");
++      }
++      const bank = await Bank.findById(sourceRegion.bankId)
++        .select("_id isActive")
++        .session(session);
++      if (!bank?.isActive) {
++        throw new ApiError(400, "District transfers require an active bank");
++      }
++      if (String(district.regionId) === String(destinationRegion._id)) {
++        throw new ApiError(400, "District already belongs to the selected region");
++      }
+ 
+-  if (!district) {
+-    throw new ApiError(404, "District not found");
+-  }
++      const atms = await ATM.find({ districtId, isDeleted: false })
++        .select("_id atmId bankId geographyStatus")
++        .session(session)
++        .lean();
++      const inconsistentATM = atms.find(
++        (atm) =>
++          String(atm.bankId) !== String(sourceRegion.bankId) ||
++          atm.geographyStatus !== "MAPPED",
++      );
++      if (inconsistentATM) {
++        throw new ApiError(
++          409,
++          `ATM ${inconsistentATM.atmId} does not match the district's bank and must be reconciled before transfer`,
++        );
++      }
++      const atmIds = atms.map((atm) => atm._id);
++      const blockers = {
++        jobs: [],
++        amcs: [],
++        recurringPlans: [],
++      };
++      if (atmIds.length > 0) {
++        blockers.jobs = await Job.find({
++          atmId: { $in: atmIds },
++          isDeleted: false,
++          status: { $nin: [JOB_STATUS.CLOSED, JOB_STATUS.CANCELLED] },
++        })
++          .select("_id jobId atmId status")
++          .session(session)
++          .lean();
++        blockers.amcs = await AMC.find({
++          atmId: { $in: atmIds },
++          isDeleted: false,
++          status: {
++            $in: [AMC_STATUS.PENDING, AMC_STATUS.IN_PROGRESS, AMC_STATUS.OVERDUE],
++          },
++        })
++          .select("_id amcId atmId status")
++          .session(session)
++          .lean();
++        blockers.recurringPlans = await RecurringMaintenancePlan.find({
++          atmId: { $in: atmIds },
++          isActive: true,
++        })
++          .select("_id atmId maintenanceType")
++          .session(session)
++          .lean();
++      }
++      const blockerSummary = {
++        jobs: blockers.jobs.length,
++        amcs: blockers.amcs.length,
++        recurringPlans: blockers.recurringPlans.length,
++      };
++      if (Object.values(blockerSummary).some((count) => count > 0)) {
++        throw new ApiError(409, "District transfer is blocked by unresolved maintenance records", [{
++          ...blockerSummary,
++          details: {
++            jobs: blockers.jobs.slice(0, 25),
++            amcs: blockers.amcs.slice(0, 25),
++            recurringPlans: blockers.recurringPlans.slice(0, 25),
++          },
++        }]);
++      }
++
++      await ATM.updateMany(
++        { districtId, isDeleted: false },
++        {
++          $set: {
++            regionId: destinationRegion._id,
++            geographyStatus: "MAPPED",
++            updatedBy: req.user._id,
++          },
++        },
++        { session, runValidators: true },
++      );
++      const [audit] = await DistrictTransferAudit.create(
++        [
++          {
++            districtId,
++            fromRegionId: sourceRegion._id,
++            fromRegionName: sourceRegion.name,
++            toRegionId: destinationRegion._id,
++            toRegionName: destinationRegion.name,
++            reason,
++            affectedATMCount: atms.length,
++            performedBy: req.user._id,
++          },
++        ],
++        { session },
++      );
++      return {
++        audit,
++        districtId: String(districtId),
++        fromRegionId: String(sourceRegion._id),
++        toRegionId: String(destinationRegion._id),
++        affectedATMCount: atms.length,
++      };
++    },
++  );
++
++  await publishDomainEventSafely({
++    event: "domain:district:transferred",
++    entityType: "district",
++    entityId: transfer.districtId,
++    action: "transferred",
++    data: {
++      transferId: String(transfer.audit._id),
++      fromRegionId: transfer.fromRegionId,
++      toRegionId: transfer.toRegionId,
++      affectedATMCount: transfer.affectedATMCount,
++    },
++  });
+ 
+   return res
+     .status(200)
+-    .json(new ApiResponse(200, null, "District deleted successfully"));
++    .json(new ApiResponse(200, transfer.audit, "District transferred successfully"));
+ });
++
++export const getDistrictTransfers = asyncHandler(async (req, res) => {
++  const district = await District.exists({ _id: req.params.id });
++  if (!district) throw new ApiError(404, "District not found");
++  const transfers = await DistrictTransferAudit.find({ districtId: req.params.id })
++    .populate("fromRegionId", "name")
++    .populate("toRegionId", "name")
++    .populate("performedBy", "firstName lastName")
++    .sort({ createdAt: -1 })
++    .limit(100);
++  return res
++    .status(200)
++    .json(new ApiResponse(200, transfers, "District transfers retrieved successfully"));
++});
++
++export const deleteDistrict = deactivateDistrict;
+diff --git a/backend/src/modules/districts/district.models.js b/backend/src/modules/districts/district.models.js
+index 227767a..8b9e6a6 100644
+--- a/backend/src/modules/districts/district.models.js
++++ b/backend/src/modules/districts/district.models.js
+@@ -2,17 +2,28 @@ import mongoose from "mongoose";
+ 
+ const districtSchema = new mongoose.Schema(
+   {
++    regionId: {
++      type: mongoose.Schema.Types.ObjectId,
++      ref: "Region",
++      required: function () {
++        return this.geographyStatus === "MAPPED";
++      },
++      index: true,
++    },
++    geographyStatus: {
++      type: String,
++      enum: ["MAPPED", "UNMAPPED"],
++      default: "UNMAPPED",
++    },
+     districtName: {
+       type: String,
+       required: true,
+       trim: true,
+-      unique: true,
+     },
+     pinCode: {
+       type: String,
+       required: true,
+       trim: true,
+-      unique: true,
+     },
+     state: {
+       type: String,
+@@ -22,12 +33,7 @@ const districtSchema = new mongoose.Schema(
+       type: Boolean,
+       default: true,
+     },
+-    regions: [
+-      {
+-        type: mongoose.Schema.Types.ObjectId,
+-        ref: "Region",
+-      },
+-    ],
++    geographyFence: { type: Number, default: 0, select: false },
+     createdBy: {
+       type: mongoose.Schema.Types.ObjectId,
+       ref: "User",
+@@ -43,9 +49,14 @@ const districtSchema = new mongoose.Schema(
+   },
+ );
+ 
+-districtSchema.index({ districtName: 1 });
+-
+-districtSchema.index({ pinCode: 1 });
++districtSchema.index(
++  { regionId: 1, districtName: 1 },
++  { unique: true, partialFilterExpression: { regionId: { $type: "objectId" } } },
++);
++districtSchema.index(
++  { regionId: 1, pinCode: 1 },
++  { unique: true, partialFilterExpression: { regionId: { $type: "objectId" } } },
++);
+ 
+ const District = mongoose.model("District", districtSchema);
+ 
+diff --git a/backend/src/modules/districts/district.route.js b/backend/src/modules/districts/district.route.js
+index 3275dcc..1fac7d3 100644
+--- a/backend/src/modules/districts/district.route.js
++++ b/backend/src/modules/districts/district.route.js
+@@ -1,27 +1,33 @@
+ import express from "express";
+ import {
+   createDistrict,
+-  deleteDistrict,
++  deactivateDistrict,
+   getAllDistricts,
+   getDistrictById,
+   getDistrictGeographicSummaries,
++  getDistrictTransfers,
++  transferDistrict,
+   updateDistrict,
+ } from "./district.controller.js";
+ import {
+   createDistrictSchema,
++  districtIdParamsSchema,
++  districtListQuerySchema,
++  districtRegionParamsSchema,
++  transferDistrictSchema,
+   updateDistrictSchema,
+-  validateRequest,
+ } from "./district.validation.js";
+ import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
+ import { authorizeRoles } from "../../middlewares/role.middleware.js";
++import { validateRequest } from "../../middlewares/validate.middleware.js";
+ 
+ const router = express.Router();
+ 
+ router.post(
+   "/",
+-  validateRequest(createDistrictSchema),
+   verifyAccessToken,
+   authorizeRoles("admin", "superAdmin"),
++  validateRequest(createDistrictSchema),
+   createDistrict,
+ );
+ 
+@@ -29,6 +35,7 @@ router.get(
+   "/",
+   verifyAccessToken,
+   authorizeRoles("admin", "superAdmin"),
++  validateRequest(districtListQuerySchema, "query"),
+   getAllDistricts,
+ );
+ 
+@@ -39,18 +46,45 @@ router.get(
+   getDistrictGeographicSummaries,
+ );
+ 
++router.get(
++  "/region/:regionId",
++  verifyAccessToken,
++  authorizeRoles("admin", "superAdmin"),
++  validateRequest(districtRegionParamsSchema, "params"),
++  getAllDistricts,
++);
++
++router.get(
++  "/:id/transfers",
++  verifyAccessToken,
++  authorizeRoles("admin", "superAdmin"),
++  validateRequest(districtIdParamsSchema, "params"),
++  getDistrictTransfers,
++);
++
++router.post(
++  "/:id/transfer",
++  verifyAccessToken,
++  authorizeRoles("superAdmin"),
++  validateRequest(districtIdParamsSchema, "params"),
++  validateRequest(transferDistrictSchema),
++  transferDistrict,
++);
++
+ router.get(
+   "/:id",
+   verifyAccessToken,
+   authorizeRoles("admin", "superAdmin"),
++  validateRequest(districtIdParamsSchema, "params"),
+   getDistrictById,
+ );
+ 
+ router.patch(
+   "/:id",
+-  validateRequest(updateDistrictSchema),
+   verifyAccessToken,
+   authorizeRoles("admin", "superAdmin"),
++  validateRequest(districtIdParamsSchema, "params"),
++  validateRequest(updateDistrictSchema),
+   updateDistrict,
+ );
+ 
+@@ -58,7 +92,8 @@ router.delete(
+   "/:id",
+   verifyAccessToken,
+   authorizeRoles("admin", "superAdmin"),
+-  deleteDistrict,
++  validateRequest(districtIdParamsSchema, "params"),
++  deactivateDistrict,
+ );
+ 
+ export default router;
+diff --git a/backend/src/modules/districts/district.validation.js b/backend/src/modules/districts/district.validation.js
+index f531e6e..cab327e 100644
+--- a/backend/src/modules/districts/district.validation.js
++++ b/backend/src/modules/districts/district.validation.js
+@@ -1,62 +1,37 @@
+ import { z } from "zod";
+-import ApiError from "../../utils/ApiError.js";
+-import asyncHandler from "../../utils/asyncHandler.js";
+ 
+-const createDistrictSchema = z.object({
+-  districtName: z
+-    .string({ required_error: "District name is required" })
+-    .trim()
+-    .min(2, "District name must be at least 2 characters")
+-    .max(100, "District name must not exceed 100 characters"),
+-  pinCode: z
+-    .string({ required_error: "Pin code is required" })
+-    .trim()
+-    .min(3, "Pin code must be at least 3 characters")
+-    .max(10, "Pin code must not exceed 10 characters"),
+-  state: z
+-    .string({ required_error: "State is required" })
+-    .trim()
+-    .min(2, "State must be at least 2 characters"),
+-  isActive: z.boolean().optional(),
++const objectIdSchema = z.string().regex(/^[a-fA-F0-9]{24}$/, "Invalid ID");
++
++export const districtIdParamsSchema = z.object({ id: objectIdSchema });
++export const districtRegionParamsSchema = z.object({
++  regionId: objectIdSchema,
++});
++export const districtListQuerySchema = z.object({
++  regionId: objectIdSchema.optional(),
++  isActive: z.enum(["true", "false"]).optional(),
+ });
+ 
+-const updateDistrictSchema = z.object({
+-  districtName: z
+-    .string()
+-    .trim()
+-    .min(2, "District name must be at least 2 characters")
+-    .max(100, "District name must not exceed 100 characters")
+-    .optional(),
+-  pinCode: z
+-    .string()
+-    .trim()
+-    .min(3, "Pin code must be at least 3 characters")
+-    .max(10, "Pin code must not exceed 10 characters")
+-    .optional(),
+-  state: z
+-    .string()
+-    .trim()
+-    .min(2, "State must be at least 2 characters")
+-    .optional(),
++export const createDistrictSchema = z.object({
++  regionId: objectIdSchema,
++  districtName: z.string().trim().min(2).max(100),
++  pinCode: z.string().trim().min(3).max(10),
++  state: z.string().trim().min(2).max(100),
+   isActive: z.boolean().optional(),
+ });
+ 
+-const validateRequest = (schema) => {
+-  return asyncHandler(async (req, res, next) => {
+-    const result = schema.safeParse(req.body);
+-
+-    if (!result.success) {
+-      const errors = result.error.issues.map((issue) => ({
+-        path: issue.path.join(".") || "body",
+-        message: issue.message,
+-      }));
+-
+-      return next(new ApiError(400, "Validation failed", errors));
+-    }
+-
+-    req.body = result.data;
+-    next();
++export const updateDistrictSchema = z
++  .object({
++    districtName: z.string().trim().min(2).max(100).optional(),
++    pinCode: z.string().trim().min(3).max(10).optional(),
++    state: z.string().trim().min(2).max(100).optional(),
++    isActive: z.boolean().optional(),
++  })
++  .strict()
++  .refine((value) => Object.keys(value).length > 0, {
++    message: "At least one field must be provided",
+   });
+-};
+ 
+-export { createDistrictSchema, updateDistrictSchema, validateRequest };
++export const transferDistrictSchema = z.object({
++  regionId: objectIdSchema,
++  reason: z.string().trim().min(1, "Transfer reason is required").max(1000),
++});
+diff --git a/backend/src/modules/employees/employee.controller.js b/backend/src/modules/employees/employee.controller.js
+index 79beba4..a4852f9 100644
+--- a/backend/src/modules/employees/employee.controller.js
++++ b/backend/src/modules/employees/employee.controller.js
+@@ -83,6 +83,7 @@ export const createEmployee = asyncHandler(async (req, res) => {
+     effectiveExitDate,
+     employmentType,
+     districtIds,
++    regionIds,
+     assignedAtmIds,
+     supervisorId,
+     salary,
+@@ -100,6 +101,7 @@ export const createEmployee = asyncHandler(async (req, res) => {
+     effectiveExitDate,
+     employmentType,
+     districtIds,
++    regionIds,
+     assignedAtmIds: [],
+     supervisorId: resolvedSupervisorId,
+     salary,
+diff --git a/backend/src/modules/employees/employee.validate.js b/backend/src/modules/employees/employee.validate.js
+index 35d4399..39de981 100644
+--- a/backend/src/modules/employees/employee.validate.js
++++ b/backend/src/modules/employees/employee.validate.js
+@@ -54,7 +54,7 @@ const createEmployeeSchema = z.object({
+   }),
+   districtIds: z.array(objectIdSchema),
+   assignedAtmIds: z.array(objectIdSchema).optional(),
+-  regionIds: z.array(objectIdSchema).optional(),
++  regionIds: z.array(objectIdSchema).default([]),
+   supervisorId: objectIdSchema.nullable().optional(),
+   salary: z
+     .number({ invalid_type_error: "Salary must be a number" })
+diff --git a/backend/src/modules/jobs/jobs.controller.js b/backend/src/modules/jobs/jobs.controller.js
+index 031760a..90ff358 100644
+--- a/backend/src/modules/jobs/jobs.controller.js
++++ b/backend/src/modules/jobs/jobs.controller.js
+@@ -30,6 +30,8 @@ import {
+ } from "../complaints/complaintJobIntegrity.service.js";
+ import { myJobPerformanceQuerySchema } from "./jobs.validation.js";
+ import { getJobPerformanceForUser } from "./jobPerformance.service.js";
++import { captureATMGeographySnapshot } from "../../utils/geographySnapshot.js";
++import { withDistrictGeographyFence } from "../districts/districtGeography.service.js";
+ import {
+   publishDomainEventSafely,
+ } from "../../realtime/domain-events.js";
+@@ -306,35 +308,44 @@ export const createJob = asyncHandler(async (req, res) => {
+ 
+   const atm = await ATM.findById(atmId);
+   if (!atm || atm.isDeleted) throw new ApiError(404, "ATM not found");
+-  const atmCustomerId = atm.customer?._id ?? atm.customer;
+-  if (customerId) {
+-    if (!sameCustomerId(customerId, atmCustomerId)) {
+-      throw new ApiError(400, "Customer must match the ATM's assigned customer");
+-    }
+-  }
+-
+   const jobId = await generateJobId();
+ 
+-  const jobData = {
+-    jobId,
+-    jobNumber: jobId,
+-    title,
+-    description,
+-    atmId,
+-    complaintId,
+-    customerId: atmCustomerId,
+-    workType: workType || "repair",
+-    ...(acSubType ? { acSubType } : {}),
+-    priority: priority || "medium",
+-    status: JOB_STATUS.PENDING,
+-    createdBy: req.user._id,
+-  };
+-  const job = complaintId
+-    ? await createJobWithComplaint({
++  const job = await withDistrictGeographyFence([atm.districtId], async (session) => {
++    const currentATM = await ATM.findById(atmId).session(session);
++    if (!currentATM || currentATM.isDeleted) throw new ApiError(404, "ATM not found");
++    if (String(currentATM.districtId) !== String(atm.districtId)) {
++      throw new ApiError(409, "ATM geography changed; retry job creation");
++    }
++
++    const atmCustomerId = currentATM.customer?._id ?? currentATM.customer;
++    if (customerId && !sameCustomerId(customerId, atmCustomerId)) {
++      throw new ApiError(400, "Customer must match the ATM's assigned customer");
++    }
++    const jobData = {
++      jobId,
++      jobNumber: jobId,
++      title,
++      description,
++      atmId,
++      complaintId,
++      customerId: atmCustomerId,
++      geographySnapshot: await captureATMGeographySnapshot(currentATM, session),
++      workType: workType || "repair",
++      ...(acSubType ? { acSubType } : {}),
++      priority: priority || "medium",
++      status: JOB_STATUS.PENDING,
++      createdBy: req.user._id,
++    };
++    if (complaintId) {
++      return createJobWithComplaint({
+         jobData,
+         updatedBy: req.user._id,
+-      })
+-    : await Job.create(jobData);
++        session,
++      });
++    }
++    const [createdJob] = await Job.create([jobData], { session });
++    return createdJob;
++  });
+ 
+   await logJobHistory({
+     jobId: job._id,
+diff --git a/backend/src/modules/jobs/jobs.model.js b/backend/src/modules/jobs/jobs.model.js
+index 6e7f1eb..d0f4dd3 100644
+--- a/backend/src/modules/jobs/jobs.model.js
++++ b/backend/src/modules/jobs/jobs.model.js
+@@ -92,6 +92,15 @@ const jobSchema = new mongoose.Schema(
+       required: true,
+       index: true,
+     },
++    geographySnapshot: {
++      bankId: { type: mongoose.Schema.Types.ObjectId, ref: "Bank" },
++      bankName: { type: String, trim: true },
++      regionId: { type: mongoose.Schema.Types.ObjectId, ref: "Region" },
++      regionName: { type: String, trim: true },
++      districtId: { type: mongoose.Schema.Types.ObjectId, ref: "District" },
++      districtName: { type: String, trim: true },
++      capturedAt: { type: Date },
++    },
+     complaintId: {
+       type: mongoose.Schema.Types.ObjectId,
+       ref: "Complaint",
+diff --git a/backend/src/modules/jobs/recurringMaintenance.service.js b/backend/src/modules/jobs/recurringMaintenance.service.js
+index 5ecacfd..4af3357 100644
+--- a/backend/src/modules/jobs/recurringMaintenance.service.js
++++ b/backend/src/modules/jobs/recurringMaintenance.service.js
+@@ -14,6 +14,8 @@ import {
+ } from "./recurringMaintenance.utils.js";
+ import { publishDomainEventSafely } from "../../realtime/domain-events.js";
+ import { resolveJobRecipients } from "../../realtime/recipient-resolver.js";
++import { captureATMGeographySnapshot } from "../../utils/geographySnapshot.js";
++import { withDistrictGeographyFence } from "../districts/districtGeography.service.js";
+ 
+ const NON_DUE_JOB_STATUSES = [
+   JOB_STATUS.COMPLETED,
+@@ -98,22 +100,26 @@ const addSkip = (result, counter, plan, atmId, reason) => {
+ 
+ const normalizeId = (id) => String(id?._id ?? id ?? "").toLowerCase();
+ 
+-const validatePlanEmployee = async (atmId, employeeId) => {
++const validatePlanEmployee = async (atmId, employeeId, session) => {
+   if (!employeeId) {
+     throw new ApiError(400, "An Employee must be selected for the recurring plan");
+   }
+ 
+-  const atm = await ATM.findOne({
++  const atmQuery = ATM.findOne({
+     _id: atmId,
+     isDeleted: false,
+     status: { $in: ["ACTIVE", "UNDER_MAINTENANCE"] },
+-  }).select("_id assignedEmployeeId");
++  }).select("_id districtId assignedEmployeeId");
++  if (session) atmQuery.session(session);
++  const atm = await atmQuery;
+   if (!atm) throw new ApiError(404, "Active ATM not found");
+ 
+-  const employee = await Employee.findById(employeeId).populate(
++  const employeeQuery = Employee.findById(employeeId).populate(
+     "userId",
+     "userType status",
+   );
++  if (session) employeeQuery.session(session);
++  const employee = await employeeQuery;
+   if (!employee) throw new ApiError(404, "Employee not found");
+   if (employee.status !== "active") {
+     throw new ApiError(400, "Employee is inactive");
+@@ -139,17 +145,19 @@ const validatePlanEmployee = async (atmId, employeeId) => {
+   return employee;
+ };
+ 
+-const validateGeneratedPlanEmployee = async (plan, atm) => {
++const validateGeneratedPlanEmployee = async (plan, atm, session) => {
+   if (!plan.assignedEmployeeId) {
+     return {
+       counter: "skippedNoSelectedEmployee",
+       reason: "Recurring plan has no Employee selected",
+     };
+   }
+-  const employee = await Employee.findById(plan.assignedEmployeeId).populate(
++  const employeeQuery = Employee.findById(plan.assignedEmployeeId).populate(
+     "userId",
+     "userType status",
+   );
++  if (session) employeeQuery.session(session);
++  const employee = await employeeQuery;
+   if (!employee) {
+     return {
+       counter: "skippedInactiveEmployee",
+@@ -194,7 +202,7 @@ const validateGeneratedPlanEmployee = async (plan, atm) => {
+   return { employee };
+ };
+ 
+-const addJobHistory = async (job, createdBy, atm, maintenanceType) => {
++const addJobHistory = async (job, createdBy, atm, maintenanceType, session) => {
+   await JobHistory.create([
+     {
+       jobId: job._id,
+@@ -220,7 +228,7 @@ const addJobHistory = async (job, createdBy, atm, maintenanceType) => {
+         source: "RECURRING",
+       },
+     },
+-  ]);
++  ], { session });
+ };
+ 
+ export const generateRecurringJobs = async ({
+@@ -334,29 +342,82 @@ export const generateRecurringJobs = async ({
+ 
+       let job;
+       try {
+-        job = await Job.create({
+-          jobId: jobNumber,
+-          jobNumber,
+-          title,
+-          description: `${description} ATM: ${atm.atmId}. Occurrence: ${businessDate.dateKey}.`,
+-          atmId: atm._id,
+-          customerId: atm.customer || undefined,
+-          workType: "maintenance",
+-          priority: "medium",
+-          status: JOB_STATUS.ASSIGNED,
+-          assignedEmployeeId: assignedEmployee.userId._id,
+-          assignedBy: adminId,
+-          assignedAt: now,
+-          createdBy: adminId,
+-          recurringMaintenance: {
+-            source: "RECURRING",
+-            planId: plan._id,
+-            maintenanceType: plan.maintenanceType,
+-            occurrenceKey,
+-            scheduledDate: dayStart,
+-            dueAt: dayEnd,
++        const creation = await withDistrictGeographyFence(
++          [atm.districtId],
++          async (session) => {
++            const currentPlan = await RecurringMaintenancePlan.findOne({
++              _id: plan._id,
++              isActive: true,
++            }).session(session);
++            const currentATM = await ATM.findOne({
++              _id: atm._id,
++              isDeleted: false,
++            }).session(session);
++            if (!currentPlan || !currentATM) return { skipped: true };
++            if (String(currentATM.districtId) !== String(atm.districtId)) {
++              throw new ApiError(409, "ATM geography changed during recurring job generation");
++            }
++            const currentEligibility = await validateGeneratedPlanEmployee(
++              currentPlan,
++              currentATM,
++              session,
++            );
++            if (!currentEligibility.employee) {
++              return {
++                skipped: true,
++                counter: currentEligibility.counter,
++                reason: currentEligibility.reason,
++              };
++            }
++            const currentEmployee = currentEligibility.employee;
++            const snapshot = await captureATMGeographySnapshot(currentATM, session);
++            const [createdJob] = await Job.create(
++              [{
++                jobId: jobNumber,
++                jobNumber,
++                title,
++                description: `${description} ATM: ${currentATM.atmId}. Occurrence: ${businessDate.dateKey}.`,
++                atmId: currentATM._id,
++                customerId: currentATM.customer || undefined,
++                geographySnapshot: snapshot,
++                workType: "maintenance",
++                priority: "medium",
++                status: JOB_STATUS.ASSIGNED,
++                assignedEmployeeId: currentEmployee.userId._id,
++                assignedBy: adminId,
++                assignedAt: now,
++                createdBy: adminId,
++                recurringMaintenance: {
++                  source: "RECURRING",
++                  planId: currentPlan._id,
++                  maintenanceType: currentPlan.maintenanceType,
++                  occurrenceKey,
++                  scheduledDate: dayStart,
++                  dueAt: dayEnd,
++                },
++              }],
++              { session },
++            );
++            await addJobHistory(
++              createdJob,
++              adminId,
++              currentATM,
++              currentPlan.maintenanceType,
++              session,
++            );
++            return { job: createdJob, atm: currentATM };
+           },
+-        });
++        );
++        if (creation.skipped) {
++          if (creation.counter) {
++            addSkip(result, creation.counter, plan, atm._id, creation.reason);
++          } else {
++            result.skippedNotStarted++;
++          }
++          continue;
++        }
++        job = creation.job;
++        generatedJobs.push(job);
+       } catch (error) {
+         if (
+           error.code === 11000 &&
+@@ -371,17 +432,6 @@ export const generateRecurringJobs = async ({
+       }
+ 
+       result.created++;
+-      try {
+-        await addJobHistory(job, adminId, atm, plan.maintenanceType);
+-      } catch (error) {
+-        result.errors.push({
+-          planId: plan._id.toString(),
+-          atmId: atm.atmId,
+-          jobId: job._id.toString(),
+-          error: `Job created but history could not be recorded: ${error.message}`,
+-        });
+-      }
+-      generatedJobs.push(job);
+       if (generatedJobs.length === REALTIME_PUBLISH_CONCURRENCY) {
+         await publishGeneratedJobEvents(
+           generatedJobs.splice(0),
+@@ -441,12 +491,35 @@ export const getRecurringMaintenancePlans = async () =>
+     .sort({ createdAt: -1 });
+ 
+ export const createRecurringMaintenancePlan = async (planData, createdBy) => {
+-  await validatePlanEmployee(planData.atmId, planData.assignedEmployeeId);
+-
+   try {
+-    return await RecurringMaintenancePlan.create({
+-      ...planData,
+-      createdBy,
++    const atm = await ATM.findOne({
++      _id: planData.atmId,
++      isDeleted: false,
++      status: { $in: ["ACTIVE", "UNDER_MAINTENANCE"] },
++    }).select("_id districtId");
++    if (!atm) throw new ApiError(404, "Active ATM not found");
++
++    return await withDistrictGeographyFence([atm.districtId], async (session) => {
++      const currentATM = await ATM.findOne({
++        _id: planData.atmId,
++        isDeleted: false,
++        status: { $in: ["ACTIVE", "UNDER_MAINTENANCE"] },
++      })
++        .select("_id districtId")
++        .session(session);
++      if (!currentATM) throw new ApiError(404, "Active ATM not found");
++      if (String(currentATM.districtId) !== String(atm.districtId)) {
++        throw new ApiError(409, "ATM geography changed; retry plan creation");
++      }
++
++      await validatePlanEmployee(planData.atmId, planData.assignedEmployeeId, session);
++      const fullATM = await ATM.findById(planData.atmId).session(session);
++      const geographySnapshot = await captureATMGeographySnapshot(fullATM, session);
++      const [plan] = await RecurringMaintenancePlan.create(
++        [{ ...planData, geographySnapshot, createdBy }],
++        { session },
++      );
++      return plan;
+     });
+   } catch (error) {
+     if (error.code === 11000) {
+@@ -466,28 +539,48 @@ export const updateRecurringMaintenancePlan = async (
+ ) => {
+   const plan = await RecurringMaintenancePlan.findById(planId);
+   if (!plan) return null;
++  const atm = await ATM.findById(plan.atmId).select("_id districtId");
++  if (!atm) throw new ApiError(404, "ATM not found");
+ 
+-  const newDayOfWeek = Object.hasOwn(updates, "dayOfWeek")
+-    ? updates.dayOfWeek
+-    : plan.dayOfWeek;
+-  if (
+-    plan.maintenanceType === "WEEKLY_MOPPING" &&
+-    (newDayOfWeek == null || newDayOfWeek < 0 || newDayOfWeek > 6)
+-  ) {
+-    throw new ApiError(
+-      400,
+-      "A weekday between 0 (Sunday) and 6 (Saturday) is required",
++  return withDistrictGeographyFence([atm.districtId], async (session) => {
++    const currentPlan = await RecurringMaintenancePlan.findById(planId).session(
++      session,
+     );
+-  }
+-  if (plan.maintenanceType === "DAILY_CLEANING" && newDayOfWeek != null) {
+-    throw new ApiError(400, "Daily cleaning cannot have a weekday");
+-  }
++    if (!currentPlan) return null;
++    const currentATM = await ATM.findById(currentPlan.atmId)
++      .select("_id districtId")
++      .session(session);
++    if (!currentATM) throw new ApiError(404, "ATM not found");
++    if (String(currentATM.districtId) !== String(atm.districtId)) {
++      throw new ApiError(409, "ATM geography changed; retry plan update");
++    }
+ 
+-  if (Object.hasOwn(updates, "assignedEmployeeId")) {
+-    await validatePlanEmployee(plan.atmId, updates.assignedEmployeeId);
+-  }
++    const newDayOfWeek = Object.hasOwn(updates, "dayOfWeek")
++      ? updates.dayOfWeek
++      : currentPlan.dayOfWeek;
++    if (
++      currentPlan.maintenanceType === "WEEKLY_MOPPING" &&
++      (newDayOfWeek == null || newDayOfWeek < 0 || newDayOfWeek > 6)
++    ) {
++      throw new ApiError(
++        400,
++        "A weekday between 0 (Sunday) and 6 (Saturday) is required",
++      );
++    }
++    if (currentPlan.maintenanceType === "DAILY_CLEANING" && newDayOfWeek != null) {
++      throw new ApiError(400, "Daily cleaning cannot have a weekday");
++    }
+ 
+-  Object.assign(plan, updates, { updatedBy });
+-  await plan.save();
+-  return plan;
++    if (updates.isActive === true || Object.hasOwn(updates, "assignedEmployeeId")) {
++      await validatePlanEmployee(
++        currentPlan.atmId,
++        updates.assignedEmployeeId ?? currentPlan.assignedEmployeeId,
++        session,
++      );
++    }
++
++    Object.assign(currentPlan, updates, { updatedBy });
++    await currentPlan.save({ session });
++    return currentPlan;
++  });
+ };
+diff --git a/backend/src/modules/jobs/recurringMaintenancePlan.model.js b/backend/src/modules/jobs/recurringMaintenancePlan.model.js
+index 41a9404..26ee168 100644
+--- a/backend/src/modules/jobs/recurringMaintenancePlan.model.js
++++ b/backend/src/modules/jobs/recurringMaintenancePlan.model.js
+@@ -7,6 +7,15 @@ const recurringMaintenancePlanSchema = new mongoose.Schema(
+       ref: "ATM",
+       required: true,
+     },
++    geographySnapshot: {
++      bankId: { type: mongoose.Schema.Types.ObjectId, ref: "Bank" },
++      bankName: { type: String, trim: true },
++      regionId: { type: mongoose.Schema.Types.ObjectId, ref: "Region" },
++      regionName: { type: String, trim: true },
++      districtId: { type: mongoose.Schema.Types.ObjectId, ref: "District" },
++      districtName: { type: String, trim: true },
++      capturedAt: { type: Date },
++    },
+     assignedEmployeeId: {
+       type: mongoose.Schema.Types.ObjectId,
+       ref: "Employee",
+diff --git a/backend/src/modules/region/region.controller.js b/backend/src/modules/region/region.controller.js
+index 93e5e60..1939a16 100644
+--- a/backend/src/modules/region/region.controller.js
++++ b/backend/src/modules/region/region.controller.js
+@@ -1,224 +1,139 @@
+ import asyncHandler from "../../utils/asyncHandler.js";
+ import ApiError from "../../utils/ApiError.js";
+ import ApiResponse from "../../utils/ApiResponse.js";
+-import Region from "./region.model.js";
++import Bank from "../banks/bank.model.js";
+ import District from "../districts/district.models.js";
++import Region from "./region.model.js";
+ 
+-export const createRegion = asyncHandler(async (req, res) => {
+-  const { districtId, name, code, description, isActive = true } = req.body;
+-
+-  const district = await District.findById(districtId);
+-
+-  if (!district) {
+-    throw new ApiError(404, "District not found");
+-  }
+-
+-  const existingRegion = await Region.findOne({ districtId, name });
+-
+-  if (existingRegion) {
+-    throw new ApiError(
+-      409,
+-      "Region with this name already exists in this district",
+-    );
+-  }
++const isDuplicateKey = (error) => error?.code === 11000;
+ 
+-  if (code) {
+-    const duplicateCode = await Region.findOne({
+-      districtId,
+-      code: code.toUpperCase(),
++export const createRegion = asyncHandler(async (req, res) => {
++  const { bankId, name, code, description, isActive = true } = req.body;
++  const bank = await Bank.findById(bankId).select("_id isActive");
++  if (!bank) throw new ApiError(404, "Bank not found");
++  if (!bank.isActive) throw new ApiError(400, "Cannot add a region to an inactive bank");
++
++  try {
++    const region = await Region.create({
++      bankId,
++      geographyStatus: "MAPPED",
++      name,
++      code: code?.toUpperCase() || undefined,
++      description: description || "",
++      isActive,
++      createdBy: req.user._id,
+     });
+-
+-    if (duplicateCode) {
+-      throw new ApiError(
+-        409,
+-        "Region with this code already exists in this district",
+-      );
++    return res
++      .status(201)
++      .json(new ApiResponse(201, region, "Region created successfully"));
++  } catch (error) {
++    if (isDuplicateKey(error)) {
++      throw new ApiError(409, "Region name or code already exists in this bank");
+     }
++    throw error;
+   }
+-
+-  const region = await Region.create({
+-    districtId,
+-    name,
+-    code: code ? code.toUpperCase() : undefined,
+-    description: description || "",
+-    isActive,
+-    createdBy: req.user._id,
+-  });
+-
+-  await District.findByIdAndUpdate(
+-    districtId,
+-    {
+-      $addToSet: { regions: region._id },
+-    },
+-    { new: true },
+-  );
+-
+-  return res
+-    .status(201)
+-    .json(new ApiResponse(201, region, "Region created successfully"));
+ });
+ 
+ export const getAllRegions = asyncHandler(async (req, res) => {
+-  const regions = await Region.find({ isActive: true })
+-    .populate("districtId", "districtName pinCode state")
++  const query =
++    req.query.includeInactive === "true"
++      ? {}
++      : { isActive: true, geographyStatus: "MAPPED" };
++  const regions = await Region.find(query)
++    .populate("bankId", "bankName bankCode")
+     .sort({ name: 1 });
+-
+   return res
+     .status(200)
+     .json(new ApiResponse(200, regions, "Regions retrieved successfully"));
+ });
+ 
+-export const getRegionById = asyncHandler(async (req, res) => {
+-  const { id } = req.params;
+-
+-  const region = await Region.findById(id).populate(
+-    "districtId",
+-    "districtName pinCode state",
+-  );
+-
+-  if (!region) {
+-    throw new ApiError(404, "Region not found");
+-  }
+-
+-  return res
+-    .status(200)
+-    .json(new ApiResponse(200, region, "Region retrieved successfully"));
+-});
+-
+-export const getRegionsByDistrict = asyncHandler(async (req, res) => {
+-  const { districtId } = req.params;
+-
+-  const district = await District.findById(districtId);
++export const getRegionsByBank = asyncHandler(async (req, res) => {
++  const { bankId } = req.params;
++  const bank = await Bank.findById(bankId).select("_id");
++  if (!bank) throw new ApiError(404, "Bank not found");
+ 
+-  if (!district) {
+-    throw new ApiError(404, "District not found");
++  const query = { bankId };
++  if (req.query.includeInactive !== "true") {
++    query.isActive = true;
++    query.geographyStatus = "MAPPED";
+   }
+-
+-  const regions = await Region.find({ districtId, isActive: true })
+-    .populate("districtId", "districtName pinCode state")
+-    .sort({ name: 1 });
+-
++  const regions = await Region.find(query).populate("bankId", "bankName bankCode").sort({ name: 1 });
+   return res
+     .status(200)
+-    .json(
+-      new ApiResponse(
+-        200,
+-        regions,
+-        "Regions for district retrieved successfully",
+-      ),
+-    );
++    .json(new ApiResponse(200, regions, "Regions retrieved successfully"));
+ });
+ 
+-export const getAllRegionsByDistrict = asyncHandler(async (req, res) => {
+-  const { districtId } = req.params;
+-
+-  const district = await District.findById(districtId);
+-
+-  if (!district) {
+-    throw new ApiError(404, "District not found");
+-  }
+-
+-  const regions = await Region.find({ districtId })
+-    .populate("districtId", "districtName pinCode state")
+-    .sort({ name: 1 });
+-
++export const getRegionById = asyncHandler(async (req, res) => {
++  const region = await Region.findById(req.params.id).populate(
++    "bankId",
++    "bankName bankCode",
++  );
++  if (!region) throw new ApiError(404, "Region not found");
+   return res
+     .status(200)
+-    .json(
+-      new ApiResponse(
+-        200,
+-        regions,
+-        "All regions for district retrieved successfully",
+-      ),
+-    );
++    .json(new ApiResponse(200, region, "Region retrieved successfully"));
+ });
+ 
+ export const updateRegion = asyncHandler(async (req, res) => {
+-  const { id } = req.params;
+-  const { name, code, description, isActive } = req.body;
+-
+-  const region = await Region.findById(id);
+-
+-  if (!region) {
+-    throw new ApiError(404, "Region not found");
+-  }
+-
+-  if (name && name !== region.name) {
+-    const duplicateName = await Region.findOne({
+-      districtId: region.districtId,
+-      name,
+-    });
+-
+-    if (
+-      duplicateName &&
+-      duplicateName._id.toString() !== region._id.toString()
+-    ) {
+-      throw new ApiError(
+-        409,
+-        "Region with this name already exists in this district",
+-      );
+-    }
++  const region = await Region.findById(req.params.id);
++  if (!region) throw new ApiError(404, "Region not found");
++  if (
++    req.body.isActive === true &&
++    (!region.bankId || region.geographyStatus !== "MAPPED")
++  ) {
++    throw new ApiError(409, "Map the region to a bank before activating it");
+   }
+ 
+-  if (code && code.toUpperCase() !== (region.code || "")) {
+-    const duplicateCode = await Region.findOne({
+-      districtId: region.districtId,
+-      code: code.toUpperCase(),
+-    });
++  Object.assign(region, req.body);
++  if (req.body.code !== undefined) region.code = req.body.code.toUpperCase() || undefined;
++  region.updatedBy = req.user._id;
+ 
+-    if (
+-      duplicateCode &&
+-      duplicateCode._id.toString() !== region._id.toString()
+-    ) {
+-      throw new ApiError(
+-        409,
+-        "Region with this code already exists in this district",
+-      );
++  try {
++    await region.save();
++  } catch (error) {
++    if (isDuplicateKey(error)) {
++      throw new ApiError(409, "Region name or code already exists in this bank");
+     }
++    throw error;
+   }
+-
+-  const updatedRegion = await Region.findByIdAndUpdate(
+-    id,
+-    {
+-      ...(name && { name }),
+-      ...(code && { code: code.toUpperCase() }),
+-      ...(typeof description === "string" && { description }),
+-      ...(typeof isActive === "boolean" && { isActive }),
+-      updatedBy: req.user._id,
+-    },
+-    { new: true, runValidators: true },
+-  ).populate("districtId", "districtName pinCode state");
+-
++  await region.populate("bankId", "bankName bankCode");
+   return res
+     .status(200)
+-    .json(new ApiResponse(200, updatedRegion, "Region updated successfully"));
++    .json(new ApiResponse(200, region, "Region updated successfully"));
+ });
+ 
+-export const deleteRegion = asyncHandler(async (req, res) => {
+-  const { id } = req.params;
+-
+-  const region = await Region.findOneAndUpdate(
+-    { _id: id, isActive: true },
+-    {
+-      isActive: false,
+-      updatedBy: req.user._id,
+-    },
+-    { new: true },
++export const deactivateRegion = asyncHandler(async (req, res) => {
++  const region = await Region.findByIdAndUpdate(
++    req.params.id,
++    { $set: { isActive: false, updatedBy: req.user._id } },
++    { new: true, runValidators: true },
+   );
+-
+-  if (!region) {
+-    throw new ApiError(404, "Region not found");
+-  }
+-
+-  //   await District.findByIdAndUpdate(
+-  //     region.districtId,
+-  //     {
+-  //       $pull: { regions: region._id },
+-  //     },
+-  //     { new: true },
+-  //   );
+-
++  if (!region) throw new ApiError(404, "Region not found");
+   return res
+     .status(200)
+-    .json(new ApiResponse(200, region, "Region deleted successfully"));
++    .json(new ApiResponse(200, region, "Region deactivated successfully"));
+ });
++
++const listDistrictParentRegion = async (req, res, includeInactive) => {
++  const district = await District.findById(req.params.districtId).select("regionId");
++  if (!district) throw new ApiError(404, "District not found");
++  const region = district.regionId
++    ? await Region.findById(district.regionId).populate("bankId", "bankName bankCode")
++    : null;
++  const result = region && (includeInactive || region.isActive)
++    ? [region]
++    : [];
++  return res
++    .status(200)
++    .json(new ApiResponse(200, result, "District's parent region retrieved successfully"));
++};
++
++export const listRegionsByDistrict = asyncHandler((req, res) =>
++  listDistrictParentRegion(req, res, false),
++);
++export const listAllRegionsByDistrict = asyncHandler((req, res) =>
++  listDistrictParentRegion(req, res, true),
++);
++export const getRegionsByDistrict = listRegionsByDistrict;
++export const getAllRegionsByDistrict = listAllRegionsByDistrict;
++export const deleteRegion = deactivateRegion;
+diff --git a/backend/src/modules/region/region.model.js b/backend/src/modules/region/region.model.js
+index 5362f66..75c67a1 100644
+--- a/backend/src/modules/region/region.model.js
++++ b/backend/src/modules/region/region.model.js
+@@ -2,12 +2,19 @@ import mongoose from "mongoose";
+ 
+ const regionSchema = new mongoose.Schema(
+   {
+-    districtId: {
++    bankId: {
+       type: mongoose.Schema.Types.ObjectId,
+-      ref: "District",
+-      required: true,
++      ref: "Bank",
++      required: function () {
++        return this.geographyStatus === "MAPPED";
++      },
+       index: true,
+     },
++    geographyStatus: {
++      type: String,
++      enum: ["MAPPED", "UNMAPPED"],
++      default: "UNMAPPED",
++    },
+ 
+     name: {
+       type: String,
+@@ -48,16 +55,19 @@ const regionSchema = new mongoose.Schema(
+   },
+ );
+ 
+-// Prevent duplicate region names within the same district
+-regionSchema.index({ districtId: 1, name: 1 }, { unique: true });
++regionSchema.index(
++  { bankId: 1, name: 1 },
++  { unique: true, partialFilterExpression: { bankId: { $type: "objectId" } } },
++);
+ 
+-// Prevent duplicate region codes within the same district
++// Codes are unique within a bank when supplied.
+ regionSchema.index(
+-  { districtId: 1, code: 1 },
++  { bankId: 1, code: 1 },
+   {
+     unique: true,
+     partialFilterExpression: {
+-      code: { $exists: true, $type: "string" },
++      bankId: { $type: "objectId" },
++      code: { $type: "string", $gt: "" },
+     },
+   },
+ );
+diff --git a/backend/src/modules/region/region.routes.js b/backend/src/modules/region/region.routes.js
+index 5c470c4..be20054 100644
+--- a/backend/src/modules/region/region.routes.js
++++ b/backend/src/modules/region/region.routes.js
+@@ -1,72 +1,54 @@
+ import express from "express";
+ import {
+   createRegion,
+-  deleteRegion,
+-  getAllRegionsByDistrict,
++  deactivateRegion,
+   getAllRegions,
++  getAllRegionsByDistrict,
+   getRegionById,
++  getRegionsByBank,
+   getRegionsByDistrict,
+   updateRegion,
+ } from "./region.controller.js";
+ import {
+   createRegionSchema,
++  regionBankParamsSchema,
++  regionDistrictParamsSchema,
++  regionIdParamsSchema,
++  regionListQuerySchema,
+   updateRegionSchema,
+-  validateRequest,
+ } from "./region.validate.js";
+ import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
+ import { authorizeRoles } from "../../middlewares/role.middleware.js";
++import { validateRequest } from "../../middlewares/validate.middleware.js";
+ 
+ const router = express.Router();
++router.use(verifyAccessToken, authorizeRoles("admin", "superAdmin"));
+ 
+-router.post(
+-  "/",
+-  validateRequest(createRegionSchema),
+-  verifyAccessToken,
+-  authorizeRoles("admin", "superAdmin"),
+-  createRegion,
+-);
+-
++router.post("/", validateRequest(createRegionSchema), createRegion);
++router.get("/", validateRequest(regionListQuerySchema, "query"), getAllRegions);
++router.get("/:id", validateRequest(regionIdParamsSchema, "params"), getRegionById);
+ router.get(
+-  "/",
+-  verifyAccessToken,
+-  authorizeRoles("admin", "superAdmin"),
+-  getAllRegions,
++  "/bank/:bankId",
++  validateRequest(regionBankParamsSchema, "params"),
++  validateRequest(regionListQuerySchema, "query"),
++  getRegionsByBank,
+ );
+-
+ router.get(
+   "/district/:districtId",
+-  verifyAccessToken,
+-  authorizeRoles("admin", "superAdmin"),
++  validateRequest(regionDistrictParamsSchema, "params"),
+   getRegionsByDistrict,
+ );
+-
+ router.get(
+   "/district/:districtId/all",
+-  verifyAccessToken,
+-  authorizeRoles("admin", "superAdmin"),
++  validateRequest(regionDistrictParamsSchema, "params"),
+   getAllRegionsByDistrict,
+ );
+-
+-router.get(
+-  "/:id",
+-  verifyAccessToken,
+-  authorizeRoles("admin", "superAdmin"),
+-  getRegionById,
+-);
+-
+ router.patch(
+   "/:id",
++  validateRequest(regionIdParamsSchema, "params"),
+   validateRequest(updateRegionSchema),
+-  verifyAccessToken,
+-  authorizeRoles("admin", "superAdmin"),
+   updateRegion,
+ );
+-
+-router.delete(
+-  "/:id",
+-  verifyAccessToken,
+-  authorizeRoles("admin", "superAdmin"),
+-  deleteRegion,
+-);
++router.delete("/:id", validateRequest(regionIdParamsSchema, "params"), deactivateRegion);
+ 
+ export default router;
+diff --git a/backend/src/modules/region/region.validate.js b/backend/src/modules/region/region.validate.js
+index 8209b1f..c024ec7 100644
+--- a/backend/src/modules/region/region.validate.js
++++ b/backend/src/modules/region/region.validate.js
+@@ -1,66 +1,32 @@
+ import { z } from "zod";
+-import ApiError from "../../utils/ApiError.js";
+-import asyncHandler from "../../utils/asyncHandler.js";
+ 
+-const createRegionSchema = z.object({
+-  districtId: z
+-    .string({ required_error: "District ID is required" })
+-    .trim()
+-    .min(1, "District ID is required"),
+-  name: z
+-    .string({ required_error: "Region name is required" })
+-    .trim()
+-    .min(2, "Region name must be at least 2 characters")
+-    .max(100, "Region name must not exceed 100 characters"),
+-  code: z
+-    .string()
+-    .trim()
+-    .max(20, "Region code must not exceed 20 characters")
+-    .optional(),
+-  description: z
+-    .string()
+-    .trim()
+-    .max(500, "Description must not exceed 500 characters")
+-    .optional(),
+-  isActive: z.boolean().optional(),
++const objectIdSchema = z.string().regex(/^[a-fA-F0-9]{24}$/, "Invalid ID");
++
++export const regionIdParamsSchema = z.object({ id: objectIdSchema });
++export const regionBankParamsSchema = z.object({ bankId: objectIdSchema });
++export const regionDistrictParamsSchema = z.object({
++  districtId: objectIdSchema,
++});
++export const regionListQuerySchema = z.object({
++  includeInactive: z.enum(["true", "false"]).optional(),
+ });
+ 
+-const updateRegionSchema = z.object({
+-  name: z
+-    .string()
+-    .trim()
+-    .min(2, "Region name must be at least 2 characters")
+-    .max(100, "Region name must not exceed 100 characters")
+-    .optional(),
+-  code: z
+-    .string()
+-    .trim()
+-    .max(20, "Region code must not exceed 20 characters")
+-    .optional(),
+-  description: z
+-    .string()
+-    .trim()
+-    .max(500, "Description must not exceed 500 characters")
+-    .optional(),
++export const createRegionSchema = z.object({
++  bankId: objectIdSchema,
++  name: z.string().trim().min(2).max(100),
++  code: z.string().trim().max(20).optional(),
++  description: z.string().trim().max(500).optional(),
+   isActive: z.boolean().optional(),
+ });
+ 
+-const validateRequest = (schema) => {
+-  return asyncHandler(async (req, res, next) => {
+-    const result = schema.safeParse(req.body);
+-
+-    if (!result.success) {
+-      const errors = result.error.issues.map((issue) => ({
+-        path: issue.path.join(".") || "body",
+-        message: issue.message,
+-      }));
+-
+-      return next(new ApiError(400, "Validation failed", errors));
+-    }
+-
+-    req.body = result.data;
+-    next();
++export const updateRegionSchema = z
++  .object({
++    name: z.string().trim().min(2).max(100).optional(),
++    code: z.string().trim().max(20).optional(),
++    description: z.string().trim().max(500).optional(),
++    isActive: z.boolean().optional(),
++  })
++  .strict()
++  .refine((value) => Object.keys(value).length > 0, {
++    message: "At least one field must be provided",
+   });
+-};
+-
+-export { createRegionSchema, updateRegionSchema, validateRequest };
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index 22bd672..1a9edf8 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -39,6 +39,7 @@ import BankDetailPage from "@/pages/admin/BankDetailPage";
+ import DistrictsPage from "@/pages/admin/DistrictsPage";
+ import DistrictDetailPage from "@/pages/admin/DistrictDetailPage";
+ import RegionDetailPage from "@/pages/admin/RegionDetailPage";
++import RegionsPage from "@/pages/admin/RegionsPage";
+ import CustomersPage from "@/pages/admin/CustomersPage";
+ import CustomerDetailsPage from "@/pages/admin/CustomerDetailsPage";
+ import ItemsPage from "@/pages/admin/ItemsPage";
+@@ -108,6 +109,7 @@ export default function App() {
+             />
+             <Route path="/admin/banks" element={<BanksPage />} />
+             <Route path="/admin/banks/:bankId" element={<BankDetailPage />} />
++            <Route path="/admin/regions" element={<RegionsPage />} />
+             <Route path="/admin/districts" element={<DistrictsPage />} />
+             <Route
+               path="/admin/districts/:districtId"
+diff --git a/frontend/src/features/atms/components/CreateATMForm.tsx b/frontend/src/features/atms/components/CreateATMForm.tsx
+index a6b2c10..9ac4d70 100644
+--- a/frontend/src/features/atms/components/CreateATMForm.tsx
++++ b/frontend/src/features/atms/components/CreateATMForm.tsx
+@@ -7,7 +7,8 @@ import {
+ } from "../types/create-atm.schema";
+ import { useQuery } from "@tanstack/react-query";
+ import api from "@/lib/axios";
+-import { useAllRegionsByDistrict } from "@/features/users/hooks/useAllRegionsByDistrict";
++import { useRegionsByBank } from "@/features/users/hooks/useRegionsByBank";
++import { useDistricts } from "@/features/users/hooks/useDistricts";
+ import { useCreateATM } from "../hooks/useCreateATM";
+ import { toast } from "sonner";
+ import { useQueryClient } from "@tanstack/react-query";
+@@ -28,9 +29,6 @@ import {
+   DialogTitle,
+ } from "@/components/ui/dialog";
+ import { Button } from "@/components/ui/button";
+-import type { District } from "@/features/users/types/district.types";
+-
+-const NO_REGION = "NO_REGION";
+ 
+ interface CreateATMFormProps {
+   onClose: () => void;
+@@ -62,17 +60,6 @@ export default function CreateATMForm({
+       return response.data.data;
+     },
+   });
+-  const {
+-    data: districts = [],
+-    isLoading: districtsLoading,
+-    isError: districtsError,
+-  } = useQuery<District[]>({
+-    queryKey: ["districts"],
+-    queryFn: async () => {
+-      const response = await api.get("/districts");
+-      return response.data.data;
+-    },
+-  });
+   const { data: employees = [], isLoading: employeesLoading } = useQuery({
+     queryKey: ["employees"],
+     queryFn: async () => {
+@@ -112,7 +99,7 @@ export default function CreateATMForm({
+           ? initialATM.customer
+           : (initialATM.customer?._id ?? ""),
+       districtId: initialATM.districtId?._id ?? "",
+-      regionId: initialATM.regionId?._id ?? NO_REGION,
++      regionId: initialATM.regionId?._id ?? "",
+       locationName: initialATM.locationName,
+       address: initialATM.address,
+       installationType: initialATM.installationType,
+@@ -131,26 +118,27 @@ export default function CreateATMForm({
+     });
+   }, [initialATM, reset]);
+ 
++  const selectedBankId = watch("bankId");
++  const selectedRegionId = watch("regionId");
+   const selectedDistrictId = watch("districtId");
+ 
+   const {
+     data: regions = [],
+     isLoading: regionsLoading,
+     isError: regionsError,
+-  } = useAllRegionsByDistrict(selectedDistrictId);
++  } = useRegionsByBank(selectedBankId);
++  const {
++    data: districts = [],
++    isLoading: districtsLoading,
++    isError: districtsError,
++  } = useDistricts(Boolean(selectedRegionId), selectedRegionId);
+   const activeRegions = regions.filter((region) => region.isActive);
+-  const noRegionsLoaded =
+-    Boolean(selectedDistrictId) &&
+-    !regionsLoading &&
+-    !regionsError &&
+-    activeRegions.length === 0;
+-  const selectedRegionId = watch("regionId");
+-  const destinationRegionId =
+-    selectedRegionId === NO_REGION ? null : selectedRegionId;
++  const destinationRegionId = selectedRegionId;
+   const geographicAssignmentChanged =
+     initialATM !== undefined &&
+-    (initialATM.districtId?._id !== selectedDistrictId ||
+-      (initialATM.regionId?._id ?? null) !== destinationRegionId);
++    (initialATM.bankId?._id !== selectedBankId ||
++      initialATM.districtId?._id !== watch("districtId") ||
++      initialATM.regionId?._id !== destinationRegionId);
+ 
+   const invalidateATMGeographyQueries = async (includeJobs: boolean) => {
+     const queryKeys = [
+@@ -174,10 +162,11 @@ export default function CreateATMForm({
+   const saveATM = async (data: CreateATMFormData) => {
+     if (initialATM) {
+       const targetRegionId =
+-        data.regionId === NO_REGION ? null : data.regionId;
++        data.regionId;
+       const hasGeographicChange =
++        initialATM.bankId?._id !== data.bankId ||
+         initialATM.districtId?._id !== data.districtId ||
+-        (initialATM.regionId?._id ?? null) !== targetRegionId;
++        initialATM.regionId?._id !== targetRegionId;
+       const updateData: UpdateATMData = {
+         customerId: data.customerId,
+         bankId: data.bankId,
+@@ -222,7 +211,7 @@ export default function CreateATMForm({
+     }
+ 
+     createATM.mutate(
+-      { ...data, regionId: data.regionId === NO_REGION ? null : data.regionId },
++      data,
+       {
+         onSuccess: async (atm) => {
+           toast.success(`ATM ${atm.atmId} created successfully!`);
+@@ -302,9 +291,13 @@ export default function CreateATMForm({
+         <label className="mb-2 block text-sm font-medium">Bank</label>
+ 
+         <Select
+-          value={watch("bankId")}
++          value={selectedBankId}
+           onValueChange={(value) => {
+-            if (value) setValue("bankId", value);
++            if (value && value !== selectedBankId) {
++              setValue("bankId", value);
++              setValue("regionId", "");
++              setValue("districtId", "");
++            }
+           }}
+           disabled={banksLoading}
+         >
+@@ -320,54 +313,71 @@ export default function CreateATMForm({
+           </SelectTrigger>
+ 
+           <SelectContent>
+-            {banks.map((bank: { _id: string; bankName: string }) => (
++            {banks.filter((bank: { isActive: boolean }) => bank.isActive).map((bank: { _id: string; bankName: string }) => (
+               <SelectItem key={bank._id} value={bank._id}>
+                 {bank.bankName}
+               </SelectItem>
+             ))}
++            {initialATM?.bankId?._id === selectedBankId &&
++              !banks.some((bank: { _id: string; isActive?: boolean }) => bank._id === selectedBankId && bank.isActive) && (
++                <SelectItem value={selectedBankId} disabled>
++                  {initialATM.bankId.bankName} (inactive or unavailable)
++                </SelectItem>
++              )}
+           </SelectContent>
+         </Select>
+         {errors.bankId && (
+           <p className="mt-1 text-sm text-red-500">{errors.bankId.message}</p>
+         )}
+       </div>
+-      {/* select customer */}
++      {/* select region */}
+       <div>
+-        <label className="mb-1 block text-sm font-medium">Customer</label>
++        <label className="mb-1 block text-sm font-medium">Region</label>
+ 
+         <Select
+-          value={watch("customerId")}
++          value={selectedRegionId}
+           onValueChange={(value) => {
+-            if (value) setValue("customerId", value);
++            if (value && value !== selectedRegionId) {
++              setValue("regionId", value);
++              setValue("districtId", "");
++            }
+           }}
+-          disabled={customersLoading}
++          disabled={!selectedBankId || regionsLoading || regionsError}
+         >
+           <SelectTrigger className="w-full">
+-            <SelectValue placeholder="Select customer">
+-              {
+-                customers.find(
+-                  (customer: { _id: string; customerName: string }) =>
+-                    customer._id === watch("customerId"),
+-                )?.customerName
++            <SelectValue
++              placeholder={
++                !selectedBankId
++                  ? "Select bank first"
++                  : regionsLoading
++                    ? "Loading regions..."
++                    : regionsError
++                      ? "Regions unavailable"
++                      : "Select region"
+               }
++            >
++              {regions.find((region) => region._id === selectedRegionId)?.name ??
++                (initialATM?.regionId?._id === selectedRegionId
++                  ? `${initialATM.regionId.name} (inactive or unavailable)`
++                  : null)}
+             </SelectValue>
+           </SelectTrigger>
+ 
+           <SelectContent>
+-            {customers.map(
+-              (customer: { _id: string; customerName: string }) => (
+-                <SelectItem key={customer._id} value={customer._id}>
+-                  {customer.customerName}
++            {activeRegions.map((region) => (
++              <SelectItem key={region._id} value={region._id}>
++                {region.name}
++              </SelectItem>
++            ))}
++            {initialATM?.regionId?._id === selectedRegionId &&
++              !activeRegions.some((region) => region._id === selectedRegionId) && (
++                <SelectItem value={selectedRegionId} disabled>
++                  {initialATM.regionId.name} (inactive or unavailable)
+                 </SelectItem>
+-              ),
+-            )}
++              )}
+           </SelectContent>
+         </Select>
+-        {errors.customerId && (
+-          <p className="mt-1 text-sm text-red-500">
+-            {errors.customerId.message}
+-          </p>
+-        )}
++        {errors.regionId && <p className="mt-1 text-sm text-red-500">{errors.regionId.message}</p>}
+       </div>
+       {/* select district */}
+       <div>
+@@ -376,127 +386,57 @@ export default function CreateATMForm({
+         <Select
+           value={watch("districtId")}
+           onValueChange={(value) => {
+-            if (value && value !== selectedDistrictId) {
+-              setValue("districtId", value);
+-              setValue("regionId", "");
+-            }
++            if (value) setValue("districtId", value);
+           }}
+-          disabled={districtsLoading || districtsError}
++          disabled={
++            !selectedRegionId || districtsLoading || districtsError
++          }
+         >
+           <SelectTrigger className="w-full">
+-            <SelectValue placeholder="Select district">
+-              {
+-                districts.find((district) => district._id === watch("districtId"))
+-                  ?.districtName ??
++            <SelectValue placeholder={!selectedRegionId ? "Select region first" : districtsLoading ? "Loading districts..." : "Select district"}>
++              {districts.find((district) => district._id === watch("districtId"))?.districtName ??
+                 (initialATM?.districtId?._id === watch("districtId")
+                   ? `${initialATM.districtId.districtName} (inactive or unavailable)`
+-                  : null)
+-              }
++                  : null)}
+             </SelectValue>
+           </SelectTrigger>
+ 
+           <SelectContent>
+-            {initialATM?.districtId?._id &&
+-              !districts.some(
+-                (district) =>
+-                  district._id === initialATM.districtId._id &&
+-                  district.isActive,
+-              ) && (
+-                <SelectItem value={initialATM.districtId._id} disabled>
++            {initialATM?.districtId?._id === watch("districtId") &&
++              !districts.some((district) => district._id === watch("districtId") && district.isActive) && (
++                <SelectItem value={watch("districtId")} disabled>
+                   {initialATM.districtId.districtName} (inactive or unavailable)
+                 </SelectItem>
+               )}
+-            {districts
+-              .filter((district) => district.isActive)
+-              .map((district) => (
+-                <SelectItem key={district._id} value={district._id}>
+-                  {district.districtName}
+-                </SelectItem>
+-              ))}
++            {districts.filter((district) => district.isActive).map((district) => (
++              <SelectItem key={district._id} value={district._id}>{district.districtName}</SelectItem>
++            ))}
+           </SelectContent>
+         </Select>
+-        {errors.districtId && (
+-          <p className="mt-1 text-sm text-red-500">
+-            {errors.districtId.message}
+-          </p>
+-        )}
++        {errors.districtId && <p className="mt-1 text-sm text-red-500">{errors.districtId.message}</p>}
+       </div>
+-      {/* select region */}
++      {/* select customer */}
+       <div>
+-        <label className="mb-1 block text-sm font-medium">Region</label>
+-
++        <label className="mb-1 block text-sm font-medium">Customer</label>
+         <Select
+-          value={watch("regionId")}
++          value={watch("customerId")}
+           onValueChange={(value) => {
+-            if (value) setValue("regionId", value);
++            if (value) setValue("customerId", value);
+           }}
+-          disabled={
+-            !selectedDistrictId ||
+-            regionsLoading ||
+-            regionsError ||
+-            districtsError
+-          }
++          disabled={customersLoading}
+         >
+           <SelectTrigger className="w-full">
+-            <SelectValue
+-              placeholder={
+-                !selectedDistrictId
+-                  ? "Select district first"
+-                  : regionsLoading
+-                    ? "Loading regions..."
+-                    : regionsError
+-                      ? "Regions unavailable"
+-                      : "Select region"
+-              }
+-            >
+-              {
+-                selectedRegionId === NO_REGION
+-                  ? noRegionsLoaded
+-                  ? "No Region"
+-                  : initialATM?.regionId
+-                    ? `${initialATM.regionId.name} (existing assignment)`
+-                    : "Select region"
+-                  : regions.find((region) => region._id === selectedRegionId)
+-                    ?.name ??
+-                  (initialATM?.regionId?._id === selectedRegionId
+-                    ? `${initialATM.regionId.name} (inactive or unavailable)`
+-                    : null)
+-              }
++            <SelectValue placeholder="Select customer">
++              {customers.find((customer: { _id: string; customerName: string }) => customer._id === watch("customerId"))?.customerName}
+             </SelectValue>
+           </SelectTrigger>
+-
+           <SelectContent>
+-            {activeRegions.map((region) => (
+-              <SelectItem key={region._id} value={region._id}>
+-                {region.name}
+-              </SelectItem>
++            {customers.map((customer: { _id: string; customerName: string }) => (
++              <SelectItem key={customer._id} value={customer._id}>{customer.customerName}</SelectItem>
+             ))}
+-            {initialATM?.regionId?._id === selectedRegionId &&
+-              !activeRegions.some(
+-                (region) => region._id === selectedRegionId,
+-              ) && (
+-                <SelectItem value={selectedRegionId} disabled>
+-                  {regions.find((region) => region._id === selectedRegionId)
+-                    ?.name || initialATM.regionId.name}{" "}
+-                  (inactive or unavailable)
+-                </SelectItem>
+-              )}
+-            {noRegionsLoaded && (
+-              <SelectItem value={NO_REGION}>No Region (no active regions)</SelectItem>
+-            )}
+-            {selectedRegionId === NO_REGION &&
+-              activeRegions.length > 0 &&
+-              !regionsLoading &&
+-              !regionsError && (
+-                <SelectItem value={NO_REGION} disabled>
+-                  No Region (existing assignment; select an active region)
+-                </SelectItem>
+-              )}
+           </SelectContent>
+         </Select>
+-        {errors.regionId && (
+-          <p className="mt-1 text-sm text-red-500">{errors.regionId.message}</p>
+-        )}
++        {errors.customerId && <p className="mt-1 text-sm text-red-500">{errors.customerId.message}</p>}
+       </div>
+       {/* select location name */}
+       <div>
+diff --git a/frontend/src/features/employees/components/EmployeeEditForm.tsx b/frontend/src/features/employees/components/EmployeeEditForm.tsx
+index 027c6bb..fcddd17 100644
+--- a/frontend/src/features/employees/components/EmployeeEditForm.tsx
++++ b/frontend/src/features/employees/components/EmployeeEditForm.tsx
+@@ -1,13 +1,9 @@
+ import { useState } from "react";
+ import { isAxiosError } from "axios";
+-import { useQueries } from "@tanstack/react-query";
+ import { toast } from "sonner";
+ import { Button } from "@/components/ui/button";
+ import { useDistricts } from "@/features/users/hooks/useDistricts";
+-import {
+-  getAllRegionsByDistrict,
+-  type Region,
+-} from "@/features/users/services/region.service";
++import { useAllRegions } from "@/features/users/hooks/useAllRegions";
+ import {
+   type Employee,
+   type UpdateEmployeePayload,
+@@ -82,6 +78,7 @@ export default function EmployeeEditForm({
+ }) {
+   const updateMutation = useUpdateEmployee();
+   const districtsQuery = useDistricts();
++  const regionsQuery = useAllRegions(true);
+   const [values, setValues] = useState<EmployeeEditValues>(() => ({
+     designation: employee.designation,
+     department: employee.department,
+@@ -98,20 +95,7 @@ export default function EmployeeEditForm({
+     issues: ApiValidationIssue[];
+   } | null>(null);
+ 
+-  const regionQueries = useQueries({
+-    queries: values.districtIds.map((districtId) => ({
+-      queryKey: ["regions", districtId, "all"],
+-      queryFn: () => getAllRegionsByDistrict(districtId),
+-      enabled: Boolean(districtId),
+-      staleTime: 1000 * 60 * 10,
+-    })),
+-  });
+-  const regions = regionQueries
+-    .flatMap((query) => query.data ?? [])
+-    .filter(
+-      (region, index, list) =>
+-        list.findIndex((item) => item._id === region._id) === index,
+-    );
++  const regions = regionsQuery.data ?? [];
+   const regionsById = new Map(regions.map((region) => [region._id, region]));
+   const availableDistrictIds = new Set(
+     (districtsQuery.data ?? []).map((district) => district._id),
+@@ -122,8 +106,8 @@ export default function EmployeeEditForm({
+   const unresolvedRegionIds = values.regionIds.filter(
+     (regionId) => !regionsById.has(regionId),
+   );
+-  const regionsLoading = regionQueries.some((query) => query.isLoading);
+-  const regionsError = regionQueries.some((query) => query.isError);
++  const regionsLoading = regionsQuery.isLoading;
++  const regionsError = regionsQuery.isError;
+   const locationsUnavailable =
+     districtsQuery.isLoading || districtsQuery.isError || regionsLoading || regionsError;
+ 
+@@ -136,17 +120,9 @@ export default function EmployeeEditForm({
+   };
+ 
+   const handleDistrictChange = (districtId: string, selected: boolean) => {
+-    const regionIdsForDistrict = regions
+-      .filter((region) => getDistrictId(region) === districtId)
+-      .map((region) => region._id);
+     setValues((current) => ({
+       ...current,
+       districtIds: selectionWithId(current.districtIds, districtId, selected),
+-      regionIds: selected
+-        ? current.regionIds
+-        : current.regionIds.filter(
+-            (regionId) => !regionIdsForDistrict.includes(regionId),
+-          ),
+     }));
+     setServerError(null);
+   };
+@@ -192,9 +168,7 @@ export default function EmployeeEditForm({
+ 
+   const retryLocationOptions = () => {
+     if (districtsQuery.isError) void districtsQuery.refetch();
+-    regionQueries.forEach((query) => {
+-      if (query.isError) void query.refetch();
+-    });
++    if (regionsQuery.isError) void regionsQuery.refetch();
+   };
+ 
+   return (
+@@ -536,9 +510,3 @@ export default function EmployeeEditForm({
+     </form>
+   );
+ }
+-
+-function getDistrictId(region: Region) {
+-  return typeof region.districtId === "string"
+-    ? region.districtId
+-    : region.districtId._id;
+-}
+diff --git a/frontend/src/features/users/components/DistrictFormDialog.tsx b/frontend/src/features/users/components/DistrictFormDialog.tsx
+index 07e6157..1de4d47 100644
+--- a/frontend/src/features/users/components/DistrictFormDialog.tsx
++++ b/frontend/src/features/users/components/DistrictFormDialog.tsx
+@@ -1,4 +1,4 @@
+-import { useEffect } from "react";
++import { useEffect, useState } from "react";
+ import { isAxiosError } from "axios";
+ import { zodResolver } from "@hookform/resolvers/zod";
+ import { useForm } from "react-hook-form";
+@@ -10,20 +10,26 @@ import {
+   DialogTitle,
+ } from "@/components/ui/dialog";
+ import { Button } from "@/components/ui/button";
++import { useBanks } from "@/features/banks/hooks/useBanks";
++import { useRegionsByBank } from "../hooks/useRegionsByBank";
+ import { useCreateDistrict, useUpdateDistrict } from "../hooks/useDistrictMutations";
+-import { districtFormSchema } from "../types/district.schema";
+-import type {
+-  District,
+-  DistrictFormValues,
+-} from "../types/district.types";
++import {
++  districtFormSchema,
++  type DistrictFormSchemaValues,
++} from "../types/district.schema";
++import type { District } from "../types/district.types";
+ 
+ function getErrorMessage(error: unknown) {
+   if (isAxiosError<{ message?: string }>(error)) {
+     return error.response?.data?.message || "Unable to save the district.";
+   }
+-  return error instanceof Error
+-    ? error.message
+-    : "Unable to save the district.";
++  return error instanceof Error ? error.message : "Unable to save the district.";
++}
++
++function getRegionBankId(district: District | null) {
++  if (!district || typeof district.regionId === "string") return "";
++  const bank = district.regionId.bankId;
++  return typeof bank === "string" ? bank : bank?._id ?? "";
+ }
+ 
+ export default function DistrictFormDialog({
+@@ -38,12 +44,16 @@ export default function DistrictFormDialog({
+   const createMutation = useCreateDistrict();
+   const updateMutation = useUpdateDistrict();
+   const isPending = createMutation.isPending || updateMutation.isPending;
++  const { data: banks = [], isLoading: banksLoading } = useBanks();
++  const [bankId, setBankId] = useState("");
++  const [selectedRegionId, setSelectedRegionId] = useState("");
++  const { data: regions = [], isLoading: regionsLoading } = useRegionsByBank(bankId);
+   const {
+     register,
+     handleSubmit,
+     reset,
+     formState: { errors },
+-  } = useForm<DistrictFormValues>({
++  } = useForm<DistrictFormSchemaValues>({
+     resolver: zodResolver(districtFormSchema),
+     defaultValues: {
+       districtName: "",
+@@ -55,6 +65,12 @@ export default function DistrictFormDialog({
+ 
+   useEffect(() => {
+     if (!open) return;
++    const regionId =
++      typeof district?.regionId === "string"
++        ? district.regionId
++        : district?.regionId?._id ?? "";
++    setSelectedRegionId(regionId);
++    setBankId(getRegionBankId(district));
+     reset({
+       districtName: district?.districtName ?? "",
+       pinCode: district?.pinCode ?? "",
+@@ -63,7 +79,7 @@ export default function DistrictFormDialog({
+     });
+   }, [district, open, reset]);
+ 
+-  const onSubmit = async (values: DistrictFormValues) => {
++  const onSubmit = async (values: DistrictFormSchemaValues) => {
+     const data = {
+       districtName: values.districtName.trim(),
+       pinCode: values.pinCode.trim(),
+@@ -76,7 +92,11 @@ export default function DistrictFormDialog({
+         await updateMutation.mutateAsync({ id: district._id, data });
+         toast.success("District updated successfully.");
+       } else {
+-        await createMutation.mutateAsync(data);
++        if (!selectedRegionId) {
++          toast.error("Select an active region.");
++          return;
++        }
++        await createMutation.mutateAsync({ ...data, regionId: selectedRegionId });
+         toast.success("District created successfully.");
+       }
+       reset();
+@@ -91,7 +111,6 @@ export default function DistrictFormDialog({
+     { name: "pinCode", label: "PIN Code" },
+     { name: "state", label: "State" },
+   ] as const;
+-
+   return (
+     <Dialog
+       open={open}
+@@ -101,22 +120,88 @@ export default function DistrictFormDialog({
+     >
+       <DialogContent className="max-h-[90vh] overflow-y-auto">
+         <div className="space-y-2">
+-          <DialogTitle>
+-            {district ? "Edit District" : "Add District"}
+-          </DialogTitle>
++          <DialogTitle>{district ? "Edit District" : "Add District"}</DialogTitle>
+           <DialogDescription>
+             {district
+-              ? "Update this district's information."
+-              : "Add a district for ATM locations and regional organization."}
++              ? "Update this district's information. Its region is unchanged."
++              : "Add a district under an active bank region."}
+           </DialogDescription>
+         </div>
+         <form onSubmit={handleSubmit(onSubmit)} className="mt-5 space-y-4">
++          {!district && (
++            <>
++              <div>
++                <label htmlFor="district-bank" className="mb-2 block text-sm font-medium">
++                  Bank *
++                </label>
++                <select
++                  id="district-bank"
++                  value={bankId}
++                  onChange={(event) => {
++                    setBankId(event.target.value);
++                    setSelectedRegionId("");
++                  }}
++                  disabled={banksLoading}
++                  className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
++                  required
++                >
++                  <option value="">{banksLoading ? "Loading banks..." : "Select bank"}</option>
++                  {banks.filter((bank) => bank.isActive).map((bank) => (
++                    <option key={bank._id} value={bank._id}>
++                      {bank.bankName} ({bank.bankCode})
++                    </option>
++                  ))}
++                </select>
++              </div>
++              <div>
++                <label htmlFor="district-region" className="mb-2 block text-sm font-medium">
++                  Region *
++                </label>
++                <select
++                  id="district-region"
++                  value={selectedRegionId}
++                  onChange={(event) => setSelectedRegionId(event.target.value)}
++                  disabled={!bankId || regionsLoading}
++                  className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
++                  required
++                >
++                  <option value="">
++                    {!bankId
++                      ? "Select bank first"
++                      : regionsLoading
++                        ? "Loading regions..."
++                        : "Select region"}
++                  </option>
++                  {regions.filter((region) => region.isActive).map((region) => (
++                    <option key={region._id} value={region._id}>
++                      {region.name}
++                    </option>
++                  ))}
++                </select>
++                {bankId && !regionsLoading && regions.length === 0 && (
++                  <p className="mt-1 text-sm text-muted-foreground">
++                    Create an active region for this bank before adding districts.
++                  </p>
++                )}
++                {selectedRegionId && !regions.some((region) => region._id === selectedRegionId) && (
++                  <p className="mt-1 text-sm text-destructive">
++                    The selected region is no longer available.
++                  </p>
++                )}
++              </div>
++            </>
++          )}
++          {district && (
++            <div className="rounded-lg border bg-muted/30 p-3 text-sm">
++              <span className="text-muted-foreground">Bank / region: </span>
++              {getRegionBankId(district)
++                ? `${typeof district.regionId === "object" ? (typeof district.regionId.bankId === "object" ? district.regionId.bankId.bankName : "") : ""} / ${typeof district.regionId === "object" ? district.regionId.name : ""}`
++                : "Geography is unmapped"}
++            </div>
++          )}
+           {fields.map(({ name, label }) => (
+             <div key={name}>
+-              <label
+-                htmlFor={`district-${name}`}
+-                className="mb-2 block text-sm font-medium"
+-              >
++              <label htmlFor={`district-${name}`} className="mb-2 block text-sm font-medium">
+                 {label} *
+               </label>
+               <input
+@@ -127,38 +212,20 @@ export default function DistrictFormDialog({
+                 className="h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+               />
+               {errors[name] && (
+-                <p className="mt-1 text-sm text-destructive">
+-                  {errors[name]?.message}
+-                </p>
++                <p className="mt-1 text-sm text-destructive">{errors[name]?.message}</p>
+               )}
+             </div>
+           ))}
+           <div className="flex items-center gap-2">
+-            <input
+-              id="district-is-active"
+-              type="checkbox"
+-              {...register("isActive")}
+-              className="size-4 accent-primary"
+-            />
+-            <label htmlFor="district-is-active" className="text-sm font-medium">
+-              Active
+-            </label>
++            <input id="district-is-active" type="checkbox" {...register("isActive")} className="size-4 accent-primary" />
++            <label htmlFor="district-is-active" className="text-sm font-medium">Active</label>
+           </div>
+           <div className="flex justify-end gap-2 pt-2">
+-            <Button
+-              type="button"
+-              variant="outline"
+-              disabled={isPending}
+-              onClick={() => onOpenChange(false)}
+-            >
++            <Button type="button" variant="outline" disabled={isPending} onClick={() => onOpenChange(false)}>
+               Cancel
+             </Button>
+             <Button type="submit" disabled={isPending}>
+-              {isPending
+-                ? "Saving..."
+-                : district
+-                  ? "Update District"
+-                  : "Create District"}
++              {isPending ? "Saving..." : district ? "Update District" : "Create District"}
+             </Button>
+           </div>
+         </form>
+diff --git a/frontend/src/features/users/components/EmployeeDetailsStep.tsx b/frontend/src/features/users/components/EmployeeDetailsStep.tsx
+index ddbfba4..e08f5c1 100644
+--- a/frontend/src/features/users/components/EmployeeDetailsStep.tsx
++++ b/frontend/src/features/users/components/EmployeeDetailsStep.tsx
+@@ -1,8 +1,7 @@
+ import { useForm } from "react-hook-form";
+ import type { EmployeeDetailsForm } from "../types/user.types";
+ import { useDistricts } from "../hooks/useDistricts";
+-import { useQueries } from "@tanstack/react-query";
+-import { getRegionsByDistrict } from "../services/region.service";
++import { useAllRegions } from "../hooks/useAllRegions";
+ import { useATMs } from "../../atms/hooks/useATMs";
+ import { useEffect } from "react";
+ import SupervisorSelect from "@/features/employees/components/SupervisorSelect";
+@@ -34,22 +33,7 @@ export default function EmployeeDetailsStep({
+   const selectedAtmIds = watch("assignedAtmIds");
+ 
+   const { data: atms = [], isLoading: isATMsLoading } = useATMs();
+-  const regionQueries = useQueries({
+-    queries: selectedDistrictIds.map((districtId) => ({
+-      queryKey: ["regions", districtId],
+-      queryFn: () => getRegionsByDistrict(districtId),
+-      enabled: Boolean(districtId),
+-      staleTime: 1000 * 60 * 10,
+-    })),
+-  });
+-  const regions = regionQueries
+-    .flatMap((query) => query.data ?? [])
+-    .filter(
+-      (region, index, self) =>
+-        index === self.findIndex((item) => item._id === region._id),
+-    );
+-
+-  const isRegionsLoading = regionQueries.some((query) => query.isLoading);
++  const { data: regions = [], isLoading: isRegionsLoading } = useAllRegions();
+ 
+   const filteredATMs = atms.filter((atm) => {
+     const districtMatch =
+@@ -204,17 +188,13 @@ export default function EmployeeDetailsStep({
+               </summary>
+ 
+               <div className="max-h-48 overflow-y-auto border-t p-2">
+-                {selectedDistrictIds.length === 0 ? (
+-                  <p className="px-2 py-2 text-sm text-gray-500">
+-                    Select a district first
+-                  </p>
+-                ) : isRegionsLoading ? (
++                {isRegionsLoading ? (
+                   <p className="px-2 py-2 text-sm text-gray-500">
+                     Loading regions...
+                   </p>
+                 ) : regions.length === 0 ? (
+                   <p className="px-2 py-2 text-sm text-gray-500">
+-                    No regions found
++                    No active regions found
+                   </p>
+                 ) : (
+                   regions.map((region) => {
+diff --git a/frontend/src/features/users/components/RegionFormDialog.tsx b/frontend/src/features/users/components/RegionFormDialog.tsx
+index 3eaff97..3145a4c 100644
+--- a/frontend/src/features/users/components/RegionFormDialog.tsx
++++ b/frontend/src/features/users/components/RegionFormDialog.tsx
+@@ -29,19 +29,19 @@ function getErrorMessage(error: unknown) {
+ 
+ export default function RegionFormDialog({
+   open,
+-  districtId,
++  bankId,
+   region,
+   onOpenChange,
+   onSaved,
+ }: {
+   open: boolean;
+-  districtId: string;
++  bankId: string;
+   region: Region | null;
+   onOpenChange: (open: boolean) => void;
+   onSaved?: (region: Region) => void;
+ }) {
+-  const createMutation = useCreateRegion(districtId);
+-  const updateMutation = useUpdateRegion(districtId);
++  const createMutation = useCreateRegion(bankId);
++  const updateMutation = useUpdateRegion(bankId);
+   const isPending = createMutation.isPending || updateMutation.isPending;
+   const {
+     register,
+@@ -82,7 +82,7 @@ export default function RegionFormDialog({
+             regionId: region._id,
+             data,
+           })
+-        : await createMutation.mutateAsync({ districtId, ...data });
++        : await createMutation.mutateAsync({ bankId, ...data });
+       toast.success(
+         region
+           ? "Region updated successfully."
+@@ -115,7 +115,7 @@ export default function RegionFormDialog({
+           <DialogDescription>
+             {region
+               ? "Update this region's information."
+-              : "Add a region to this district."}
++              : "Add a region to this bank."}
+           </DialogDescription>
+         </div>
+         <form onSubmit={handleSubmit(onSubmit)} className="mt-5 space-y-4">
+diff --git a/frontend/src/features/users/hooks/useDistrictMutations.ts b/frontend/src/features/users/hooks/useDistrictMutations.ts
+index 6b99485..08ee34c 100644
+--- a/frontend/src/features/users/hooks/useDistrictMutations.ts
++++ b/frontend/src/features/users/hooks/useDistrictMutations.ts
+@@ -1,6 +1,8 @@
+-import { useMutation, useQueryClient } from "@tanstack/react-query";
++import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+ import {
+   createDistrict,
++  getDistrictTransfers,
++  transferDistrict,
+   updateDistrict,
+ } from "../services/district.service";
+ import { DISTRICTS_QUERY_KEY } from "./useDistricts";
+@@ -47,3 +49,38 @@ export const useUpdateDistrict = () => {
+     },
+   });
+ };
++
++export const useTransferDistrict = () => {
++  const queryClient = useQueryClient();
++  return useMutation({
++    mutationFn: ({
++      districtId,
++      regionId,
++      reason,
++    }: {
++      districtId: string;
++      regionId: string;
++      reason: string;
++    }) => transferDistrict(districtId, { regionId, reason }),
++    onSuccess: async (_result, { districtId }) => {
++      await Promise.all([
++        queryClient.invalidateQueries({ queryKey: DISTRICTS_QUERY_KEY }),
++        queryClient.invalidateQueries({ queryKey: ["district", districtId] }),
++        queryClient.invalidateQueries({ queryKey: ["district-transfers", districtId] }),
++        queryClient.invalidateQueries({ queryKey: ["atms"] }),
++        queryClient.invalidateQueries({ queryKey: ["district-atms"] }),
++        queryClient.invalidateQueries({ queryKey: ["region-atms"] }),
++        queryClient.invalidateQueries({ queryKey: ["jobs"] }),
++        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
++      ]);
++    },
++  });
++};
++
++export const useDistrictTransfers = (districtId: string) => {
++  return useQuery({
++    queryKey: ["district-transfers", districtId],
++    queryFn: () => getDistrictTransfers(districtId),
++    enabled: Boolean(districtId),
++  });
++};
+diff --git a/frontend/src/features/users/hooks/useDistricts.ts b/frontend/src/features/users/hooks/useDistricts.ts
+index 12c94a1..3f13cac 100644
+--- a/frontend/src/features/users/hooks/useDistricts.ts
++++ b/frontend/src/features/users/hooks/useDistricts.ts
+@@ -3,10 +3,10 @@ import { getDistricts } from "../services/district.service";
+ 
+ export const DISTRICTS_QUERY_KEY = ["districts"];
+ 
+-export const useDistricts = (enabled = true) => {
++export const useDistricts = (enabled = true, regionId?: string) => {
+   return useQuery({
+-    queryKey: DISTRICTS_QUERY_KEY,
+-    queryFn: getDistricts,
++    queryKey: [...DISTRICTS_QUERY_KEY, regionId ?? "all"],
++    queryFn: () => getDistricts(regionId),
+     enabled,
+     staleTime: 1000 * 60 * 10,
+   });
+diff --git a/frontend/src/features/users/hooks/useRegionMutations.ts b/frontend/src/features/users/hooks/useRegionMutations.ts
+index cb7c68d..fe052ff 100644
+--- a/frontend/src/features/users/hooks/useRegionMutations.ts
++++ b/frontend/src/features/users/hooks/useRegionMutations.ts
+@@ -7,15 +7,15 @@ import {
+ } from "../services/region.service";
+ import { DISTRICT_GEOGRAPHIC_SUMMARIES_QUERY_KEY } from "./useDistrictGeographicSummaries";
+ 
+-export const useCreateRegion = (districtId: string) => {
++export const useCreateRegion = (bankId: string) => {
+   const queryClient = useQueryClient();
+ 
+   return useMutation({
+     mutationFn: (data: CreateRegionData) => createRegion(data),
+     onSuccess: async () => {
+       await Promise.all([
+-        queryClient.invalidateQueries({ queryKey: ["regions", districtId] }),
+-        queryClient.invalidateQueries({ queryKey: ["district", districtId] }),
++        queryClient.invalidateQueries({ queryKey: ["regions", "bank", bankId] }),
++        queryClient.invalidateQueries({ queryKey: ["bank"] }),
+         queryClient.invalidateQueries({
+           queryKey: DISTRICT_GEOGRAPHIC_SUMMARIES_QUERY_KEY,
+         }),
+@@ -24,7 +24,7 @@ export const useCreateRegion = (districtId: string) => {
+   });
+ };
+ 
+-export const useUpdateRegion = (districtId: string) => {
++export const useUpdateRegion = (bankId: string) => {
+   const queryClient = useQueryClient();
+ 
+   return useMutation({
+@@ -40,8 +40,8 @@ export const useUpdateRegion = (districtId: string) => {
+         queryClient.invalidateQueries({
+           queryKey: ["region", variables.regionId],
+         }),
+-        queryClient.invalidateQueries({ queryKey: ["regions", districtId] }),
+-        queryClient.invalidateQueries({ queryKey: ["district", districtId] }),
++        queryClient.invalidateQueries({ queryKey: ["regions", "bank", bankId] }),
++        queryClient.invalidateQueries({ queryKey: ["bank"] }),
+         queryClient.invalidateQueries({
+           queryKey: DISTRICT_GEOGRAPHIC_SUMMARIES_QUERY_KEY,
+         }),
+diff --git a/frontend/src/features/users/services/district.service.ts b/frontend/src/features/users/services/district.service.ts
+index 6fe2734..2ec9ee0 100644
+--- a/frontend/src/features/users/services/district.service.ts
++++ b/frontend/src/features/users/services/district.service.ts
+@@ -10,8 +10,10 @@ interface ApiResponse<T> {
+   data: T;
+ }
+ 
+-export const getDistricts = async (): Promise<District[]> => {
+-  const response = await api.get<ApiResponse<District[]>>("/districts");
++export const getDistricts = async (regionId?: string): Promise<District[]> => {
++  const response = await api.get<ApiResponse<District[]>>("/districts", {
++    params: regionId ? { regionId } : undefined,
++  });
+ 
+   return response.data.data;
+ };
+@@ -37,6 +39,36 @@ export const createDistrict = async (
+   return response.data.data;
+ };
+ 
++export const transferDistrict = async (
++  districtId: string,
++  data: { regionId: string; reason: string },
++): Promise<{ _id: string }> => {
++  const response = await api.post<ApiResponse<{ _id: string }>>(
++    `/districts/${districtId}/transfer`,
++    data,
++  );
++  return response.data.data;
++};
++
++export const getDistrictTransfers = async (districtId: string) => {
++  const response = await api.get<ApiResponse<DistrictTransfer[]>>(
++    `/districts/${districtId}/transfers`,
++  );
++  return response.data.data;
++};
++
++export interface DistrictTransfer {
++  _id: string;
++  fromRegionId: { _id: string; name: string };
++  toRegionId: { _id: string; name: string };
++  fromRegionName: string;
++  toRegionName: string;
++  reason: string;
++  affectedATMCount: number;
++  performedBy: { firstName?: string; lastName?: string } | string;
++  createdAt: string;
++}
++
+ export const updateDistrict = async (
+   id: string,
+   data: UpdateDistrictData,
+diff --git a/frontend/src/features/users/services/region.service.ts b/frontend/src/features/users/services/region.service.ts
+index 15536d3..95b56d1 100644
+--- a/frontend/src/features/users/services/region.service.ts
++++ b/frontend/src/features/users/services/region.service.ts
+@@ -1,11 +1,5 @@
+ import api from "@/lib/axios";
+-
+-export interface DistrictReference {
+-  _id: string;
+-  districtName: string;
+-  pinCode: string;
+-  state: string;
+-}
++import type { Bank } from "@/features/banks/types/bank.types";
+ 
+ export interface Region {
+   _id: string;
+@@ -13,7 +7,7 @@ export interface Region {
+   code?: string;
+   description?: string;
+   isActive: boolean;
+-  districtId: string | DistrictReference;
++  bankId: string | Pick<Bank, "_id" | "bankName" | "bankCode">;
+ }
+ 
+ export interface RegionFormValues {
+@@ -24,10 +18,42 @@ export interface RegionFormValues {
+ }
+ 
+ export interface CreateRegionData extends RegionFormValues {
+-  districtId: string;
++  bankId: string;
+ }
+ 
+-export type UpdateRegionData = RegionFormValues;
++export type UpdateRegionData = Partial<RegionFormValues>;
++
++export const getRegionsByBank = async (
++  bankId: string,
++  includeInactive = false,
++): Promise<Region[]> => {
++  const response = await api.get<{ data: Region[] }>(
++    `/regions/bank/${bankId}`,
++    { params: includeInactive ? { includeInactive: true } : undefined },
++  );
++
++  return response.data.data;
++};
++
++export const getAllRegionsByBank = async (
++  bankId: string,
++): Promise<Region[]> => {
++  const response = await api.get<{ data: Region[] }>(
++    `/regions/bank/${bankId}`,
++    { params: { includeInactive: true } },
++  );
++
++  return response.data.data;
++};
++
++export const getAllRegions = async (
++  includeInactive = false,
++): Promise<Region[]> => {
++  const response = await api.get<{ data: Region[] }>("/regions", {
++    params: includeInactive ? { includeInactive: true } : undefined,
++  });
++  return response.data.data;
++};
+ 
+ export const getRegionsByDistrict = async (
+   districtId: string,
+@@ -35,7 +61,6 @@ export const getRegionsByDistrict = async (
+   const response = await api.get<{ data: Region[] }>(
+     `/regions/district/${districtId}`,
+   );
+-
+   return response.data.data;
+ };
+ 
+@@ -45,7 +70,6 @@ export const getAllRegionsByDistrict = async (
+   const response = await api.get<{ data: Region[] }>(
+     `/regions/district/${districtId}/all`,
+   );
+-
+   return response.data.data;
+ };
+ 
+diff --git a/frontend/src/features/users/types/district.types.ts b/frontend/src/features/users/types/district.types.ts
+index cc1fd64..9cab61d 100644
+--- a/frontend/src/features/users/types/district.types.ts
++++ b/frontend/src/features/users/types/district.types.ts
+@@ -4,7 +4,12 @@ export interface District {
+   pinCode: string;
+   state: string;
+   isActive: boolean;
+-  regions: string[];
++  regionId: string | {
++    _id: string;
++    name: string;
++    bankId: string | { _id: string; bankName: string; bankCode: string };
++    isActive?: boolean;
++  };
+   createdBy: string;
+   updatedBy?: string;
+   createdAt: string;
+@@ -27,5 +32,5 @@ export interface DistrictFormValues {
+   isActive: boolean;
+ }
+ 
+-export type CreateDistrictData = DistrictFormValues;
++export type CreateDistrictData = DistrictFormValues & { regionId: string };
+ export type UpdateDistrictData = Partial<DistrictFormValues>;
+diff --git a/frontend/src/layouts/AdminSidebar.tsx b/frontend/src/layouts/AdminSidebar.tsx
+index 5091ca4..99da3d3 100644
+--- a/frontend/src/layouts/AdminSidebar.tsx
++++ b/frontend/src/layouts/AdminSidebar.tsx
+@@ -8,6 +8,7 @@ import {
+   MessageSquareWarning,
+   Repeat,
+   Landmark,
++  Map,
+   MapPinned,
+   UserRound,
+   Package,
+@@ -68,6 +69,11 @@ const navItems = [
+     path: "/admin/banks",
+     icon: Landmark,
+   },
++  {
++    label: "Regions",
++    path: "/admin/regions",
++    icon: Map,
++  },
+   {
+     label: "Districts",
+     path: "/admin/districts",
+diff --git a/frontend/src/pages/admin/AtmsPage.tsx b/frontend/src/pages/admin/AtmsPage.tsx
+index f39e25b..1c10387 100644
+--- a/frontend/src/pages/admin/AtmsPage.tsx
++++ b/frontend/src/pages/admin/AtmsPage.tsx
+@@ -2,7 +2,8 @@ import { useATMs } from "@/features/atms/hooks/useATMs";
+ import ATMTable from "@/features/atms/components/ATMTable";
+ import CreateATMForm from "@/features/atms/components/CreateATMForm";
+ import { useDistricts } from "@/features/users/hooks/useDistricts";
+-import { useRegionsByDistrict } from "@/features/users/hooks/useRegionsByDistrict";
++import { useRegionsByBank } from "@/features/users/hooks/useRegionsByBank";
++import { useBanks } from "@/features/banks/hooks/useBanks";
+ import { Button } from "@/components/ui/button";
+ import {
+   Select,
+@@ -30,19 +31,22 @@ export default function AtmsPage() {
+     refetch,
+     isFetching,
+   } = useATMs();
+-  const { data: districts = [], isLoading: isDistrictsLoading } =
+-    useDistricts();
+   const [showCreateForm, setShowCreateForm] = useState(false);
+   const [search, setSearch] = useState("");
+   const [statusFilter, setStatusFilter] =
+     useState<StatusFilter>(ALL_FILTER_VALUE);
+-  const [districtFilter, setDistrictFilter] = useState(ALL_FILTER_VALUE);
++  const [bankFilter, setBankFilter] = useState(ALL_FILTER_VALUE);
+   const [regionFilter, setRegionFilter] = useState(ALL_FILTER_VALUE);
++  const [districtFilter, setDistrictFilter] = useState(ALL_FILTER_VALUE);
+ 
+-  const { data: regions = [], isLoading: isRegionsLoading } =
+-    useRegionsByDistrict(
+-      districtFilter === ALL_FILTER_VALUE ? "" : districtFilter,
+-    );
++  const { data: districts = [], isLoading: isDistrictsLoading } = useDistricts(
++    regionFilter !== ALL_FILTER_VALUE,
++    regionFilter !== ALL_FILTER_VALUE ? regionFilter : undefined,
++  );
++  const { data: banks = [], isLoading: isBanksLoading } = useBanks({ isActive: true });
++  const { data: regions = [], isLoading: isRegionsLoading } = useRegionsByBank(
++    bankFilter === ALL_FILTER_VALUE ? "" : bankFilter,
++  );
+ 
+   const filteredATMs = useMemo(() => {
+     const normalizedSearch = search.trim().toLowerCase();
+@@ -55,25 +59,29 @@ export default function AtmsPage() {
+         : true;
+       const matchesStatus =
+         statusFilter === ALL_FILTER_VALUE || atm.status === statusFilter;
++      const matchesBank =
++        bankFilter === ALL_FILTER_VALUE || atm.bankId?._id === bankFilter;
+       const matchesDistrict =
+         districtFilter === ALL_FILTER_VALUE ||
+         atm.districtId?._id === districtFilter;
+       const matchesRegion =
+         regionFilter === ALL_FILTER_VALUE || atm.regionId?._id === regionFilter;
+ 
+-      return matchesSearch && matchesStatus && matchesDistrict && matchesRegion;
++      return matchesSearch && matchesStatus && matchesBank && matchesDistrict && matchesRegion;
+     });
+-  }, [atms, districtFilter, regionFilter, search, statusFilter]);
++  }, [atms, bankFilter, districtFilter, regionFilter, search, statusFilter]);
+ 
+   const hasActiveFilters =
+     Boolean(search.trim()) ||
+     statusFilter !== ALL_FILTER_VALUE ||
++    bankFilter !== ALL_FILTER_VALUE ||
+     districtFilter !== ALL_FILTER_VALUE ||
+     regionFilter !== ALL_FILTER_VALUE;
+ 
+   const clearFilters = () => {
+     setSearch("");
+     setStatusFilter(ALL_FILTER_VALUE);
++    setBankFilter(ALL_FILTER_VALUE);
+     setDistrictFilter(ALL_FILTER_VALUE);
+     setRegionFilter(ALL_FILTER_VALUE);
+   };
+@@ -125,7 +133,7 @@ export default function AtmsPage() {
+         </Button>
+       </div>
+ 
+-      <div className="mt-6 grid gap-4 rounded-lg border bg-card p-4 md:grid-cols-2 lg:grid-cols-4">
++      <div className="mt-6 grid gap-4 rounded-lg border bg-card p-4 md:grid-cols-2 lg:grid-cols-5">
+         <div className="md:col-span-2 lg:col-span-1">
+           <label
+             htmlFor="atm-search"
+@@ -169,31 +177,20 @@ export default function AtmsPage() {
+         </div>
+ 
+         <div>
+-          <label className="mb-2 block text-sm font-medium">District</label>
++          <label className="mb-2 block text-sm font-medium">Bank</label>
+           <Select
+-            value={districtFilter}
++            value={bankFilter}
+             onValueChange={(value) => {
+-              setDistrictFilter(value ?? ALL_FILTER_VALUE);
++              setBankFilter(value ?? ALL_FILTER_VALUE);
+               setRegionFilter(ALL_FILTER_VALUE);
++              setDistrictFilter(ALL_FILTER_VALUE);
+             }}
+-            disabled={isDistrictsLoading}
++            disabled={isBanksLoading}
+           >
+-            <SelectTrigger className="w-full">
+-              <SelectValue placeholder="All districts">
+-                {districtFilter === ALL_FILTER_VALUE
+-                  ? "All"
+-                  : districts.find(
+-                      (district) => district._id === districtFilter,
+-                    )?.districtName}
+-              </SelectValue>
+-            </SelectTrigger>
++            <SelectTrigger className="w-full"><SelectValue placeholder="All banks" /></SelectTrigger>
+             <SelectContent>
+               <SelectItem value={ALL_FILTER_VALUE}>All</SelectItem>
+-              {districts.map((district) => (
+-                <SelectItem key={district._id} value={district._id}>
+-                  {district.districtName}
+-                </SelectItem>
+-              ))}
++              {banks.map((bank) => <SelectItem key={bank._id} value={bank._id}>{bank.bankName}</SelectItem>)}
+             </SelectContent>
+           </Select>
+         </div>
+@@ -202,37 +199,50 @@ export default function AtmsPage() {
+           <label className="mb-2 block text-sm font-medium">Region</label>
+           <Select
+             value={regionFilter}
+-            onValueChange={(value) =>
+-              setRegionFilter(value ?? ALL_FILTER_VALUE)
+-            }
+-            disabled={districtFilter === ALL_FILTER_VALUE || isRegionsLoading}
++            onValueChange={(value) => {
++              setRegionFilter(value ?? ALL_FILTER_VALUE);
++              setDistrictFilter(ALL_FILTER_VALUE);
++            }}
++            disabled={bankFilter === ALL_FILTER_VALUE || isRegionsLoading}
++          >
++            <SelectTrigger className="w-full"><SelectValue placeholder="All regions" /></SelectTrigger>
++            <SelectContent>
++              <SelectItem value={ALL_FILTER_VALUE}>All</SelectItem>
++              {regions.map((region) => <SelectItem key={region._id} value={region._id}>{region.name}</SelectItem>)}
++            </SelectContent>
++          </Select>
++        </div>
++
++        <div>
++          <label className="mb-2 block text-sm font-medium">District</label>
++          <Select
++            value={districtFilter}
++            onValueChange={(value) => {
++              setDistrictFilter(value ?? ALL_FILTER_VALUE);
++            }}
++            disabled={regionFilter === ALL_FILTER_VALUE || isDistrictsLoading}
+           >
+             <SelectTrigger className="w-full">
+-              <SelectValue
+-                placeholder={
+-                  districtFilter === ALL_FILTER_VALUE
+-                    ? "Select district first"
+-                    : isRegionsLoading
+-                      ? "Loading regions..."
+-                      : "All regions"
+-                }
+-              >
+-                {regionFilter === ALL_FILTER_VALUE
++              <SelectValue placeholder={regionFilter === ALL_FILTER_VALUE ? "Select region first" : "All districts"}>
++                {districtFilter === ALL_FILTER_VALUE
+                   ? "All"
+-                  : regions.find((region) => region._id === regionFilter)?.name}
++                  : districts.find(
++                      (district) => district._id === districtFilter,
++                    )?.districtName}
+               </SelectValue>
+             </SelectTrigger>
+             <SelectContent>
+               <SelectItem value={ALL_FILTER_VALUE}>All</SelectItem>
+-              {regions.map((region) => (
+-                <SelectItem key={region._id} value={region._id}>
+-                  {region.name}
++              {districts.map((district) => (
++                <SelectItem key={district._id} value={district._id}>
++                  {district.districtName}
+                 </SelectItem>
+               ))}
+             </SelectContent>
+           </Select>
+         </div>
+ 
++
+         <div className="flex items-end md:col-span-2 lg:col-span-4">
+           <Button
+             type="button"
+diff --git a/frontend/src/pages/admin/DistrictDetailPage.tsx b/frontend/src/pages/admin/DistrictDetailPage.tsx
+index df4206f..9e00ddf 100644
+--- a/frontend/src/pages/admin/DistrictDetailPage.tsx
++++ b/frontend/src/pages/admin/DistrictDetailPage.tsx
+@@ -2,16 +2,22 @@ import { useState } from "react";
+ import { isAxiosError } from "axios";
+ import {
+   ArrowLeft,
++  ArrowRightLeft,
+   ChevronLeft,
+   ChevronRight,
+   Pencil,
+-  Plus,
+   RefreshCw,
+ } from "lucide-react";
+ import { Link, useNavigate, useParams } from "react-router-dom";
+ import { Badge } from "@/components/ui/badge";
+ import { Button } from "@/components/ui/button";
+ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
++import {
++  Dialog,
++  DialogContent,
++  DialogDescription,
++  DialogTitle,
++} from "@/components/ui/dialog";
+ import { useDistrictATMs } from "@/features/atms/hooks/useDistrictATMs";
+ import type { ATM } from "@/features/atms/types/atm.types";
+ import { useDistrictCustomers } from "@/features/customers/hooks/useDistrictCustomers";
+@@ -22,6 +28,13 @@ import { useDistrict } from "@/features/users/hooks/useDistrict";
+ import { useAllRegionsByDistrict } from "@/features/users/hooks/useAllRegionsByDistrict";
+ import RegionFormDialog from "@/features/users/components/RegionFormDialog";
+ import type { Region } from "@/features/users/services/region.service";
++import { useRegionsByBank } from "@/features/users/hooks/useRegionsByBank";
++import {
++  useDistrictTransfers,
++  useTransferDistrict,
++} from "@/features/users/hooks/useDistrictMutations";
++import { useAuth } from "@/features/auth/auth-context";
++import { toast } from "sonner";
+ 
+ const PAGE_SIZE = 10;
+ 
+@@ -177,6 +190,9 @@ export default function DistrictDetailPage() {
+   const [customerPage, setCustomerPage] = useState(1);
+   const [regionDialogOpen, setRegionDialogOpen] = useState(false);
+   const [selectedRegion, setSelectedRegion] = useState<Region | null>(null);
++  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
++  const [destinationRegionId, setDestinationRegionId] = useState("");
++  const [transferReason, setTransferReason] = useState("");
+ 
+   const districtQuery = useDistrict(districtId);
+   const regionsQuery = useAllRegionsByDistrict(districtId);
+@@ -191,6 +207,20 @@ export default function DistrictDetailPage() {
+     customerPage,
+     PAGE_SIZE,
+   );
++  const { user } = useAuth();
++  const parentRegion =
++    districtQuery.data && typeof districtQuery.data.regionId !== "string"
++      ? districtQuery.data.regionId
++      : null;
++  const bankId =
++    parentRegion && typeof parentRegion.bankId !== "string"
++      ? parentRegion.bankId._id
++      : typeof parentRegion?.bankId === "string"
++        ? parentRegion.bankId
++        : "";
++  const { data: bankRegions = [] } = useRegionsByBank(bankId);
++  const transfersQuery = useDistrictTransfers(districtId);
++  const transferMutation = useTransferDistrict();
+ 
+   const atms = atmsQuery.data?.atms ?? [];
+   const employees = employeesQuery.data?.employees ?? [];
+@@ -320,19 +350,11 @@ export default function DistrictDetailPage() {
+             id="district-regions-heading"
+             className="scroll-mt-16 text-xl font-semibold"
+           >
+-            Regions
++            Parent region
+           </h2>
+-          <Button
+-            type="button"
+-            onClick={() => {
+-              setSelectedRegion(null);
+-              setRegionDialogOpen(true);
+-            }}
+-            disabled={!districtId}
+-          >
+-            <Plus />
+-            Create Region
+-          </Button>
++          <Link className="text-sm text-primary underline-offset-4 hover:underline" to="/admin/regions">
++            Manage bank regions
++          </Link>
+         </div>
+         {regionsQuery.isLoading ? (
+           <SectionLoading label="Regions" />
+@@ -346,7 +368,7 @@ export default function DistrictDetailPage() {
+         ) : (
+           <Card>
+             {regions.length === 0 ? (
+-              <SectionEmpty>No regions configured for this district.</SectionEmpty>
++              <SectionEmpty>No parent region is mapped for this district.</SectionEmpty>
+             ) : (
+               <CardContent className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+                 {regions.map((region) => (
+@@ -409,12 +431,134 @@ export default function DistrictDetailPage() {
+         )}
+       </section>
+ 
+-      <RegionFormDialog
+-        open={regionDialogOpen}
+-        districtId={districtId}
+-        region={selectedRegion}
+-        onOpenChange={setRegionDialogOpen}
+-      />
++      {user?.userType === "superAdmin" && (
++        <Card>
++          <CardHeader className="flex-row items-center justify-between gap-3">
++            <div>
++              <CardTitle>District transfer</CardTitle>
++              <p className="mt-1 text-sm text-muted-foreground">
++                Move this district to another region in the same bank. Open jobs, AMC records, or active recurring plans block the transfer.
++              </p>
++            </div>
++            <Button
++              type="button"
++              variant="outline"
++              disabled={!districtQuery.data || bankRegions.length < 2}
++              onClick={() => setTransferDialogOpen(true)}
++            >
++              <ArrowRightLeft /> Transfer district
++            </Button>
++          </CardHeader>
++          {transfersQuery.isLoading ? (
++            <CardContent className="text-sm text-muted-foreground">Loading transfer history...</CardContent>
++          ) : transfersQuery.isError ? (
++            <CardContent className="text-sm text-destructive">Transfer history could not be loaded.</CardContent>
++          ) : (
++            <CardContent className="space-y-2">
++              {(transfersQuery.data ?? []).length === 0 ? (
++                <p className="text-sm text-muted-foreground">No transfers recorded.</p>
++              ) : (
++                transfersQuery.data?.map((transfer) => (
++                  <div key={transfer._id} className="rounded-lg border p-3 text-sm">
++                    <p className="font-medium">
++                      {transfer.fromRegionName} → {transfer.toRegionName}
++                    </p>
++                    <p className="mt-1 text-muted-foreground">{transfer.reason}</p>
++                    <p className="mt-1 text-xs text-muted-foreground">
++                      {new Date(transfer.createdAt).toLocaleString()} · {transfer.affectedATMCount} ATM(s)
++                    </p>
++                  </div>
++                ))
++              )}
++            </CardContent>
++          )}
++        </Card>
++      )}
++
++      <Dialog
++        open={transferDialogOpen}
++        onOpenChange={(open) => {
++          if (!transferMutation.isPending) setTransferDialogOpen(open);
++        }}
++      >
++        <DialogContent>
++          <DialogTitle>Transfer district to another region</DialogTitle>
++          <DialogDescription>
++            This action is recorded permanently. Employee district and region scopes are not changed.
++          </DialogDescription>
++          <div className="space-y-4">
++            <div>
++              <label htmlFor="district-transfer-region" className="mb-2 block text-sm font-medium">
++                Destination region *
++              </label>
++              <select
++                id="district-transfer-region"
++                value={destinationRegionId}
++                onChange={(event) => setDestinationRegionId(event.target.value)}
++                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
++              >
++                <option value="">Select destination region</option>
++                {bankRegions
++                  .filter((region) => region.isActive && region._id !== (parentRegion?._id ?? ""))
++                  .map((region) => <option key={region._id} value={region._id}>{region.name}</option>)}
++              </select>
++            </div>
++            <div>
++              <label htmlFor="district-transfer-reason" className="mb-2 block text-sm font-medium">
++                Transfer reason *
++              </label>
++              <textarea
++                id="district-transfer-reason"
++                value={transferReason}
++                onChange={(event) => setTransferReason(event.target.value)}
++                maxLength={1000}
++                rows={4}
++                required
++                className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm"
++              />
++            </div>
++            <div className="flex justify-end gap-2">
++              <Button type="button" variant="outline" onClick={() => setTransferDialogOpen(false)} disabled={transferMutation.isPending}>
++                Cancel
++              </Button>
++              <Button
++                type="button"
++                disabled={!destinationRegionId || !transferReason.trim() || transferMutation.isPending}
++                onClick={async () => {
++                  try {
++                    await transferMutation.mutateAsync({
++                      districtId,
++                      regionId: destinationRegionId,
++                      reason: transferReason.trim(),
++                    });
++                    toast.success("District transferred successfully.");
++                    setTransferReason("");
++                    setDestinationRegionId("");
++                    setTransferDialogOpen(false);
++                  } catch (error) {
++                    toast.error(getErrorMessage(error));
++                  }
++                }}
++              >
++                {transferMutation.isPending ? "Transferring..." : "Confirm transfer"}
++              </Button>
++            </div>
++          </div>
++        </DialogContent>
++      </Dialog>
++
++      {selectedRegion && (
++        <RegionFormDialog
++          open={regionDialogOpen}
++          bankId={
++            typeof selectedRegion.bankId === "string"
++              ? selectedRegion.bankId
++              : selectedRegion.bankId._id
++          }
++          region={selectedRegion}
++          onOpenChange={setRegionDialogOpen}
++        />
++      )}
+ 
+       <section
+         className="scroll-mt-16 space-y-3"
+diff --git a/frontend/src/pages/admin/RegionDetailPage.tsx b/frontend/src/pages/admin/RegionDetailPage.tsx
+index 3142d4f..a02deec 100644
+--- a/frontend/src/pages/admin/RegionDetailPage.tsx
++++ b/frontend/src/pages/admin/RegionDetailPage.tsx
+@@ -22,7 +22,7 @@ import type { DistrictCustomer } from "@/features/customers/services/customer.se
+ import { useRegionEmployees } from "@/features/employees/hooks/useRegionEmployees";
+ import type { DistrictEmployee } from "@/services/employee.service";
+ import { useRegion } from "@/features/users/hooks/useRegion";
+-import type { Region } from "@/features/users/services/region.service";
++import { useDistrict } from "@/features/users/hooks/useDistrict";
+ import RegionFormDialog from "@/features/users/components/RegionFormDialog";
+ 
+ const PAGE_SIZE = 10;
+@@ -36,12 +36,6 @@ function getErrorMessage(error: unknown) {
+     : "The request could not be completed.";
+ }
+ 
+-function getDistrictId(region: Region) {
+-  return typeof region.districtId === "string"
+-    ? region.districtId
+-    : region.districtId._id;
+-}
+-
+ function getATMEmployees(atm: ATM) {
+   return (atm.assignedEmployeeId ?? []).filter(
+     (employee): employee is DistrictEmployee =>
+@@ -181,9 +175,20 @@ export default function RegionDetailPage() {
+   const [regionDialogOpen, setRegionDialogOpen] = useState(false);
+ 
+   const regionQuery = useRegion(regionId);
++  const districtQuery = useDistrict(districtId);
++  const parentRegionId = districtQuery.data
++    ? typeof districtQuery.data.regionId === "string"
++      ? districtQuery.data.regionId
++      : districtQuery.data.regionId?._id
++    : "";
+   const regionMatchesDistrict =
+     regionQuery.data !== undefined &&
+-    getDistrictId(regionQuery.data).toLowerCase() === districtId.toLowerCase();
++    parentRegionId.toLowerCase() === regionId.toLowerCase();
++  const bankId = regionQuery.data
++    ? typeof regionQuery.data.bankId === "string"
++      ? regionQuery.data.bankId
++      : regionQuery.data.bankId._id
++    : "";
+   const scopedRegionId = regionMatchesDistrict ? regionId : "";
+ 
+   const atmsQuery = useRegionATMs(scopedRegionId, atmPage, PAGE_SIZE);
+@@ -218,16 +223,9 @@ export default function RegionDetailPage() {
+           <li>
+             <Link
+               className="underline-offset-4 hover:text-foreground hover:underline"
+-              to={
+-                regionQuery.data
+-                  ? `/admin/districts/${getDistrictId(regionQuery.data)}`
+-                  : `/admin/districts/${districtId}`
+-              }
++              to={`/admin/districts/${districtId}`}
+             >
+-              {regionQuery.data &&
+-              typeof regionQuery.data.districtId !== "string"
+-                ? regionQuery.data.districtId.districtName
+-                : "District"}
++              {districtQuery.data?.districtName ?? "District"}
+             </Link>
+           </li>
+           <li aria-hidden="true">›</li>
+@@ -288,12 +286,12 @@ export default function RegionDetailPage() {
+       {regionMatchesDistrict && regionQuery.data && (
+         <RegionFormDialog
+           open={regionDialogOpen}
+-          districtId={districtId}
++          bankId={bankId}
+           region={regionQuery.data}
+           onOpenChange={setRegionDialogOpen}
+           onSaved={(updatedRegion) => {
+             if (!updatedRegion.isActive) {
+-              navigate(`/admin/districts/${districtId}`);
++              navigate("/admin/regions");
+             }
+           }}
+         />

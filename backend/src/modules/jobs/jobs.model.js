@@ -92,6 +92,15 @@ const jobSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    geographySnapshot: {
+      bankId: { type: mongoose.Schema.Types.ObjectId, ref: "Bank" },
+      bankName: { type: String, trim: true },
+      regionId: { type: mongoose.Schema.Types.ObjectId, ref: "Region" },
+      regionName: { type: String, trim: true },
+      districtId: { type: mongoose.Schema.Types.ObjectId, ref: "District" },
+      districtName: { type: String, trim: true },
+      capturedAt: { type: Date },
+    },
     complaintId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Complaint",

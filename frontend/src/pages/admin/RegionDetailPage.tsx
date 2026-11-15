@@ -22,7 +22,7 @@ import type { DistrictCustomer } from "@/features/customers/services/customer.se
 import { useRegionEmployees } from "@/features/employees/hooks/useRegionEmployees";
 import type { DistrictEmployee } from "@/services/employee.service";
 import { useRegion } from "@/features/users/hooks/useRegion";
-import type { Region } from "@/features/users/services/region.service";
+import { useDistrict } from "@/features/users/hooks/useDistrict";
 import RegionFormDialog from "@/features/users/components/RegionFormDialog";
 
 const PAGE_SIZE = 10;
@@ -34,12 +34,6 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error
     ? error.message
     : "The request could not be completed.";
-}
-
-function getDistrictId(region: Region) {
-  return typeof region.districtId === "string"
-    ? region.districtId
-    : region.districtId._id;
 }
 
 function getATMEmployees(atm: ATM) {
@@ -181,9 +175,20 @@ export default function RegionDetailPage() {
   const [regionDialogOpen, setRegionDialogOpen] = useState(false);
 
   const regionQuery = useRegion(regionId);
+  const districtQuery = useDistrict(districtId);
+  const parentRegionId = districtQuery.data
+    ? typeof districtQuery.data.regionId === "string"
+      ? districtQuery.data.regionId
+      : districtQuery.data.regionId?._id
+    : "";
   const regionMatchesDistrict =
     regionQuery.data !== undefined &&
-    getDistrictId(regionQuery.data).toLowerCase() === districtId.toLowerCase();
+    parentRegionId.toLowerCase() === regionId.toLowerCase();
+  const bankId = regionQuery.data
+    ? typeof regionQuery.data.bankId === "string"
+      ? regionQuery.data.bankId
+      : regionQuery.data.bankId._id
+    : "";
   const scopedRegionId = regionMatchesDistrict ? regionId : "";
 
   const atmsQuery = useRegionATMs(scopedRegionId, atmPage, PAGE_SIZE);
@@ -218,16 +223,9 @@ export default function RegionDetailPage() {
           <li>
             <Link
               className="underline-offset-4 hover:text-foreground hover:underline"
-              to={
-                regionQuery.data
-                  ? `/admin/districts/${getDistrictId(regionQuery.data)}`
-                  : `/admin/districts/${districtId}`
-              }
+              to={`/admin/districts/${districtId}`}
             >
-              {regionQuery.data &&
-              typeof regionQuery.data.districtId !== "string"
-                ? regionQuery.data.districtId.districtName
-                : "District"}
+              {districtQuery.data?.districtName ?? "District"}
             </Link>
           </li>
           <li aria-hidden="true">›</li>
@@ -288,12 +286,12 @@ export default function RegionDetailPage() {
       {regionMatchesDistrict && regionQuery.data && (
         <RegionFormDialog
           open={regionDialogOpen}
-          districtId={districtId}
+          bankId={bankId}
           region={regionQuery.data}
           onOpenChange={setRegionDialogOpen}
           onSaved={(updatedRegion) => {
             if (!updatedRegion.isActive) {
-              navigate(`/admin/districts/${districtId}`);
+              navigate("/admin/regions");
             }
           }}
         />

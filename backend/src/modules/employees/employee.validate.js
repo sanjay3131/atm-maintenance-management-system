@@ -54,7 +54,7 @@ const createEmployeeSchema = z.object({
   }),
   districtIds: z.array(objectIdSchema),
   assignedAtmIds: z.array(objectIdSchema).optional(),
-  regionIds: z.array(objectIdSchema).optional(),
+  regionIds: z.array(objectIdSchema).default([]),
   supervisorId: objectIdSchema.nullable().optional(),
   salary: z
     .number({ invalid_type_error: "Salary must be a number" })

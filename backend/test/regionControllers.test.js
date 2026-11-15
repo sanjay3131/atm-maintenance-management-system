@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import Bank from "../src/modules/banks/bank.model.js";
 import District from "../src/modules/districts/district.models.js";
 import Region from "../src/modules/region/region.model.js";
 import {
+  createRegion,
   getAllRegions,
   getAllRegionsByDistrict,
   getRegionById,
@@ -14,6 +16,7 @@ import { updateRegionSchema } from "../src/modules/region/region.validate.js";
 
 const districtId = "64b000000000000000000001";
 const regionId = "64b000000000000000000002";
+const bankId = "64b000000000000000000003";
 
 function invoke(handler, req) {
   return new Promise((resolve, reject) => {
@@ -169,5 +172,59 @@ test("Region delete remains a soft deactivation", async () => {
     });
   } finally {
     Region.findOneAndUpdate = originalFindOneAndUpdate;
+  }
+});
+
+test("Region creation does not misreport a legacy parent-index conflict as Bank-scoped", async () => {
+  const originalFindById = Bank.findById;
+  const originalCreate = Region.create;
+  Bank.findById = () => ({
+    select: () => Promise.resolve({ _id: bankId, isActive: true }),
+  });
+  Region.create = async () => {
+    throw Object.assign(new Error("duplicate key"), {
+      code: 11000,
+      keyPattern: { districtId: 1, name: 1 },
+    });
+  };
+
+  try {
+    await assert.rejects(
+      invoke(createRegion, {
+        body: { bankId, name: "Karur", code: "KARUR001" },
+        user: { _id: "admin-user" },
+      }),
+      /Region index conflict; verify the installed geography indexes/,
+    );
+  } finally {
+    Bank.findById = originalFindById;
+    Region.create = originalCreate;
+  }
+});
+
+test("Region creation preserves the Bank-scoped duplicate conflict for current indexes", async () => {
+  const originalFindById = Bank.findById;
+  const originalCreate = Region.create;
+  Bank.findById = () => ({
+    select: () => Promise.resolve({ _id: bankId, isActive: true }),
+  });
+  Region.create = async () => {
+    throw Object.assign(new Error("duplicate key"), {
+      code: 11000,
+      keyPattern: { bankId: 1, name: 1 },
+    });
+  };
+
+  try {
+    await assert.rejects(
+      invoke(createRegion, {
+        body: { bankId, name: "Karur", code: "KARUR001" },
+        user: { _id: "admin-user" },
+      }),
+      /Region name or code already exists in this bank/,
+    );
+  } finally {
+    Bank.findById = originalFindById;
+    Region.create = originalCreate;
   }
 });

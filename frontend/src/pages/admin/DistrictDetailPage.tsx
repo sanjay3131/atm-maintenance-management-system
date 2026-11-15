@@ -2,16 +2,22 @@ import { useState } from "react";
 import { isAxiosError } from "axios";
 import {
   ArrowLeft,
+  ArrowRightLeft,
   ChevronLeft,
   ChevronRight,
   Pencil,
-  Plus,
   RefreshCw,
 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useDistrictATMs } from "@/features/atms/hooks/useDistrictATMs";
 import type { ATM } from "@/features/atms/types/atm.types";
 import { useDistrictCustomers } from "@/features/customers/hooks/useDistrictCustomers";
@@ -22,6 +28,13 @@ import { useDistrict } from "@/features/users/hooks/useDistrict";
 import { useAllRegionsByDistrict } from "@/features/users/hooks/useAllRegionsByDistrict";
 import RegionFormDialog from "@/features/users/components/RegionFormDialog";
 import type { Region } from "@/features/users/services/region.service";
+import { useRegionsByBank } from "@/features/users/hooks/useRegionsByBank";
+import {
+  useDistrictTransfers,
+  useTransferDistrict,
+} from "@/features/users/hooks/useDistrictMutations";
+import { useAuth } from "@/features/auth/auth-context";
+import { toast } from "sonner";
 
 const PAGE_SIZE = 10;
 
@@ -177,6 +190,9 @@ export default function DistrictDetailPage() {
   const [customerPage, setCustomerPage] = useState(1);
   const [regionDialogOpen, setRegionDialogOpen] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState<Region | null>(null);
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [destinationRegionId, setDestinationRegionId] = useState("");
+  const [transferReason, setTransferReason] = useState("");
 
   const districtQuery = useDistrict(districtId);
   const regionsQuery = useAllRegionsByDistrict(districtId);
@@ -191,6 +207,20 @@ export default function DistrictDetailPage() {
     customerPage,
     PAGE_SIZE,
   );
+  const { user } = useAuth();
+  const parentRegion =
+    districtQuery.data && typeof districtQuery.data.regionId !== "string"
+      ? districtQuery.data.regionId
+      : null;
+  const bankId =
+    parentRegion && typeof parentRegion.bankId !== "string"
+      ? parentRegion.bankId._id
+      : typeof parentRegion?.bankId === "string"
+        ? parentRegion.bankId
+        : "";
+  const { data: bankRegions = [] } = useRegionsByBank(bankId);
+  const transfersQuery = useDistrictTransfers(districtId);
+  const transferMutation = useTransferDistrict();
 
   const atms = atmsQuery.data?.atms ?? [];
   const employees = employeesQuery.data?.employees ?? [];
@@ -320,19 +350,11 @@ export default function DistrictDetailPage() {
             id="district-regions-heading"
             className="scroll-mt-16 text-xl font-semibold"
           >
-            Regions
+            Parent region
           </h2>
-          <Button
-            type="button"
-            onClick={() => {
-              setSelectedRegion(null);
-              setRegionDialogOpen(true);
-            }}
-            disabled={!districtId}
-          >
-            <Plus />
-            Create Region
-          </Button>
+          <Link className="text-sm text-primary underline-offset-4 hover:underline" to="/admin/regions">
+            Manage bank regions
+          </Link>
         </div>
         {regionsQuery.isLoading ? (
           <SectionLoading label="Regions" />
@@ -346,7 +368,7 @@ export default function DistrictDetailPage() {
         ) : (
           <Card>
             {regions.length === 0 ? (
-              <SectionEmpty>No regions configured for this district.</SectionEmpty>
+              <SectionEmpty>No parent region is mapped for this district.</SectionEmpty>
             ) : (
               <CardContent className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
                 {regions.map((region) => (
@@ -409,12 +431,134 @@ export default function DistrictDetailPage() {
         )}
       </section>
 
-      <RegionFormDialog
-        open={regionDialogOpen}
-        districtId={districtId}
-        region={selectedRegion}
-        onOpenChange={setRegionDialogOpen}
-      />
+      {user?.userType === "superAdmin" && (
+        <Card>
+          <CardHeader className="flex-row items-center justify-between gap-3">
+            <div>
+              <CardTitle>District transfer</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Move this district to another region in the same bank. Open jobs, AMC records, or active recurring plans block the transfer.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!districtQuery.data || bankRegions.length < 2}
+              onClick={() => setTransferDialogOpen(true)}
+            >
+              <ArrowRightLeft /> Transfer district
+            </Button>
+          </CardHeader>
+          {transfersQuery.isLoading ? (
+            <CardContent className="text-sm text-muted-foreground">Loading transfer history...</CardContent>
+          ) : transfersQuery.isError ? (
+            <CardContent className="text-sm text-destructive">Transfer history could not be loaded.</CardContent>
+          ) : (
+            <CardContent className="space-y-2">
+              {(transfersQuery.data ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No transfers recorded.</p>
+              ) : (
+                transfersQuery.data?.map((transfer) => (
+                  <div key={transfer._id} className="rounded-lg border p-3 text-sm">
+                    <p className="font-medium">
+                      {transfer.fromRegionName} → {transfer.toRegionName}
+                    </p>
+                    <p className="mt-1 text-muted-foreground">{transfer.reason}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {new Date(transfer.createdAt).toLocaleString()} · {transfer.affectedATMCount} ATM(s)
+                    </p>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          )}
+        </Card>
+      )}
+
+      <Dialog
+        open={transferDialogOpen}
+        onOpenChange={(open) => {
+          if (!transferMutation.isPending) setTransferDialogOpen(open);
+        }}
+      >
+        <DialogContent>
+          <DialogTitle>Transfer district to another region</DialogTitle>
+          <DialogDescription>
+            This action is recorded permanently. Employee district and region scopes are not changed.
+          </DialogDescription>
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="district-transfer-region" className="mb-2 block text-sm font-medium">
+                Destination region *
+              </label>
+              <select
+                id="district-transfer-region"
+                value={destinationRegionId}
+                onChange={(event) => setDestinationRegionId(event.target.value)}
+                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+              >
+                <option value="">Select destination region</option>
+                {bankRegions
+                  .filter((region) => region.isActive && region._id !== (parentRegion?._id ?? ""))
+                  .map((region) => <option key={region._id} value={region._id}>{region.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="district-transfer-reason" className="mb-2 block text-sm font-medium">
+                Transfer reason *
+              </label>
+              <textarea
+                id="district-transfer-reason"
+                value={transferReason}
+                onChange={(event) => setTransferReason(event.target.value)}
+                maxLength={1000}
+                rows={4}
+                required
+                className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setTransferDialogOpen(false)} disabled={transferMutation.isPending}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={!destinationRegionId || !transferReason.trim() || transferMutation.isPending}
+                onClick={async () => {
+                  try {
+                    await transferMutation.mutateAsync({
+                      districtId,
+                      regionId: destinationRegionId,
+                      reason: transferReason.trim(),
+                    });
+                    toast.success("District transferred successfully.");
+                    setTransferReason("");
+                    setDestinationRegionId("");
+                    setTransferDialogOpen(false);
+                  } catch (error) {
+                    toast.error(getErrorMessage(error));
+                  }
+                }}
+              >
+                {transferMutation.isPending ? "Transferring..." : "Confirm transfer"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {selectedRegion && (
+        <RegionFormDialog
+          open={regionDialogOpen}
+          bankId={
+            typeof selectedRegion.bankId === "string"
+              ? selectedRegion.bankId
+              : selectedRegion.bankId._id
+          }
+          region={selectedRegion}
+          onOpenChange={setRegionDialogOpen}
+        />
+      )}
 
       <section
         className="scroll-mt-16 space-y-3"

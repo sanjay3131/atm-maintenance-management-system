@@ -1,6 +1,8 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createDistrict,
+  getDistrictTransfers,
+  transferDistrict,
   updateDistrict,
 } from "../services/district.service";
 import { DISTRICTS_QUERY_KEY } from "./useDistricts";
@@ -45,5 +47,40 @@ export const useUpdateDistrict = () => {
         }),
       ]);
     },
+  });
+};
+
+export const useTransferDistrict = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      districtId,
+      regionId,
+      reason,
+    }: {
+      districtId: string;
+      regionId: string;
+      reason: string;
+    }) => transferDistrict(districtId, { regionId, reason }),
+    onSuccess: async (_result, { districtId }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: DISTRICTS_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: ["district", districtId] }),
+        queryClient.invalidateQueries({ queryKey: ["district-transfers", districtId] }),
+        queryClient.invalidateQueries({ queryKey: ["atms"] }),
+        queryClient.invalidateQueries({ queryKey: ["district-atms"] }),
+        queryClient.invalidateQueries({ queryKey: ["region-atms"] }),
+        queryClient.invalidateQueries({ queryKey: ["jobs"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
+    },
+  });
+};
+
+export const useDistrictTransfers = (districtId: string) => {
+  return useQuery({
+    queryKey: ["district-transfers", districtId],
+    queryFn: () => getDistrictTransfers(districtId),
+    enabled: Boolean(districtId),
   });
 };

@@ -83,6 +83,7 @@ export const createEmployee = asyncHandler(async (req, res) => {
     effectiveExitDate,
     employmentType,
     districtIds,
+    regionIds,
     assignedAtmIds,
     supervisorId,
     salary,
@@ -100,6 +101,7 @@ export const createEmployee = asyncHandler(async (req, res) => {
     effectiveExitDate,
     employmentType,
     districtIds,
+    regionIds,
     assignedAtmIds: [],
     supervisorId: resolvedSupervisorId,
     salary,
@@ -317,10 +319,10 @@ export const getMyEmployeeProfile = asyncHandler(async (req, res) => {
     .populate("districtIds", "districtName pinCode state")
     .populate({
       path: "regionIds",
-      select: "name code districtId",
+      select: "name code bankId",
       populate: {
-        path: "districtId",
-        select: "districtName pinCode",
+        path: "bankId",
+        select: "bankName bankCode",
       },
     })
     .populate({
@@ -374,7 +376,14 @@ export const getMyEmployeeProfile = asyncHandler(async (req, res) => {
       .map((region) => ({
         name: region.name,
         ...(region.code ? { code: region.code } : {}),
-        district: districtSummary(region.districtId),
+        bank: region.bankId
+          ? {
+              bankName: region.bankId.bankName,
+              ...(region.bankId.bankCode
+                ? { bankCode: region.bankId.bankCode }
+                : {}),
+            }
+          : null,
       })),
     assignedAtms: (employee.assignedAtmIds ?? [])
       .filter((atm) => atm?.atmId)
