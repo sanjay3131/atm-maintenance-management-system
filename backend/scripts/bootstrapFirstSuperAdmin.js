@@ -59,10 +59,7 @@ const main = async () => {
     expectedDatabase: targetDatabase,
   });
 
-  await mongoose.connect(process.env.MONGODB_URL, {
-    autoIndex: false,
-    autoCreate: false,
-  });
+  await mongoose.connect(process.env.MONGODB_URL);
 
   await User.init();
   await ensureBootstrapCollection();
