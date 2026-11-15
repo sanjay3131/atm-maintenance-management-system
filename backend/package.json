@@ -20,7 +20,8 @@
     "attendance:ensure-supervisor-indexes": "node scripts/ensureSupervisorAttendanceIndexes.js",
     "geography:setup-indexes": "node scripts/setupGeographyIndexes.js",
     "geography:verify": "node scripts/verifyGeographySetup.js",
-    "bootstrap:first-super-admin": "node scripts/bootstrapFirstSuperAdmin.js"
+    "bootstrap:first-super-admin": "node scripts/bootstrapFirstSuperAdmin.js",
+    "test:fresh-database-readiness": "node --test test/databaseTarget.test.js test/databaseIndexReadiness.test.js test/bootstrapFirstSuperAdmin.test.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
