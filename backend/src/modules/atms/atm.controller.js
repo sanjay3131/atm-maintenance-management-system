@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import ApiError from "../../utils/ApiError.js";
 import ApiResponse from "../../utils/ApiResponse.js";
 import asyncHandler from "../../utils/asyncHandler.js";
@@ -46,7 +47,6 @@ import {
 import { reserveATMIds } from "./atm.utils.js";
 import { createATMUploadTemplateWorkbook } from "./atmBulkUploadTemplate.service.js";
 import {
-  buildATMGeographicQuery,
   escapeRegex,
   parsePagination,
 } from "../../utils/geographicQuery.js";
@@ -329,41 +329,92 @@ export const createATM = asyncHandler(async (req, res) => {
 
 // view all atm
 export const getAllATMs = asyncHandler(async (req, res) => {
-  const { districtId, regionId, bankId, status, search } = req.query;
-  const isScoped =
-    districtId !== undefined ||
-    regionId !== undefined ||
-    bankId !== undefined ||
-    req.query.page !== undefined ||
-    req.query.limit !== undefined ||
-    status !== undefined ||
-    search !== undefined;
+  const filters = req.validatedQuery ?? req.query;
+  const {
+    districtId,
+    regionId,
+    bankId,
+    assignmentStatus,
+    employeeId,
+    status,
+    search,
+  } = filters;
+  const isScoped = Object.keys(filters).length > 0;
 
   if (isScoped) {
-    const scope = buildATMGeographicQuery({ districtId, regionId, bankId });
-    const { page, limit, skip } = parsePagination(req.query.page, req.query.limit);
-    if (
-      status !== undefined &&
-      !["ACTIVE", "INACTIVE", "UNDER_MAINTENANCE", "REMOVED"].includes(status)
-    ) {
-      throw new ApiError(400, "Invalid status");
+    const page = Number(filters.page ?? 1);
+    const limit = Number(filters.limit ?? 10);
+    const skip = (page - 1) * limit;
+    const objectId = (value) => new mongoose.Types.ObjectId(value);
+    const sameId = (left, right) =>
+      String(left?._id ?? left).toLowerCase() ===
+      String(right?._id ?? right).toLowerCase();
+
+    const [selectedRegion, selectedDistrict] = await Promise.all([
+      regionId
+        ? Region.findById(regionId).select("bankId")
+        : Promise.resolve(null),
+      districtId
+        ? District.findById(districtId).select("bankId regionId")
+        : Promise.resolve(null),
+    ]);
+    if (regionId && !selectedRegion) {
+      throw new ApiError(404, "Selected region was not found");
     }
-    if (search !== undefined && typeof search !== "string") {
-      throw new ApiError(400, "Invalid search");
+    if (districtId && !selectedDistrict) {
+      throw new ApiError(404, "Selected district was not found");
+    }
+    if (bankId && selectedRegion && !sameId(selectedRegion.bankId, bankId)) {
+      throw new ApiError(
+        400,
+        "Selected region does not belong to the selected bank",
+      );
+    }
+    if (
+      regionId &&
+      selectedDistrict &&
+      !sameId(selectedDistrict.regionId, regionId)
+    ) {
+      throw new ApiError(
+        400,
+        "Selected district does not belong to the selected region",
+      );
+    }
+    if (bankId && selectedDistrict && !sameId(selectedDistrict.bankId, bankId)) {
+      throw new ApiError(
+        400,
+        "Selected district does not belong to the selected bank",
+      );
+    }
+    if (
+      selectedRegion &&
+      selectedDistrict &&
+      !sameId(selectedDistrict.bankId, selectedRegion.bankId)
+    ) {
+      throw new ApiError(
+        400,
+        "Selected district does not belong to the selected region",
+      );
     }
 
     const query = {
-      ...scope,
+      isDeleted: false,
+      ...(bankId ? { bankId: objectId(bankId) } : {}),
+      ...(regionId ? { regionId: objectId(regionId) } : {}),
+      ...(districtId ? { districtId: objectId(districtId) } : {}),
+      ...(employeeId
+        ? { assignedEmployeeId: objectId(employeeId) }
+        : {}),
       ...(status ? { status } : {}),
       ...(search?.trim()
         ? {
             $or: [
-            {
-              clientAtmId: {
-                $regex: escapeRegex(search.trim()),
-                $options: "i",
+              {
+                clientAtmId: {
+                  $regex: escapeRegex(search.trim()),
+                  $options: "i",
+                },
               },
-            },
               { atmId: { $regex: escapeRegex(search.trim()), $options: "i" } },
               {
                 locationName: {
@@ -382,75 +433,129 @@ export const getAllATMs = asyncHandler(async (req, res) => {
         : {}),
     };
 
-    const [atms, aggregate] = await Promise.all([
-      ATM.find(query)
-        .populate("bankId", "bankName")
-        .populate("districtId", "districtName")
-        .populate("regionId", "name")
-        .populate({
+    const hasValidEmployeeFilter =
+      Boolean(employeeId) ||
+      assignmentStatus === "assigned" ||
+      assignmentStatus === "unassigned";
+    const validAssignmentStages = hasValidEmployeeFilter
+      ? [
+          {
+            $lookup: {
+              from: Employee.collection.name,
+              localField: "assignedEmployeeId",
+              foreignField: "_id",
+              pipeline: [{ $project: { _id: 1 } }],
+              as: "_validAssignedEmployees",
+            },
+          },
+          ...(assignmentStatus === "assigned"
+            ? [{ $match: { "_validAssignedEmployees.0": { $exists: true } } }]
+            : []),
+          ...(assignmentStatus === "unassigned"
+            ? [{ $match: { "_validAssignedEmployees.0": { $exists: false } } }]
+            : []),
+          ...(employeeId
+            ? [
+                {
+                  $match: {
+                    "_validAssignedEmployees._id": objectId(employeeId),
+                  },
+                },
+              ]
+            : []),
+        ]
+      : [];
+
+    const [aggregate = {}] = await ATM.aggregate([
+      { $match: query },
+      ...validAssignmentStages,
+      {
+        $facet: {
+          atms: [
+            { $sort: { atmId: 1, _id: 1 } },
+            { $skip: skip },
+            { $limit: limit },
+            {
+              $project: {
+                _validAssignedEmployees: 0,
+                locationWorkflowRevision: 0,
+              },
+            },
+          ],
+          total: [{ $count: "count" }],
+          statusCounts: [
+            { $group: { _id: "$status", count: { $sum: 1 } } },
+          ],
+          linkedCustomers: [
+            { $match: { customer: { $ne: null } } },
+            { $group: { _id: "$customer" } },
+            {
+              $lookup: {
+                from: Customer.collection.name,
+                let: { customerId: "$_id" },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: { $eq: ["$_id", "$$customerId"] },
+                      isDeleted: false,
+                    },
+                  },
+                ],
+                as: "customer",
+              },
+            },
+            { $match: { "customer.0": { $exists: true } } },
+            { $count: "count" },
+          ],
+          linkedEmployees: [
+            { $unwind: "$assignedEmployeeId" },
+            { $match: { assignedEmployeeId: { $ne: null } } },
+            { $group: { _id: "$assignedEmployeeId" } },
+            {
+              $lookup: {
+                from: Employee.collection.name,
+                localField: "_id",
+                foreignField: "_id",
+                pipeline: [{ $project: { _id: 1 } }],
+                as: "employee",
+              },
+            },
+            { $match: { "employee.0": { $exists: true } } },
+            { $count: "count" },
+          ],
+        },
+      },
+    ]);
+    const atms = await ATM.populate(
+      (aggregate.atms ?? []).map((atm) => ({
+        ...atm,
+        assignedEmployeeId: Array.isArray(atm.assignedEmployeeId)
+          ? atm.assignedEmployeeId
+          : [],
+        status: atm.status ?? "ACTIVE",
+      })),
+      [
+        { path: "bankId", select: "bankName" },
+        { path: "districtId", select: "districtName" },
+        { path: "regionId", select: "name" },
+        {
           path: "assignedEmployeeId",
           select: "employeeCode userId",
           populate: { path: "userId", select: "firstName lastName status" },
-        })
-        .populate({
+        },
+        {
           path: "amcResponsibleEmployeeId",
           select: "employeeCode status userId",
-          populate: { path: "userId", select: "firstName lastName status userType" },
-        })
-        .populate("customer", "customerName")
-        .sort({ atmId: 1, _id: 1 })
-        .skip(skip)
-        .limit(limit),
-      ATM.aggregate([
-        { $match: query },
-        {
-          $facet: {
-            total: [{ $count: "count" }],
-            statusCounts: [
-              { $group: { _id: "$status", count: { $sum: 1 } } },
-            ],
-            linkedCustomers: [
-              { $match: { customer: { $ne: null } } },
-              { $group: { _id: "$customer" } },
-              {
-                $lookup: {
-                  from: Customer.collection.name,
-                  let: { customerId: "$_id" },
-                  pipeline: [
-                    {
-                      $match: {
-                        $expr: { $eq: ["$_id", "$$customerId"] },
-                        isDeleted: false,
-                      },
-                    },
-                  ],
-                  as: "customer",
-                },
-              },
-              { $match: { "customer.0": { $exists: true } } },
-              { $count: "count" },
-            ],
-            linkedEmployees: [
-              { $unwind: "$assignedEmployeeId" },
-              { $match: { assignedEmployeeId: { $ne: null } } },
-              { $group: { _id: "$assignedEmployeeId" } },
-              {
-                $lookup: {
-                  from: Employee.collection.name,
-                  localField: "_id",
-                  foreignField: "_id",
-                  as: "employee",
-                },
-              },
-              { $match: { "employee.0": { $exists: true } } },
-              { $count: "count" },
-            ],
+          populate: {
+            path: "userId",
+            select: "firstName lastName status userType",
           },
         },
-      ]),
-    ]);
+        { path: "customer", select: "customerName" },
+      ],
+    );
 
-    const summary = aggregate[0] ?? {};
+    const summary = aggregate;
     const total = summary.total?.[0]?.count ?? 0;
     return res.status(200).json(
       new ApiResponse(

@@ -18,6 +18,7 @@ import SupervisorLayout from "@/layouts/SupervisorLayout";
 import EmployeesPage from "@/pages/admin/EmployeesPage";
 import EmployeeDetailsPage from "@/pages/admin/EmployeeDetailsPage";
 import AtmsPage from "@/pages/admin/AtmsPage";
+import BulkATMAssignmentPage from "@/pages/admin/BulkATMAssignmentPage";
 import JobsPage from "@/pages/admin/JobsPage";
 import AmcPage from "@/pages/admin/AmcPage";
 import AdminAMCDetailsPage from "@/pages/admin/AdminAMCDetailsPage";
@@ -120,6 +121,10 @@ export default function App() {
               element={<RegionDetailPage />}
             />
             <Route path="/admin/atms" element={<AtmsPage />} />
+            <Route
+              path="/admin/atm-assignments"
+              element={<BulkATMAssignmentPage />}
+            />
             <Route path="/admin/atms/:id" element={<ATMDetailsPage />} />
             <Route path="/admin/atms/:id/edit" element={<EditATMPage />} />
             <Route

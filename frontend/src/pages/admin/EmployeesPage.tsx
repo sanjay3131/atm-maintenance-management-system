@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Eye, Pencil, RefreshCw, UserPlus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useEmployees } from "@/features/employees/hooks/useEmployees";
 import CreateUserWizard from "@/features/users/components/CreateUserWizard";
@@ -309,6 +309,33 @@ export default function EmployeesPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
+                        {employee.status === "active" &&
+                        (!employee.userId?.status ||
+                          employee.userId.status === "active") ? (
+                          <Link
+                            to={`/admin/atm-assignments?employeeId=${encodeURIComponent(employee._id)}`}
+                            className={buttonVariants({
+                              variant: "outline",
+                              size: "sm",
+                            })}
+                            aria-label={`Add ATMs to ${employeeName}`}
+                          >
+                            <UserPlus aria-hidden="true" />
+                            Add ATMs
+                          </Link>
+                        ) : (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled
+                            title="Only active employees can receive ATM assignments."
+                            aria-label={`Add ATMs to ${employeeName} (employee must be active)`}
+                          >
+                            <UserPlus />
+                            Add ATMs
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           size="sm"

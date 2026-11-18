@@ -16,6 +16,7 @@ import {
   MapPinCheck,
   UserCog,
   Bike,
+  ListChecks,
 } from "lucide-react";
 
 const navItems = [
@@ -53,6 +54,11 @@ const navItems = [
     label: "ATMs",
     path: "/admin/atms",
     icon: Monitor,
+  },
+  {
+    label: "Bulk ATM Assignment",
+    path: "/admin/atm-assignments",
+    icon: ListChecks,
   },
   {
     label: "ATM Location Requests",

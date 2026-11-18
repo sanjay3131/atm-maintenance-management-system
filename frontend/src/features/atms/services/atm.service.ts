@@ -45,6 +45,18 @@ export interface ATMUploadImportErrorResponse {
   errors?: ATMUploadImportError[];
 }
 
+export interface GetScopedATMsParams {
+  bankId?: string;
+  regionId?: string;
+  districtId?: string;
+  assignmentStatus: "all" | "assigned" | "unassigned";
+  employeeId?: string;
+  search?: string;
+  status?: ATM["status"];
+  page: number;
+  limit: number;
+}
+
 export const getDistrictATMs = async (
   districtId: string,
   page: number,
@@ -65,6 +77,17 @@ export const getRegionATMs = async (
   const response = await api.get<{ data: ScopedATMsResponse }>(
     "/atm/getAllATMs",
     { params: { regionId, page, limit } },
+  );
+  return response.data.data;
+};
+
+export const getScopedATMs = async (
+  params: GetScopedATMsParams,
+  signal?: AbortSignal,
+): Promise<ScopedATMsResponse> => {
+  const response = await api.get<{ data: ScopedATMsResponse }>(
+    "/atm/getAllATMs",
+    { params, signal },
   );
   return response.data.data;
 };

@@ -48,6 +48,7 @@ import {
   reassignATMLocationTaskSchema,
   reopenATMLocationTaskSchema,
   cancelATMLocationTaskSchema,
+  listATMsQuerySchema,
   validateRequest,
 } from "./atm.validation.js";
 import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
@@ -95,6 +96,7 @@ router.get(
   "/getAllATMs",
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin"),
+  validateRouteRequest(listATMsQuerySchema, "query"),
   getAllATMs,
 );
 
