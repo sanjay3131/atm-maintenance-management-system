@@ -3,6 +3,7 @@ import { ArrowLeft, Check, Copy, ExternalLink, MapPin, X } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -124,7 +125,7 @@ function LocationRequestDetails({ request }: { request: ATMLocationRequest }) {
       <Card>
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2">
-            {atm?.atmId || "ATM reference unavailable"}
+            {getATMDisplayId(currentATM ?? atm) || "ATM reference unavailable"}
             <Badge variant={request.status === "REJECTED" ? "destructive" : request.status === "APPROVED" ? "default" : "secondary"}>
               {formatATMLocationRequestStatus(request.status)}
             </Badge>

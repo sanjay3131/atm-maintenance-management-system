@@ -8,6 +8,12 @@ const atmSchema = new mongoose.Schema(
       unique: true,
       trim: true,
     },
+    clientAtmId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      minlength: [1, "Client ATM ID cannot be empty"],
+    },
 
     customer: {
       type: mongoose.Schema.Types.ObjectId,
@@ -48,6 +54,12 @@ const atmSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+    },
+
+    city: {
+      type: String,
+      trim: true,
+      minlength: [1, "City cannot be empty"],
     },
 
     address: {
@@ -184,6 +196,14 @@ atmSchema.path("assignedEmployeeId").validate({
 
 // Indexes
 atmSchema.index({ atmId: 1 }, { unique: true });
+atmSchema.index(
+  { clientAtmId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { clientAtmId: { $type: "string" } },
+    name: "uniq_atm_client_atm_id",
+  },
+);
 atmSchema.index({ bankId: 1 });
 atmSchema.index({ districtId: 1 });
 atmSchema.index({ regionId: 1 });

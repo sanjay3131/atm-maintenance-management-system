@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import AMC from "../src/modules/amc/amc.model.js";
 import { AMC_STATUS } from "../src/modules/amc/amc.config.js";
 import ATM from "../src/modules/atms/atm.model.js";
+import ATMIdSequence from "../src/modules/atms/atmIdSequence.model.js";
 import { createATM, updateATM } from "../src/modules/atms/atm.controller.js";
 import Bank from "../src/modules/banks/bank.model.js";
 import Customer from "../src/modules/customers/customer.model.js";
@@ -100,8 +101,10 @@ function createMocks({
     },
   },
   customer = { _id: "customer-id", isActive: true, isDeleted: false },
+  atmCreateError,
 } = {}) {
   const captured = {};
+  const sequenceState = { value: 0 };
   const overrides = [
     [
       Bank,
@@ -141,6 +144,15 @@ function createMocks({
       }),
     ],
     [
+      ATMIdSequence,
+      "findOneAndUpdate",
+      async (filter, update, options) => {
+        captured.sequenceReservation = { filter, update, options };
+        sequenceState.value += update.$inc.value;
+        return { value: sequenceState.value };
+      },
+    ],
+    [
       ATM,
       "findOne",
       (filter) => {
@@ -168,7 +180,9 @@ function createMocks({
     [
       ATM,
       "create",
-      async ([data]) => {
+      async ([data], options) => {
+        if (atmCreateError) throw atmCreateError;
+        captured.atmCreateOptions = options;
         const created = {
           ...data,
           _id: atmId,
@@ -190,19 +204,25 @@ function createMocks({
     [
       mongoose,
       "startSession",
-      async () => ({
-        async withTransaction(operation) {
-          try {
-            return await operation(this);
-          } catch (error) {
-            delete captured.created;
-            delete captured.savedATM;
-            delete captured.customer;
-            throw error;
-          }
-        },
-        async endSession() {},
-      }),
+      async () => {
+        const session = {
+          async withTransaction(operation) {
+            const sequenceBeforeTransaction = sequenceState.value;
+            captured.transactionSession = session;
+            try {
+              return await operation(session);
+            } catch (error) {
+              sequenceState.value = sequenceBeforeTransaction;
+              delete captured.created;
+              delete captured.savedATM;
+              delete captured.customer;
+              throw error;
+            }
+          },
+          async endSession() {},
+        };
+        return session;
+      },
     ],
     [
       ATM,
@@ -252,22 +272,24 @@ function createMocks({
       },
     ],
   ];
-  return { captured, overrides };
+  return { captured, overrides, sequenceState };
 }
 
 const createBody = (changes = {}) => ({
+  clientAtmId: "CLIENT-ATM-001",
   bankId,
   customerId: "customer-id",
   districtId,
   regionId,
   locationName: "Main Street",
+  city: "Chennai",
   address: "1 Main Street",
   installationType: "ONSITE",
   ...changes,
 });
 
 test("rejects ATM creation with an invalid Customer without committing a partial ATM", async () => {
-  const { captured, overrides } = createMocks({ customer: null });
+  const { captured, overrides, sequenceState } = createMocks({ customer: null });
   await withOverrides(overrides, async () => {
     await assert.rejects(
       invoke(createATM, {
@@ -279,6 +301,26 @@ test("rejects ATM creation with an invalid Customer without committing a partial
   });
   assert.equal(captured.created, undefined);
   assert.equal(captured.customer, undefined);
+  assert.equal(sequenceState.value, 0);
+});
+
+test("rolls back the sequence reservation when ATM creation fails", async () => {
+  const { captured, overrides, sequenceState } = createMocks({
+    atmCreateError: new Error("ATM create failed"),
+  });
+
+  await withOverrides(overrides, async () => {
+    await assert.rejects(
+      invoke(createATM, {
+        body: createBody(),
+        user: { _id: "admin-id" },
+      }),
+      /ATM create failed/,
+    );
+  });
+
+  assert.equal(sequenceState.value, 0);
+  assert.equal(captured.created, undefined);
 });
 
 function updateRequest(body) {
@@ -301,8 +343,86 @@ test("ATM validation requires a Region and validates geographic IDs", () => {
   );
 });
 
+test("ATM city is required and trimmed on create, optional and validated on update", () => {
+  const validCreateBody = createBody({ bankId: atmId, city: "  Chennai  " });
+  assert.equal(createAtmSchema.parse(validCreateBody).city, "Chennai");
+
+  const createWithoutCity = { ...validCreateBody };
+  delete createWithoutCity.city;
+  assert.equal(createAtmSchema.safeParse(createWithoutCity).success, false);
+  assert.equal(
+    createAtmSchema.safeParse({ ...validCreateBody, city: "   " }).success,
+    false,
+  );
+
+  assert.equal(updateAtmSchema.safeParse({}).success, true);
+  assert.equal(updateAtmSchema.parse({ city: "  Madurai  " }).city, "Madurai");
+  assert.equal(updateAtmSchema.safeParse({ city: "   " }).success, false);
+});
+
+test("client ATM IDs are required on create and normalized on create and update", async () => {
+  const validCreateBody = createBody({ bankId: atmId });
+  const parsedCreate = createAtmSchema.parse(
+    { ...validCreateBody, clientAtmId: "  client-atm-002  " },
+  );
+  assert.equal(parsedCreate.clientAtmId, "CLIENT-ATM-002");
+
+  const createWithoutClientAtmId = { ...validCreateBody };
+  delete createWithoutClientAtmId.clientAtmId;
+  assert.equal(
+    createAtmSchema.safeParse(createWithoutClientAtmId).success,
+    false,
+  );
+  assert.equal(
+    createAtmSchema.safeParse({
+      ...validCreateBody,
+      clientAtmId: "   ",
+    }).success,
+    false,
+  );
+
+  assert.equal(updateAtmSchema.safeParse({}).success, true);
+  assert.equal(
+    updateAtmSchema.parse({ clientAtmId: " client-atm-003 " }).clientAtmId,
+    "CLIENT-ATM-003",
+  );
+  assert.equal(
+    updateAtmSchema.safeParse({ clientAtmId: " " }).success,
+    false,
+  );
+
+  const legacyATM = new ATM({
+    atmId: "ATM0001",
+    customer: new mongoose.Types.ObjectId(),
+    locationName: "Legacy location",
+    address: "Legacy address",
+    installationType: "ONSITE",
+    createdBy: new mongoose.Types.ObjectId(),
+  });
+  await assert.doesNotReject(legacyATM.validate());
+  assert.equal(legacyATM.city, undefined);
+
+  const emptyClientIdATM = new ATM({
+    ...legacyATM.toObject(),
+    clientAtmId: "  ",
+  });
+  await assert.rejects(
+    emptyClientIdATM.validate(),
+    (error) => Boolean(error.errors.clientAtmId),
+  );
+
+  const clientAtmIdIndex = ATM.schema
+    .indexes()
+    .find(([, options]) => options.name === "uniq_atm_client_atm_id");
+  assert.deepEqual(clientAtmIdIndex?.[0], { clientAtmId: 1 });
+  assert.equal(clientAtmIdIndex?.[1].unique, true);
+  assert.deepEqual(clientAtmIdIndex?.[1].partialFilterExpression, {
+    clientAtmId: { $type: "string" },
+  });
+});
+
 test("creates an ATM with an active District and its active Region", async () => {
-  const { captured, overrides } = createMocks();
+  const { captured, overrides, sequenceState } = createMocks();
   await withOverrides(overrides, async () => {
     const { status, body } = await invoke(createATM, {
       body: createBody(),
@@ -312,8 +432,89 @@ test("creates an ATM with an active District and its active Region", async () =>
     assert.equal(body.data.districtId, districtId);
     assert.equal(body.data.regionId, regionId);
     assert.equal(captured.created.regionId, regionId);
+    assert.equal(captured.created.clientAtmId, "CLIENT-ATM-001");
+    assert.equal(captured.created.atmId, "ATM0001");
+    assert.equal(captured.created.city, "Chennai");
     assert.equal(captured.savedATM.customer, "customer-id");
     assert.deepEqual(captured.customer.atmIds, [atmId]);
+    assert.strictEqual(
+      captured.sequenceReservation.options.session,
+      captured.transactionSession,
+    );
+    assert.strictEqual(
+      captured.atmCreateOptions.session,
+      captured.transactionSession,
+    );
+    assert.equal(sequenceState.value, 1);
+  });
+});
+
+test("maps duplicate client ATM IDs on creation to a conflict", async () => {
+  const { captured, overrides, sequenceState } = createMocks({
+    atmCreateError: {
+      code: 11000,
+      keyPattern: { clientAtmId: 1 },
+    },
+  });
+
+  await withOverrides(overrides, async () => {
+    await assert.rejects(
+      invoke(createATM, {
+        body: createBody(),
+        user: { _id: "admin-id" },
+      }),
+      (error) =>
+        error.statusCode === 409 &&
+        error.message === "Client ATM ID already exists",
+    );
+  });
+  assert.equal(captured.created, undefined);
+  assert.equal(sequenceState.value, 0);
+});
+
+test("preserves duplicate ATM ID errors from ATM creation", async () => {
+  const duplicateATMIdError = {
+    code: 11000,
+    keyPattern: { atmId: 1 },
+  };
+  const { captured, overrides, sequenceState } = createMocks({
+    atmCreateError: duplicateATMIdError,
+  });
+
+  await withOverrides(overrides, async () => {
+    await assert.rejects(
+      invoke(createATM, {
+        body: createBody(),
+        user: { _id: "admin-id" },
+      }),
+      (error) => error === duplicateATMIdError,
+    );
+  });
+
+  assert.equal(captured.created, undefined);
+  assert.equal(sequenceState.value, 0);
+});
+
+test("maps duplicate client ATM IDs on update to a conflict", async () => {
+  const { overrides } = createMocks();
+  overrides.push([
+    ATM,
+    "findByIdAndUpdate",
+    async () => {
+      throw {
+        code: 11000,
+        keyPattern: { clientAtmId: 1 },
+      };
+    },
+  ]);
+
+  await withOverrides(overrides, async () => {
+    await assert.rejects(
+      invoke(updateATM, updateRequest({ clientAtmId: "CLIENT-ATM-001" })),
+      (error) =>
+        error.statusCode === 409 &&
+        error.message === "Client ATM ID already exists",
+    );
   });
 });
 
@@ -562,8 +763,12 @@ test("blocks moves with unresolved Jobs, AMC records, or active recurring plans"
 test("normal non-geographic ATM updates continue without geography or workload checks", async () => {
   const { captured, overrides } = createMocks();
   await withOverrides(overrides, async () => {
-    await invoke(updateATM, updateRequest({ locationName: "Updated location" }));
+    await invoke(
+      updateATM,
+      updateRequest({ locationName: "Updated location", city: "Coimbatore" }),
+    );
     assert.equal(captured.update.update.locationName, "Updated location");
+    assert.equal(captured.update.update.city, "Coimbatore");
     assert.equal(captured.jobQuery, undefined);
     assert.equal(captured.amcQuery, undefined);
     assert.equal(captured.planQuery, undefined);

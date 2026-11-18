@@ -65,6 +65,7 @@ const currentMonthYear = () => {
 const safeAtmDto = (atm) => ({
   _id: toIdString(atm._id),
   atmId: atm.atmId,
+  clientAtmId: atm.clientAtmId ?? null,
   locationName: atm.locationName,
   address: atm.address,
   status: atm.status,
@@ -84,7 +85,7 @@ const getEmployeeAtms = async (employee) => {
     _id: { $in: assignedIds },
     assignedEmployeeId: employee._id,
     isDeleted: false,
-  }).select("_id atmId locationName address status");
+  }).select("_id atmId clientAtmId locationName address status");
   return atms.map((atm) => ({ ...safeAtmDto(atm), employeeId }));
 };
 
@@ -105,10 +106,18 @@ const getScopedJobs = async (reports, query = {}) => {
   }
   if (query.search) {
     const escaped = query.search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const matchingATMIds = await ATM.distinct("_id", {
+      isDeleted: false,
+      $or: [
+        { clientAtmId: { $regex: escaped, $options: "i" } },
+        { atmId: { $regex: escaped, $options: "i" } },
+      ],
+    });
     filter.$or = [
       { jobId: { $regex: escaped, $options: "i" } },
       { jobNumber: { $regex: escaped, $options: "i" } },
       { title: { $regex: escaped, $options: "i" } },
+      { atmId: { $in: matchingATMIds } },
     ];
   }
   if (query.fromDate || query.toDate) {
@@ -142,7 +151,7 @@ const safeJobDto = async (job, employeePair) => {
   const atm =
     atmId && mongoose.isValidObjectId(atmId)
       ? await ATM.findOne({ _id: atmId, isDeleted: false }).select(
-          "_id atmId locationName address status",
+          "_id atmId clientAtmId locationName address status",
         )
       : null;
   return {
@@ -204,7 +213,7 @@ const safeAmcDto = async (amc) => {
   const atm =
     atmId && mongoose.isValidObjectId(atmId)
       ? await ATM.findOne({ _id: atmId, isDeleted: false }).select(
-          "_id atmId locationName address status",
+          "_id atmId clientAtmId locationName address status",
         )
       : null;
   return {

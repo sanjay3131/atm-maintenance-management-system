@@ -5,6 +5,7 @@ import { isAxiosError } from "axios";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import api from "@/lib/axios";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { useATMs } from "@/features/atms/hooks/useATMs";
 import { Button } from "@/components/ui/button";
 import {
@@ -296,14 +297,14 @@ export default function CreateJobForm({
               }
             >
               {selectedATM
-                ? `${selectedATM.atmId} · ${selectedATM.locationName}`
+                ? `${getATMDisplayId(selectedATM)} · ${selectedATM.locationName}`
                 : undefined}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {atms.map((atm) => (
               <SelectItem key={atm._id} value={atm._id}>
-                <span className="font-medium">{atm.atmId}</span>
+                <span className="font-medium">{getATMDisplayId(atm)}</span>
                 <span className="text-muted-foreground">
                   {atm.locationName}
                 </span>

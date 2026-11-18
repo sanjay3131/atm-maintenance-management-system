@@ -17,6 +17,7 @@ import {
   reopenATMLocationRequests,
   createATMLocationTasks,
   getATMLocationTasks,
+  downloadATMUploadTemplate,
   holdATMLocationTask,
   startATMLocationTask,
   resumeATMLocationTask,
@@ -24,6 +25,13 @@ import {
   reopenATMLocationTask,
   cancelATMLocationTask,
 } from "./atm.controller.js";
+import {
+  handleATMUploadImportError,
+  handleATMUploadPreviewError,
+  importATMUpload,
+  previewATMUpload,
+} from "./atmBulkUpload.controller.js";
+import { atmBulkUploadMiddleware } from "./atmBulkUpload.middleware.js";
 import {
   createAtmSchema,
   updateAtmSchema,
@@ -47,6 +55,31 @@ import { authorizeRoles } from "../../middlewares/role.middleware.js";
 import { validateRequest as validateRouteRequest } from "../../middlewares/validate.middleware.js";
 
 const router = express.Router();
+
+router.get(
+  "/bulk-upload/template",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  downloadATMUploadTemplate,
+);
+
+router.post(
+  "/bulk-upload/preview",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  atmBulkUploadMiddleware,
+  previewATMUpload,
+);
+router.use("/bulk-upload/preview", handleATMUploadPreviewError);
+
+router.post(
+  "/bulk-upload/import",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  atmBulkUploadMiddleware,
+  importATMUpload,
+);
+router.use("/bulk-upload/import", handleATMUploadImportError);
 
 // create atm (admin / super-admin)
 router.post(

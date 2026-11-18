@@ -482,7 +482,7 @@ export const generateRecurringJobs = async ({
 
 export const getRecurringMaintenancePlans = async () =>
   RecurringMaintenancePlan.find()
-    .populate("atmId", "atmId locationName status")
+    .populate("atmId", "atmId clientAtmId locationName status")
     .populate({
       path: "assignedEmployeeId",
       select: "employeeCode status userId",

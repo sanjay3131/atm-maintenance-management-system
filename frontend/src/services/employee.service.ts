@@ -13,6 +13,7 @@ export interface EmployeeRegionReference {
 export interface EmployeeATMReference {
   _id: string;
   atmId?: string;
+  clientAtmId?: string | null;
 }
 
 export interface EmployeeSupervisorReference {
@@ -106,6 +107,7 @@ export interface MyEmployeeProfile {
   }>;
   assignedAtms: Array<{
     atmId: string;
+    clientAtmId?: string | null;
     locationName?: string;
     status: string;
     district: {

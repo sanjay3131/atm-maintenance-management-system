@@ -5,6 +5,7 @@ import { useAllRegions } from "../hooks/useAllRegions";
 import { useATMs } from "../../atms/hooks/useATMs";
 import { useEffect } from "react";
 import SupervisorSelect from "@/features/employees/components/SupervisorSelect";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 
 interface EmployeeDetailsStepProps {
   defaultValues: EmployeeDetailsForm;
@@ -332,7 +333,9 @@ export default function EmployeeDetailsStep({
                         />
 
                         <div>
-                          <div className="font-medium">{atm.atmId}</div>
+                          <div className="font-medium">
+                            {getATMDisplayId(atm)}
+                          </div>
 
                           <div className="text-xs text-gray-500">
                             {atm.locationName}

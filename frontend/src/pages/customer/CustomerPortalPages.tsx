@@ -18,6 +18,7 @@ import {
   type CustomerJobReportStatus,
   type CustomerReportFilters,
 } from "@/features/customers/services/customerPortal.service";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import type {
   CustomerPortalAMC,
   CustomerPortalATM,
@@ -78,8 +79,11 @@ function QueryState({
 
 function atmLabel(value: Job["atmId"] | CustomerPortalAMC["atmId"]) {
   if (!value) return "ATM";
-  if (typeof value === "string") return value;
-  return [value.atmId, value.locationName].filter(Boolean).join(" · ") || "ATM";
+  if (typeof value === "string") return "ATM unavailable";
+  return (
+    [getATMDisplayId(value), value.locationName].filter(Boolean).join(" · ") ||
+    "ATM unavailable"
+  );
 }
 
 function RecordCard({
@@ -197,7 +201,7 @@ export function CustomerATMsPage() {
 function ATMCard({ atm }: { atm: CustomerPortalATM }) {
   return (
     <RecordCard
-      title={`${atm.atmId}${atm.locationName ? ` · ${atm.locationName}` : ""}`}
+      title={`${getATMDisplayId(atm)}${atm.locationName ? ` · ${atm.locationName}` : ""}`}
       description={[atm.address, atm.bank, atm.district].filter(Boolean).join(" · ") || "Location details unavailable"}
       details={atm.status || "Status unavailable"}
       to={`/customer/atms/${atm._id}`}
@@ -218,7 +222,7 @@ export function CustomerATMDetailsPage() {
       <QueryState loading={query.isLoading} error={query.isError} />
       {query.data && (
         <Card>
-          <CardHeader><CardTitle>{query.data.atmId}</CardTitle></CardHeader>
+          <CardHeader><CardTitle>{getATMDisplayId(query.data) || "ATM unavailable"}</CardTitle></CardHeader>
           <CardContent className="grid gap-4 text-sm sm:grid-cols-2">
             <Detail label="Location" value={query.data.locationName} />
             <Detail label="Address" value={query.data.address} />

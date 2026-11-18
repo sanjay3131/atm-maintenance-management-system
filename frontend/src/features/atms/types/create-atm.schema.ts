@@ -1,6 +1,24 @@
 import { z } from "zod";
 
-export const createATMFormSchema = z.object({
+const clientAtmIdSchema = z
+  .string()
+  .trim()
+  .min(1, "Client ATM ID is required")
+  .transform((value) => value.toUpperCase());
+
+const citySchema = z.string().trim().min(1, "City is required");
+
+const optionalClientAtmIdSchema = z.union([
+  z.literal("").transform(() => undefined),
+  clientAtmIdSchema,
+]);
+
+const optionalCitySchema = z.union([
+  z.literal("").transform(() => undefined),
+  citySchema,
+]);
+
+const atmFormFields = {
   bankId: z.string().min(1, "Bank is required"),
 
   customerId: z.string().min(1, "Customer is required"),
@@ -24,6 +42,19 @@ export const createATMFormSchema = z.object({
       coordinates: z.tuple([z.number(), z.number()]),
     })
     .optional(),
+};
+
+export const createATMFormSchema = z.object({
+  ...atmFormFields,
+  clientAtmId: clientAtmIdSchema,
+  city: citySchema,
 });
 
-export type CreateATMFormData = z.infer<typeof createATMFormSchema>;
+export const updateATMFormSchema = z.object({
+  ...atmFormFields,
+  clientAtmId: optionalClientAtmIdSchema,
+  city: optionalCitySchema,
+});
+
+export type ATMFormValues = z.input<typeof createATMFormSchema>;
+export type ATMFormData = z.output<typeof updateATMFormSchema>;

@@ -119,6 +119,7 @@ const atmLocationRequestSchema = new mongoose.Schema(
 atmLocationRequestSchema.index(
   { atmId: 1 },
   {
+    name: "atmId_pending_unique",
     unique: true,
     partialFilterExpression: { status: "PENDING" },
   },

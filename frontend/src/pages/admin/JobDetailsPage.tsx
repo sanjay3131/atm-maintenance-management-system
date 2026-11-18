@@ -53,6 +53,7 @@ import {
   getEmployeeJobDetailsScreen,
 } from "@/features/jobs/utils/employeeJobDetails.utils";
 import { useATM } from "@/features/atms/hooks/useATM";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { formatHistoryDetailLines } from "@/features/jobs/utils/formatJobHistoryDetails";
 import { isValidAdditionalWorkersVersion } from "@/features/jobs/utils/additionalWorkers.utils";
 import {
@@ -771,7 +772,7 @@ export default function JobDetailsPage({
                 {t("ATM")}
               </p>
               <p className="mt-1 min-w-0 break-words text-sm font-semibold leading-6 text-card-foreground [overflow-wrap:anywhere]">
-                {formatValue(atm?.atmId)}
+                {formatValue(getATMDisplayId(atm))}
                 {atm?.locationName && ` · ${atm.locationName}`}
               </p>
               {atm?.address && (
@@ -1064,7 +1065,7 @@ export default function JobDetailsPage({
                 <dl>
                   <DetailRow
                     label={t("ATM ID")}
-                    value={formatValue(atmDetails?.atmId || atm?.atmId)}
+                    value={formatValue(getATMDisplayId(atmDetails ?? atm))}
                   />
                   <DetailRow
                     label={t("Location")}
@@ -1611,7 +1612,7 @@ export default function JobDetailsPage({
                 <dl>
                   <DetailRow
                     label={t("ATM ID")}
-                    value={formatValue(atmDetails?.atmId || atm?.atmId)}
+                    value={formatValue(getATMDisplayId(atmDetails ?? atm))}
                   />
                   <DetailRow
                     label={t("Location")}

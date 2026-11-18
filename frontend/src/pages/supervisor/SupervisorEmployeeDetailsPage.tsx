@@ -20,6 +20,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { formatWorkedDuration } from "@/features/attendance/attendance.utils";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { SkeletonBlock } from "@/features/dashboard/components/DashboardSkeleton";
 import { useSupervisorEmployeeDetails } from "@/features/supervisor/hooks/useSupervisorEmployeeDetails";
 import {
@@ -303,7 +304,7 @@ function JobList({ jobs }: { jobs: SupervisorEmployeeJob[] }) {
               <span className="inline-flex min-w-0 items-center gap-1.5 sm:col-span-2">
                 <MapPin className="size-3.5 shrink-0 text-teal-700" aria-hidden="true" />
                 <span className="truncate">
-                  {[job.atm.atmId, job.atm.locationName, job.atm.address]
+                  {[getATMDisplayId(job.atm), job.atm.locationName, job.atm.address]
                     .filter(Boolean)
                     .join(" · ") || "ATM details unavailable"}
                 </span>
@@ -340,7 +341,11 @@ function AmcList({ amcs }: { amcs: SupervisorEmployeeAMC[] }) {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="font-semibold text-slate-900">
-                {amc.atm?.locationName || amc.atm?.atmId || amc.amcId || "AMC visit"}
+                {[getATMDisplayId(amc.atm), amc.atm?.locationName]
+                  .filter(Boolean)
+                  .join(" · ") ||
+                  amc.amcId ||
+                  "AMC visit"}
               </p>
               <p className="mt-1 text-xs text-slate-500">
                 {amc.amcId || `Period ${amc.month}/${amc.year}`}
@@ -603,11 +608,12 @@ export default function SupervisorEmployeeDetailsPage() {
                     />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-slate-900">
-                        {atm.locationName || atm.atmId || "ATM location unavailable"}
+                        {[getATMDisplayId(atm), atm.locationName]
+                          .filter(Boolean)
+                          .join(" · ") || "ATM location unavailable"}
                       </p>
                       <p className="mt-1 truncate text-xs text-slate-600">
-                        {[atm.atmId, atm.address].filter(Boolean).join(" · ") ||
-                          "Address unavailable"}
+                        {atm.address || "Address unavailable"}
                       </p>
                       {atm.status && (
                         <p className="mt-1 text-xs text-slate-500">

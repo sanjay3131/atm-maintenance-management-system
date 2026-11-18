@@ -3,6 +3,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { isAxiosError } from "axios";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -166,7 +167,12 @@ export default function RecurringPlanDialog({
   const normalizedSearch = atmSearch.trim().toLowerCase();
   const maintenanceTypeRegistration = register("maintenanceType");
   const filteredATMs = eligibleATMs.filter((atm) =>
-    [atm.atmId, atm.locationName, atm.districtId?.districtName]
+    [
+      atm.clientAtmId,
+      atm.atmId,
+      atm.locationName,
+      atm.districtId?.districtName,
+    ]
       .filter(Boolean)
       .some((value) => value?.toLowerCase().includes(normalizedSearch)),
   );
@@ -302,7 +308,7 @@ export default function RecurringPlanDialog({
                   <option value="">Select an eligible ATM</option>
                   {filteredATMs.map((atm) => (
                     <option key={atm._id} value={atm._id}>
-                      {atm.atmId} — {atm.districtId?.districtName || "District"}{" "}
+                      {getATMDisplayId(atm)} — {atm.districtId?.districtName || "District"}{" "}
                       — {atm.locationName}
                     </option>
                   ))}
@@ -325,9 +331,9 @@ export default function RecurringPlanDialog({
             <div className="rounded-md border bg-muted/30 p-3 text-sm">
               <p>
                 <span className="font-medium">ATM:</span>{" "}
-                {typeof plan?.atmId === "string"
-                  ? plan.atmId
-                  : `${plan?.atmId.atmId} — ${plan?.atmId.locationName}`}
+                {plan && typeof plan.atmId === "object"
+                  ? `${getATMDisplayId(plan.atmId)} — ${plan.atmId.locationName}`
+                  : "ATM details unavailable"}
               </p>
               <p className="mt-1">
                 <span className="font-medium">Maintenance:</span>{" "}
@@ -538,7 +544,7 @@ export default function RecurringPlanDialog({
 
           {selectedATM && (
             <p className="text-xs text-muted-foreground">
-              Selected ATM: {selectedATM.atmId} —{" "}
+              Selected ATM: {getATMDisplayId(selectedATM)} —{" "}
               {selectedATM.locationName}
             </p>
           )}

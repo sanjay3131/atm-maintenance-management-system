@@ -27,6 +27,7 @@ export interface CustomerListItem {
 export interface CustomerAssignedATM {
   _id: string;
   atmId: string;
+  clientAtmId?: string | null;
   locationName?: string;
   address?: string;
   bankId?: { _id: string; bankName?: string } | string | null;
@@ -80,6 +81,7 @@ export interface CustomerUpdateData {
 export interface CustomerComplaintATM {
   _id: string;
   atmId?: string;
+  clientAtmId?: string | null;
   locationName?: string;
 }
 

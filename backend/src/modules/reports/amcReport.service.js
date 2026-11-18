@@ -14,6 +14,9 @@ const safeFilenamePart = (value, fallback) =>
     .replace(/^[._-]+|[._-]+$/g, "")
     .slice(0, 80) || fallback;
 
+const getATMDisplayId = (atm) =>
+  atm?.clientAtmId?.trim() || atm?.atmId || "";
+
 const getAMCVisitDate = (amc) => {
   for (const value of [amc.visitDate, amc.completedAt]) {
     if (!value) continue;
@@ -160,12 +163,12 @@ export const generateAMCPDF = async (
       .select(
         "amcId atmId bankId districtId employeeId month year visitDate completedAt status checklist",
       )
-      .populate("atmId", "atmId locationName")
+      .populate("atmId", "atmId clientAtmId locationName")
       .populate("employeeId", "firstName lastName");
   } else {
     amcQuery = amcQuery.populate(
       "atmId",
-      "atmId locationName bankId address location locationConfigured",
+      "atmId clientAtmId locationName bankId address location locationConfigured",
     );
   }
   if (!customerSafe && !supervisorSafe) {
@@ -220,7 +223,8 @@ export const generateAMCPDF = async (
       : "Not recorded";
 
   doc.text(`AMC ID: ${amc.amcId || "N/A"}`);
-  doc.text(`ATM: ${atm.atmId || "N/A"}`);
+  const atmDisplayId = getATMDisplayId(atm);
+  doc.text(`ATM: ${atmDisplayId || "N/A"}`);
   doc.text(`Location: ${atm.locationName || "N/A"}`);
   doc.text(`Address: ${atm.address || "N/A"}`);
   doc.text(`Bank: ${amc.bankId?.bankName || "N/A"}`);
@@ -324,7 +328,7 @@ export const generateAMCPDF = async (
     doc.on("end", () => {
       const pdfBuffer = Buffer.concat(buffers);
       const filename = embedPhotos
-        ? `${safeFilenamePart(atm.atmId, "ATM")}_${getAMCVisitDateString(amc)}_AMC_Report.pdf`
+        ? `${safeFilenamePart(atmDisplayId, "ATM")}_${getAMCVisitDateString(amc)}_AMC_Report.pdf`
         : `${amc.amcId}_report.pdf`;
       resolve({
         buffer: pdfBuffer,
@@ -339,7 +343,10 @@ export const generateAMCPDF = async (
  * Generate ZIP of AMC photos
  */
 export const generateAMCPhotoZip = async (amcId) => {
-  const amc = await AMC.findById(amcId).populate("atmId", "atmId");
+  const amc = await AMC.findById(amcId).populate(
+    "atmId",
+    "atmId clientAtmId",
+  );
   if (!amc || amc.isDeleted) throw new ApiError(404, "AMC not found");
 
   const photos = await AMCPhoto.find({ amcId, isExpired: false }).sort({
@@ -348,7 +355,7 @@ export const generateAMCPhotoZip = async (amcId) => {
   if (photos.length === 0) throw new ApiError(404, "No photos found");
 
   const zip = new AdmZip();
-  const atmName = safeFilenamePart(amc.atmId?.atmId, "ATM");
+  const atmName = safeFilenamePart(getATMDisplayId(amc.atmId), "ATM");
   const visitDate = getAMCVisitDateString(amc);
 
   for (let i = 0; i < photos.length; i++) {
@@ -380,7 +387,7 @@ export const generateBulkAMCZip = async (month, year, filters = {}) => {
     status: "COMPLETED",
     isDeleted: false,
     ...filters,
-  }).populate("atmId", "atmId locationName");
+  }).populate("atmId", "atmId clientAtmId locationName");
 
   if (amcs.length === 0) throw new ApiError(404, "No completed AMCs found");
 
@@ -392,7 +399,11 @@ export const generateBulkAMCZip = async (month, year, filters = {}) => {
       amcId: amc._id,
       isExpired: false,
     }).sort({ uploadedAt: 1 });
-    const atmFolder = `${monthFolder}/${amc.atmId?.atmId || amc._id}`;
+    const atmName = safeFilenamePart(
+      getATMDisplayId(amc.atmId),
+      safeFilenamePart(amc._id, "ATM"),
+    );
+    const atmFolder = `${monthFolder}/${atmName}`;
 
     for (let i = 0; i < photos.length; i++) {
       try {
@@ -401,7 +412,7 @@ export const generateBulkAMCZip = async (month, year, filters = {}) => {
         const buffer = Buffer.from(await response.arrayBuffer());
         const ext = photos[i].mimeType?.split("/")[1] || "jpg";
         zip.addFile(
-          `${atmFolder}/${amc.atmId?.atmId}_${year}-${String(month).padStart(2, "0")}_${String(i + 1).padStart(2, "0")}.${ext}`,
+          `${atmFolder}/${atmName}_${year}-${String(month).padStart(2, "0")}_${String(i + 1).padStart(2, "0")}.${ext}`,
           buffer,
         );
       } catch (err) {

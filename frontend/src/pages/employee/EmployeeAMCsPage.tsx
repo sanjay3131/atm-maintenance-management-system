@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import {
   CalendarDays,
   ChevronLeft,
@@ -215,7 +216,7 @@ export default function EmployeeAMCsPage() {
                       <div>
                         <p className="text-xs font-medium text-muted-foreground">{amc.amcId}</p>
                         <CardTitle className="mt-1 break-words text-base [overflow-wrap:anywhere]">
-                          {atm?.atmId || t("ATM unavailable")}
+                          {getATMDisplayId(atm) || t("ATM unavailable")}
                         </CardTitle>
                         {(atm?.locationName || atm?.address) && (
                           <p className="mt-1 break-words text-sm text-muted-foreground [overflow-wrap:anywhere]">

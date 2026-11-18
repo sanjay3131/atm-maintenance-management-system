@@ -53,6 +53,7 @@ export const toCustomerSafeJob = (job) => {
         ? {
             _id: atm._id,
             atmId: atm.atmId,
+            clientAtmId: atm.clientAtmId ?? null,
             locationName: atm.locationName,
             address: atm.address,
           }
@@ -113,6 +114,7 @@ export const toCustomerSafeAMC = (amc) => {
         ? {
             _id: atm._id,
             atmId: atm.atmId,
+            clientAtmId: atm.clientAtmId ?? null,
             locationName: atm.locationName,
             address: atm.address,
           }

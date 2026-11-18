@@ -4,6 +4,7 @@ export type ATMLocationRequestSource = "GPS" | "MANUAL";
 export interface ATMLocationRequestATM {
   _id?: string;
   atmId?: string;
+  clientAtmId?: string | null;
   locationName?: string;
   address?: string;
   districtId?: { _id?: string; districtName?: string } | string | null;

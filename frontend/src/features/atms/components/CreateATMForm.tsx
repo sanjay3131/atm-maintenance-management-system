@@ -3,7 +3,9 @@ import { isAxiosError } from "axios";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   createATMFormSchema,
-  type CreateATMFormData,
+  updateATMFormSchema,
+  type ATMFormData,
+  type ATMFormValues,
 } from "../types/create-atm.schema";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/axios";
@@ -12,6 +14,7 @@ import { useDistricts } from "@/features/users/hooks/useDistricts";
 import { useCreateATM } from "../hooks/useCreateATM";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import {
   Select,
   SelectContent,
@@ -35,6 +38,20 @@ interface CreateATMFormProps {
   initialATM?: ATM;
 }
 
+const getATMSubmissionErrorMessage = (
+  error: unknown,
+  fallback: string,
+) => {
+  if (isAxiosError<{ message?: string }>(error)) {
+    const message = error.response?.data?.message;
+    if (message) return message;
+    if (error.response?.status === 409) {
+      return "Client ATM ID conflicts with an existing ATM.";
+    }
+  }
+  return error instanceof Error ? error.message : fallback;
+};
+
 export default function CreateATMForm({
   onClose,
   initialATM,
@@ -42,7 +59,7 @@ export default function CreateATMForm({
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [moveConfirmationOpen, setMoveConfirmationOpen] = useState(false);
   const [pendingFormData, setPendingFormData] =
-    useState<CreateATMFormData | null>(null);
+    useState<ATMFormData | null>(null);
   const queryClient = useQueryClient();
   const createATM = useCreateATM();
   const updateATM = useUpdateATM();
@@ -72,16 +89,21 @@ export default function CreateATMForm({
     handleSubmit,
     watch,
     setValue,
+    setError,
     reset,
     formState: { errors },
-  } = useForm<CreateATMFormData>({
-    resolver: zodResolver(createATMFormSchema),
+  } = useForm<ATMFormValues, unknown, ATMFormData>({
+    resolver: zodResolver(
+      initialATM ? updateATMFormSchema : createATMFormSchema,
+    ),
     defaultValues: {
+      clientAtmId: "",
       bankId: "",
       customerId: "",
       districtId: "",
       regionId: "",
       locationName: "",
+      city: "",
       address: "",
       installationType: "ONSITE",
       status: "ACTIVE",
@@ -93,6 +115,7 @@ export default function CreateATMForm({
     if (!initialATM) return;
 
     reset({
+      clientAtmId: initialATM.clientAtmId ?? "",
       bankId: initialATM.bankId?._id ?? "",
       customerId:
         typeof initialATM.customer === "string"
@@ -101,6 +124,7 @@ export default function CreateATMForm({
       districtId: initialATM.districtId?._id ?? "",
       regionId: initialATM.regionId?._id ?? "",
       locationName: initialATM.locationName,
+      city: initialATM.city ?? "",
       address: initialATM.address,
       installationType: initialATM.installationType,
       status: initialATM.status,
@@ -159,7 +183,7 @@ export default function CreateATMForm({
     );
   };
 
-  const saveATM = async (data: CreateATMFormData) => {
+  const saveATM = async (data: ATMFormData) => {
     if (initialATM) {
       const targetRegionId =
         data.regionId;
@@ -168,6 +192,9 @@ export default function CreateATMForm({
         initialATM.districtId?._id !== data.districtId ||
         initialATM.regionId?._id !== targetRegionId;
       const updateData: UpdateATMData = {
+        ...(data.clientAtmId !== undefined
+          ? { clientAtmId: data.clientAtmId }
+          : {}),
         customerId: data.customerId,
         bankId: data.bankId,
         ...(hasGeographicChange
@@ -177,6 +204,7 @@ export default function CreateATMForm({
             }
           : {}),
         locationName: data.locationName,
+        ...(data.city !== undefined ? { city: data.city } : {}),
         address: data.address,
         installationType: data.installationType,
         status: data.status,
@@ -187,7 +215,9 @@ export default function CreateATMForm({
         { atmId: initialATM._id, data: updateData },
         {
           onSuccess: async () => {
-            toast.success(`ATM ${initialATM.atmId} updated successfully!`);
+            toast.success(
+              `ATM ${getATMDisplayId(initialATM)} updated successfully!`,
+            );
             await Promise.all([
               queryClient.invalidateQueries({ queryKey: ["atms"] }),
               queryClient.invalidateQueries({
@@ -198,11 +228,7 @@ export default function CreateATMForm({
             onClose();
           },
           onError: (error) => {
-            toast.error(
-              isAxiosError<{ message?: string }>(error)
-                ? error.response?.data?.message || "ATM update failed."
-                : error.message || "ATM update failed.",
-            );
+            toast.error(getATMSubmissionErrorMessage(error, "ATM update failed."));
             console.error("ATM update failed:", error);
           },
         },
@@ -210,27 +236,49 @@ export default function CreateATMForm({
       return;
     }
 
+    if (!data.clientAtmId) {
+      setError("clientAtmId", {
+        type: "required",
+        message: "Client ATM ID is required",
+      });
+      return;
+    }
+
+    if (!data.city) {
+      setError("city", {
+        type: "required",
+        message: "City is required",
+      });
+      return;
+    }
+
     createATM.mutate(
-      data,
+      { ...data, clientAtmId: data.clientAtmId, city: data.city },
       {
         onSuccess: async (atm) => {
-          toast.success(`ATM ${atm.atmId} created successfully!`);
+          toast.success(
+            `ATM ${getATMDisplayId(atm)} created successfully!`,
+          );
           await invalidateATMGeographyQueries(false);
           onClose();
         },
         onError: (error) => {
-          toast.error(
-            isAxiosError<{ message?: string }>(error)
-              ? error.response?.data?.message || "ATM creation failed."
-              : error.message || "ATM creation failed.",
-          );
+          toast.error(getATMSubmissionErrorMessage(error, "ATM creation failed."));
           console.error("ATM creation failed:", error);
         },
       },
     );
   };
 
-  const onSubmit = (data: CreateATMFormData) => {
+  const onSubmit = (data: ATMFormData) => {
+    if (initialATM?.clientAtmId && !data.clientAtmId) {
+      setError("clientAtmId", {
+        type: "required",
+        message: "Client ATM ID is required",
+      });
+      return;
+    }
+
     if (geographicAssignmentChanged) {
       setPendingFormData(data);
       setMoveConfirmationOpen(true);
@@ -439,6 +487,34 @@ export default function CreateATMForm({
         {errors.customerId && <p className="mt-1 text-sm text-red-500">{errors.customerId.message}</p>}
       </div>
       {/* select location name */}
+      <div>
+        <label className="mb-1 block text-sm font-medium">
+          Client ATM ID
+        </label>
+        <input
+          {...register("clientAtmId")}
+          required={!initialATM}
+          placeholder="Enter client ATM ID"
+          className="w-full rounded-md border px-3 py-2"
+        />
+        {errors.clientAtmId && (
+          <p className="mt-1 text-sm text-red-500">
+            {errors.clientAtmId.message}
+          </p>
+        )}
+      </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium">City</label>
+        <input
+          {...register("city")}
+          required={!initialATM}
+          placeholder="Enter city"
+          className="w-full rounded-md border px-3 py-2"
+        />
+        {errors.city && (
+          <p className="mt-1 text-sm text-red-500">{errors.city.message}</p>
+        )}
+      </div>
       <div>
         <label className="mb-1 block text-sm font-medium">Location Name</label>
 

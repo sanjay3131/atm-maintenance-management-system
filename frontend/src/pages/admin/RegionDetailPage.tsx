@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useRegionATMs } from "@/features/atms/hooks/useRegionATMs";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import type { ATM } from "@/features/atms/types/atm.types";
 import { useRegionCustomers } from "@/features/customers/hooks/useRegionCustomers";
 import type { DistrictCustomer } from "@/features/customers/services/customer.service";
@@ -402,7 +403,9 @@ export default function RegionDetailPage() {
                                   className="border-b last:border-0"
                                 >
                                   <td className="px-4 py-3">
-                                    <p className="font-medium">{atm.atmId}</p>
+                                    <p className="font-medium">
+                                      {getATMDisplayId(atm)}
+                                    </p>
                                     <p className="text-xs text-muted-foreground">
                                       {atm.locationName ||
                                         "Location unavailable"}

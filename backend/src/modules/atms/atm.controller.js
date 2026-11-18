@@ -43,7 +43,8 @@ import {
   resumeATMLocationTask as resumeLocationTask,
   startATMLocationTask as startLocationTask,
 } from "./atmLocationTask.service.js";
-import { generateATMId } from "./atm.utils.js";
+import { reserveATMIds } from "./atm.utils.js";
+import { createATMUploadTemplateWorkbook } from "./atmBulkUploadTemplate.service.js";
 import {
   buildATMGeographicQuery,
   escapeRegex,
@@ -55,6 +56,19 @@ import {
   resolveLocationRequestRecipients,
   resolveLocationTaskRecipients,
 } from "../../realtime/recipient-resolver.js";
+
+const isClientAtmIdDuplicate = (error) =>
+  error?.code === 11000 &&
+  (error.keyPattern?.clientAtmId ||
+    error.keyValue?.clientAtmId ||
+    `${error.index ?? ""} ${error.message ?? ""}`.includes(
+      "uniq_atm_client_atm_id",
+    ));
+
+const throwClientAtmIdDuplicateError = (error) => {
+  if (!isClientAtmIdDuplicate(error)) throw error;
+  throw new ApiError(409, "Client ATM ID already exists");
+};
 
 export const publishLocationRequestUpdated = async (
   request,
@@ -233,6 +247,17 @@ const ensureATMCanMove = async (atmId, session) => {
   }
 };
 
+export const downloadATMUploadTemplate = asyncHandler(async (_req, res) => {
+  const result = await createATMUploadTemplateWorkbook();
+  return res
+    .status(200)
+    .set("Content-Type", result.contentType)
+    .set("Content-Disposition", `attachment; filename="${result.filename}"`)
+    .set("Cache-Control", "private, no-store")
+    .set("X-Content-Type-Options", "nosniff")
+    .send(result.buffer);
+});
+
 export const createATM = asyncHandler(async (req, res) => {
   if (Object.prototype.hasOwnProperty.call(req.body, "location")) {
     throw new ApiError(
@@ -243,9 +268,11 @@ export const createATM = asyncHandler(async (req, res) => {
 
   const {
     bankId,
+    clientAtmId,
     districtId,
     regionId,
     locationName,
+    city,
     address,
     installationType,
     customerId,
@@ -257,16 +284,15 @@ export const createATM = asyncHandler(async (req, res) => {
   ];
 
   const resolvedCustomerId = customerId;
-  const atmId = await generateATMId();
-
   const atmData = {
-    atmId,
+    clientAtmId,
     bankId,
     geographyStatus: "MAPPED",
     customer: resolvedCustomerId,
     districtId,
     regionId,
     locationName,
+    city,
     address,
     installationType,
     status,
@@ -275,7 +301,8 @@ export const createATM = asyncHandler(async (req, res) => {
   };
   const atm = await withDistrictGeographyFence([districtId], async (session) => {
     await validateActiveATMGeography(bankId, districtId, regionId, session);
-    const [createdATM] = await ATM.create([atmData], { session });
+    const [atmId] = await reserveATMIds(1, { session });
+    const [createdATM] = await ATM.create([{ ...atmData, atmId }], { session });
     await assignATMCustomerInTransaction({
       atm: createdATM,
       atmId: createdATM._id,
@@ -293,7 +320,7 @@ export const createATM = asyncHandler(async (req, res) => {
       });
     }
     return createdATM;
-  });
+  }).catch(throwClientAtmIdDuplicateError);
 
   return res
     .status(201)
@@ -331,6 +358,12 @@ export const getAllATMs = asyncHandler(async (req, res) => {
       ...(search?.trim()
         ? {
             $or: [
+            {
+              clientAtmId: {
+                $regex: escapeRegex(search.trim()),
+                $options: "i",
+              },
+            },
               { atmId: { $regex: escapeRegex(search.trim()), $options: "i" } },
               {
                 locationName: {
@@ -609,9 +642,10 @@ export const updateATM = asyncHandler(async (req, res) => {
       await currentATM.save({ session });
       return currentATM;
     };
-    updatedATM = geographyChanged
-      ? await withDistrictGeographyFence(districtsToFence, operation)
-      : await withCustomerAssignmentTransaction(operation);
+    updatedATM = await (geographyChanged
+      ? withDistrictGeographyFence(districtsToFence, operation)
+      : withCustomerAssignmentTransaction(operation)
+    ).catch(throwClientAtmIdDuplicateError);
   } else {
     updatedATM = await ATM.findByIdAndUpdate(
       req.params.id,
@@ -623,7 +657,7 @@ export const updateATM = asyncHandler(async (req, res) => {
         new: true,
         runValidators: true,
       },
-    );
+    ).catch(throwClientAtmIdDuplicateError);
   }
 
   if (!updatedATM || updatedATM.isDeleted) {

@@ -13,6 +13,7 @@ import {
 import CreateComplaintDialog from "@/features/complaints/components/CreateComplaintDialog";
 import { useCustomers } from "@/features/customers/hooks/useCustomers";
 import { useATMs } from "@/features/atms/hooks/useATMs";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import {
   ComplaintPriorityBadge,
   ComplaintStatusBadge,
@@ -80,12 +81,7 @@ function getDateBoundary(value: string, endOfDay: boolean) {
 
 function getATMLabel(atm: Complaint["atmId"]) {
   if (!atm || typeof atm !== "object") return "ATM details unavailable";
-  if (atm.atmId) {
-    return atm.atmId;
-  }
-  return atm.locationName
-    ? atm.locationName
-    : "ATM details unavailable";
+  return getATMDisplayId(atm) || atm.locationName || "ATM details unavailable";
 }
 
 function getCustomerLabel(customer: Complaint["customerId"]) {
@@ -336,7 +332,7 @@ export default function ComplaintsPage() {
                   setSearch(event.target.value);
                   setPage(1);
                 }}
-                placeholder="Complaint number, title, or reporter"
+                placeholder="Complaint number, title, reporter, or ATM ID"
                 className="h-9 w-full rounded-lg border border-input bg-transparent pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               />
             </div>
@@ -458,7 +454,7 @@ export default function ComplaintsPage() {
                 ...atms.map((atm) => ({
                   value: atm._id,
                   label:
-                    [atm.atmId, atm.locationName]
+                    [getATMDisplayId(atm), atm.locationName]
                       .filter(Boolean)
                       .join(" — ") || "ATM details unavailable",
                 })),
@@ -484,7 +480,7 @@ export default function ComplaintsPage() {
                 <SelectItem value={ALL}>All ATMs</SelectItem>
                 {atms.map((atm) => (
                   <SelectItem key={atm._id} value={atm._id}>
-                    {atm.atmId}
+                    {getATMDisplayId(atm)}
                     {atm.locationName ? ` — ${atm.locationName}` : ""}
                   </SelectItem>
                 ))}

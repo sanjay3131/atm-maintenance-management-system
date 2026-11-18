@@ -1,5 +1,6 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { MapPin, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -298,7 +299,7 @@ export default function ATMLocationRequestsPage() {
                   <div className="min-w-0 space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-semibold">
-                        {atm?.atmId || "ATM reference unavailable"}
+                        {getATMDisplayId(atm) || "ATM reference unavailable"}
                       </p>
                       <Badge variant={statusVariant(request.status)}>
                         {formatATMLocationRequestStatus(request.status)}

@@ -357,7 +357,10 @@ export const createJob = asyncHandler(async (req, res) => {
   });
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address districtId regionId")
+    .populate(
+      "atmId",
+      "atmId clientAtmId locationName bank address districtId regionId",
+    )
     // .populate("complaintId", "complaintNumber title")
     .populate("createdBy", "firstName lastName");
 
@@ -405,7 +408,7 @@ export const assignJob = asyncHandler(async (req, res) => {
   });
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address")
+    .populate("atmId", "atmId clientAtmId locationName bank address")
     .populate("assignedEmployeeId", "firstName lastName employeeCode")
     .populate("complaintId", "complaintNumber title");
 
@@ -446,7 +449,7 @@ export const acceptJob = asyncHandler(async (req, res) => {
   });
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address")
+    .populate("atmId", "atmId clientAtmId locationName bank address")
     .populate("complaintId", "complaintNumber title");
   await publishJobUpdated({ job: populatedJob, action: "accepted" });
   return res
@@ -486,7 +489,7 @@ export const startJob = asyncHandler(async (req, res) => {
   });
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address")
+    .populate("atmId", "atmId clientAtmId locationName bank address")
     .populate("complaintId", "complaintNumber title");
   await publishJobUpdated({ job: populatedJob, action: "started" });
   return res
@@ -573,7 +576,7 @@ export const completeJob = asyncHandler(async (req, res) => {
   });
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address")
+    .populate("atmId", "atmId clientAtmId locationName bank address")
     .populate("assignedEmployeeId", "firstName lastName")
     .populate("complaintId", "complaintNumber title");
 
@@ -636,7 +639,7 @@ export const verifyJob = asyncHandler(async (req, res) => {
   }
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address")
+    .populate("atmId", "atmId clientAtmId locationName bank address")
     .populate("assignedEmployeeId", "firstName lastName")
     .populate("complaintId", "complaintNumber title");
   await publishJobUpdated({
@@ -703,7 +706,7 @@ export const approveJob = asyncHandler(async (req, res) => {
   }
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address")
+    .populate("atmId", "atmId clientAtmId locationName bank address")
     .populate("assignedEmployeeId", "firstName lastName")
     .populate("complaintId", "complaintNumber title");
   await publishJobUpdated({
@@ -844,7 +847,7 @@ export const reassignJob = asyncHandler(async (req, res) => {
   });
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address")
+    .populate("atmId", "atmId clientAtmId locationName bank address")
     .populate("assignedEmployeeId", "firstName lastName employeeCode")
     .populate("complaintId", "complaintNumber title");
 
@@ -963,9 +966,22 @@ export const getAllJobs = asyncHandler(async (req, res) => {
   }
 
   if (search) {
+    const matchingATMIds = await ATM.distinct("_id", {
+      isDeleted: false,
+      $or: [
+        {
+          clientAtmId: {
+            $regex: escapeRegex(search.trim()),
+            $options: "i",
+          },
+        },
+        { atmId: { $regex: escapeRegex(search.trim()), $options: "i" } },
+      ],
+    });
     query.$or = [
       { jobId: { $regex: search, $options: "i" } },
       { title: { $regex: search, $options: "i" } },
+      { atmId: { $in: matchingATMIds } },
     ];
   }
 
@@ -977,7 +993,10 @@ export const getAllJobs = asyncHandler(async (req, res) => {
   const skip = (parseInt(page) - 1) * parseInt(limit);
 
   const jobs = await Job.find(query)
-    .populate("atmId", "atmId locationName bank address districtId regionId")
+    .populate(
+      "atmId",
+      "atmId clientAtmId locationName bank address districtId regionId",
+    )
     .populate("assignedEmployeeId", "firstName lastName employeeCode")
     // .populate("complaintId", "complaintNumber title")
     .populate("createdBy", "firstName lastName")
@@ -1051,7 +1070,7 @@ export const getJobById = asyncHandler(async (req, res) => {
   const job = await jobQuery
     .populate(
       "atmId",
-      "atmId locationName bank address districtId regionId location locationConfigured locationRequestWindowOpen",
+      "atmId clientAtmId locationName bank address districtId regionId location locationConfigured locationRequestWindowOpen",
     )
     .populate("assignedEmployeeId", "firstName lastName phoneNumber")
     .populate("reassignmentHistory.fromEmployee", "firstName lastName")
@@ -1106,7 +1125,10 @@ export const getMyJobs = asyncHandler(async (req, res) => {
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
   const jobs = await Job.find(query)
-    .populate("atmId", "atmId locationName bank address districtId regionId")
+    .populate(
+      "atmId",
+      "atmId clientAtmId locationName bank address districtId regionId",
+    )
     .populate("complaintId", "complaintNumber title")
     .sort({ createdAt: -1 })
     .skip(skip)
@@ -1265,7 +1287,7 @@ export const updateJob = asyncHandler(async (req, res) => {
   await job.save();
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address")
+    .populate("atmId", "atmId clientAtmId locationName bank address")
     .populate("assignedEmployeeId", "firstName lastName")
     .populate("complaintId", "complaintNumber title");
 

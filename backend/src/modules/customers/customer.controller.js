@@ -28,9 +28,11 @@ import {
   softDeleteCustomerIfUnassigned,
   withCustomerAssignmentTransaction,
 } from "./customerAssignment.service.js";
+import { generateCustomerCode } from "./customerCode.service.js";
+import { mapCustomerCodeError } from "./customerCode.errors.js";
 
 const customerATMFields =
-  "atmId locationName bankId districtId regionId address installationType status";
+  "atmId clientAtmId locationName bankId districtId regionId address installationType status";
 
 const populateCustomerATMs = (query) =>
   query.populate({
@@ -50,7 +52,7 @@ const validateCustomerId = (id) => {
 };
 
 const customerPortalATMFields =
-  "atmId locationName address installationType status bankId districtId regionId";
+  "atmId clientAtmId locationName address installationType status bankId districtId regionId";
 
 const populateCustomerPortalATM = (query) =>
   query
@@ -61,6 +63,7 @@ const populateCustomerPortalATM = (query) =>
 const toCustomerPortalATM = (atm) => ({
   _id: atm._id,
   atmId: atm.atmId,
+  clientAtmId: atm.clientAtmId ?? null,
   locationName: atm.locationName,
   address: atm.address,
   installationType: atm.installationType,
@@ -122,8 +125,14 @@ export const createCustomer = asyncHandler(async (req, res) => {
     throw new ApiError(409, "User already exists with this email or phone");
   }
 
-  // 2. Create User account (for auth)
+  // 2. Generate a backend-controlled code before creating the User.
   const hashedPassword = await hashPassword(password);
+  let customerCode;
+  try {
+    customerCode = await generateCustomerCode();
+  } catch (error) {
+    throw mapCustomerCodeError(error);
+  }
 
   const user = await User.create({
     firstName: firstName || customerName,
@@ -135,17 +144,32 @@ export const createCustomer = asyncHandler(async (req, res) => {
     status: "active",
   });
 
-  // 3. Create Customer profile
-  const customer = await Customer.create({
-    userId: user._id,
-    customerName: customerName || firstName,
-    customerEmail: email.toLowerCase(),
-    customerPhone: customerPhone || phoneNumber,
-    bankName: bankName || "",
-    atmIds: [],
-    districtIds: districtIds || [],
-    createdBy: req.user._id,
-  });
+  let customer;
+  try {
+    customer = await Customer.create({
+      userId: user._id,
+      customerCode,
+      customerName: customerName || firstName,
+      customerEmail: email.toLowerCase(),
+      customerPhone: customerPhone || phoneNumber,
+      bankName: bankName || "",
+      atmIds: [],
+      districtIds: districtIds || [],
+      createdBy: req.user._id,
+    });
+  } catch (customerError) {
+    try {
+      await User.findByIdAndDelete(user._id);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [customerError, cleanupError],
+        "Customer creation failed and the new User could not be cleaned up",
+        { cause: customerError },
+      );
+    }
+
+    throw mapCustomerCodeError(customerError);
+  }
 
   return res.status(201).json(
     new ApiResponse(
@@ -703,7 +727,7 @@ export const getCustomerPortalAMCs = asyncHandler(async (req, res) => {
   };
   const [amcs, total] = await Promise.all([
     AMC.find(query)
-      .populate("atmId", "atmId locationName address")
+      .populate("atmId", "atmId clientAtmId locationName address")
       .sort({ year: -1, month: -1, completedAt: -1 })
       .skip(skip)
       .limit(limit),
@@ -752,7 +776,7 @@ export const getCustomerJobs = asyncHandler(async (req, res) => {
   const skip = (parseInt(page) - 1) * parseInt(limit);
 
   const jobs = await Job.find(query)
-    .populate("atmId", "atmId locationName bank address districtId")
+    .populate("atmId", "atmId clientAtmId locationName bank address districtId")
     .populate("assignedEmployeeId", "employeeCode")
     .populate("complaintId", "complaintNumber title")
     .sort({ approvedAt: -1, createdAt: -1 })
@@ -792,7 +816,7 @@ export const getCustomerJobDetail = asyncHandler(async (req, res) => {
     status: { $in: ["VERIFIED", "APPROVED", "CLOSED"] },
     isDeleted: false,
   })
-    .populate("atmId", "atmId locationName bank address districtId regionId")
+    .populate("atmId", "atmId clientAtmId locationName bank address districtId regionId")
     .populate("assignedEmployeeId", "employeeCode userId")
     .populate("complaintId", "complaintNumber title description")
     .populate("beforePhotos", "url thumbnailUrl uploadedAt")

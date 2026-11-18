@@ -1,5 +1,6 @@
 import { ArrowLeft } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { Button } from "@/components/ui/button";
 import CreateATMForm from "@/features/atms/components/CreateATMForm";
 import { useATM } from "@/features/atms/hooks/useATM";
@@ -56,7 +57,9 @@ export default function EditATMPage() {
           Cancel
         </Button>
         <h1 className="text-2xl font-bold">Edit ATM</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{atm.atmId}</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {getATMDisplayId(atm)}
+        </p>
         <CreateATMForm
           initialATM={atm}
           onClose={() => navigate(`/admin/atms/${atm._id}`)}

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { isAxiosError } from "axios";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { CalendarClock, Pencil, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -252,7 +253,7 @@ export default function RecurringMaintenancePage() {
                     return (
                       <tr key={plan._id} className="border-b last:border-0">
                         <td className="px-4 py-3 font-medium">
-                          {atm?.atmId || "ATM details unavailable"}
+                          {getATMDisplayId(atm) || "ATM details unavailable"}
                         </td>
                         <td className="px-4 py-3">
                           {atm?.locationName || "Not available"}
@@ -336,7 +337,7 @@ export default function RecurringMaintenancePage() {
           </div>
           {planToToggle && (
             <p className="mt-4 text-sm">
-              {getATM(planToToggle)?.atmId || "ATM"} —{" "}
+              {getATMDisplayId(getATM(planToToggle)) || "ATM"} —{" "}
               {getMaintenanceLabel(planToToggle)}
             </p>
           )}

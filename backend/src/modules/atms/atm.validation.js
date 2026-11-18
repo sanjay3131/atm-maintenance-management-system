@@ -14,11 +14,17 @@ const uniqueObjectIds = (ids) => [
 ];
 
 export const createAtmSchema = z.object({
+  clientAtmId: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .min(1, "Client ATM ID is required"),
   bankId: objectIdSchema,
   customerId: z.string().trim().min(1, "Customer ID is required"),
   districtId: objectIdSchema,
   regionId: objectIdSchema,
   locationName: z.string().trim().min(1, "Location name is required"),
+  city: z.string().trim().min(1, "City is required"),
   address: z.string().trim().min(1, "Address is required"),
   installationType: z.enum(["ONSITE", "OFFSITE"], {
     errorMap: () => ({
@@ -47,6 +53,12 @@ export const createAtmSchema = z.object({
 });
 // update atm schema
 export const updateAtmSchema = z.object({
+  clientAtmId: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .min(1, "Client ATM ID cannot be empty")
+    .optional(),
   bankId: objectIdSchema.optional(),
   customerId: z.string().trim().min(1, "Customer ID is required").optional(),
   districtId: objectIdSchema.optional(),
@@ -56,6 +68,7 @@ export const updateAtmSchema = z.object({
     .trim()
     .min(1, "Location name is required")
     .optional(),
+  city: z.string().trim().min(1, "City cannot be empty").optional(),
   address: z.string().trim().min(1, "Address is required").optional(),
   installationType: z
     .enum(["ONSITE", "OFFSITE"], {

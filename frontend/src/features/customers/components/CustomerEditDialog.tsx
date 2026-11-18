@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { Bank } from "@/features/banks/types/bank.types";
 import { useATMs } from "@/features/atms/hooks/useATMs";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import type { ATM } from "@/features/atms/types/atm.types";
 import { useAddCustomerATMs } from "../hooks/useAdminCustomers";
 import { useCustomer } from "../hooks/useCustomer";
@@ -310,7 +311,7 @@ function CustomerATMAssignments({
             <ul className="space-y-1 text-sm">
               {assignedATMs.map((atm) => (
                 <li key={atm._id}>
-                  {atm.atmId} —{" "}
+                  {getATMDisplayId(atm)} —{" "}
                   {getATMReferenceName(atm.bankId) ?? "Unknown bank"}
                   {getATMReferenceName(atm.districtId)
                     ? `, ${getATMReferenceName(atm.districtId)}`
@@ -570,7 +571,7 @@ function ATMSelectionRow({
         className="mt-1"
       />
       <span>
-        <span className="font-medium">{atm.atmId}</span>
+        <span className="font-medium">{getATMDisplayId(atm)}</span>
         <span className="block text-xs text-muted-foreground">
           {getATMReferenceName(atm.bankId) ?? "Unknown bank"}
           {getATMReferenceName(atm.districtId)

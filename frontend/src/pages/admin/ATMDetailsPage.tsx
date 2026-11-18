@@ -30,6 +30,7 @@ import {
   useATMLocationRequests,
   useReopenATMLocationRequests,
 } from "@/features/atms/hooks/useATMLocationRequests";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import type { ATMEmployee, ATMStatus } from "@/features/atms/types/atm.types";
 
 const NOT_AVAILABLE = "Not available";
@@ -235,7 +236,7 @@ export default function ATMDetailsPage() {
 
     deleteATM.mutate(atm._id, {
       onSuccess: () => {
-        toast.success(`ATM ${atm.atmId} deleted successfully.`);
+        toast.success(`ATM ${getATMDisplayId(atm)} deleted successfully.`);
         void queryClient.invalidateQueries({ queryKey: ["atms"] });
         queryClient.removeQueries({ queryKey: ["atm", atm._id] });
         navigate("/admin/atms");
@@ -334,7 +335,7 @@ export default function ATMDetailsPage() {
       ? `${selectedAMCResponsibleEmployee.employeeCode} — ${getEmployeeName(selectedAMCResponsibleEmployee)}`
       : "no employee";
     const confirmed = window.confirm(
-      `${employeeId ? `Assign ${selectedEmployeeName}` : "Clear AMC responsibility"} for ATM ${atm.atmId}? This affects future generated AMC records; existing AMC assignments will not change.`,
+      `${employeeId ? `Assign ${selectedEmployeeName}` : "Clear AMC responsibility"} for ATM ${getATMDisplayId(atm)}? This affects future generated AMC records; existing AMC assignments will not change.`,
     );
     if (!confirmed) return;
     setAMCResponsibleEmployee.mutate(
@@ -418,7 +419,7 @@ export default function ATMDetailsPage() {
             </Badge>
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
-            {formatValue(atm.atmId)}
+            {getATMDisplayId(atm)}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -461,7 +462,7 @@ export default function ATMDetailsPage() {
             </DialogDescription>
           </div>
           <p className="mt-4 text-sm">
-            ATM ID: <span className="font-medium">{atm.atmId}</span>
+            ATM ID: <span className="font-medium">{getATMDisplayId(atm)}</span>
           </p>
           <div className="mt-6 flex justify-end gap-2">
             <Button
@@ -498,7 +499,7 @@ export default function ATMDetailsPage() {
             </DialogDescription>
           </div>
           <p className="mt-4 text-sm">
-            ATM: <span className="font-medium">{atm.atmId}</span>
+            ATM: <span className="font-medium">{getATMDisplayId(atm)}</span>
           </p>
           <label className="mt-4 block text-sm font-medium" htmlFor="employee">
             Employee
@@ -579,11 +580,12 @@ export default function ATMDetailsPage() {
           </CardHeader>
           <CardContent>
             <dl>
-              <DetailRow label="ATM ID" value={formatValue(atm.atmId)} />
+              <DetailRow label="ATM ID" value={getATMDisplayId(atm)} />
               <DetailRow
                 label="Location name"
                 value={formatValue(atm.locationName)}
               />
+              <DetailRow label="City" value={formatValue(atm.city)} />
               <DetailRow
                 label="Full address"
                 value={formatValue(atm.address)}

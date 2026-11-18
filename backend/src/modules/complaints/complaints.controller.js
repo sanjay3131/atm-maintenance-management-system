@@ -11,6 +11,7 @@ import {
   softDeleteComplaintAndUnlinkJob,
   unlinkComplaintAndJob,
 } from "./complaintJobIntegrity.service.js";
+import { escapeRegex } from "../../utils/geographicQuery.js";
 
 // ============================================
 // HELPERS
@@ -36,7 +37,7 @@ const populateComplaint = (query, includeJobLinkHistory = false) => {
   let populatedQuery = query
     .populate(
       "atmId",
-      "atmId locationName bank address districtId regionId location installationType",
+      "atmId clientAtmId locationName bank address districtId regionId location installationType",
     )
     .populate("customerId", "customerName")
     .populate("jobId", "jobId status title assignedEmployeeId")
@@ -219,10 +220,19 @@ export const getAllComplaints = asyncHandler(async (req, res) => {
 
   if (search?.trim()) {
     const searchRegex = { $regex: search.trim(), $options: "i" };
+    const escapedSearch = escapeRegex(search.trim());
+    const matchingATMIds = await ATM.distinct("_id", {
+      isDeleted: false,
+      $or: [
+        { clientAtmId: { $regex: escapedSearch, $options: "i" } },
+        { atmId: { $regex: escapedSearch, $options: "i" } },
+      ],
+    });
     query.$or = [
       { complaintNumber: searchRegex },
       { title: searchRegex },
       { reportedBy: searchRegex },
+      { atmId: { $in: matchingATMIds } },
     ];
   }
 

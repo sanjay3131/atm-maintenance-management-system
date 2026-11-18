@@ -12,6 +12,7 @@ import {
 import { Link, useParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import {
   Card,
   CardContent,
@@ -428,7 +429,7 @@ export default function SupervisorJobDetailsPage() {
               <div className="min-w-0">
                 <p className="text-xs font-medium text-slate-500">ATM</p>
                 <p className="mt-1 break-words text-sm font-semibold text-slate-800">
-                  {job.atm?.atmId || job.atm?.locationName || "ATM unavailable"}
+                  {getATMDisplayId(job.atm) || job.atm?.locationName || "ATM unavailable"}
                 </p>
                 {job.atm?.address && (
                   <p className="mt-0.5 text-xs text-slate-500">{job.atm.address}</p>

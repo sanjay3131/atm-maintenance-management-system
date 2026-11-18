@@ -21,6 +21,7 @@ import { useEmployee } from "@/features/employees/hooks/useEmployee";
 import EmployeePerformance from "@/features/dashboard/components/EmployeePerformance";
 import EmployeeAttendanceCalendar from "@/features/attendance/components/EmployeeAttendanceCalendar";
 import { useJobs } from "@/features/jobs/hooks/useJobs";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 
 const JOBS_PAGE_LIMIT = 10;
 
@@ -425,7 +426,7 @@ export default function EmployeeDetailsPage() {
                 label="Assigned ATMs"
                 values={assignmentNames(
                   employee.assignedAtms ?? [],
-                  (atm) => atm.atmId,
+                  (atm) => getATMDisplayId(atm) || "ATM unavailable",
                   "ATM unavailable",
                 )}
               />
@@ -512,7 +513,7 @@ export default function EmployeeDetailsPage() {
                         </td>
                         <td className="p-3">
                           {typeof job.atmId === "object" && job.atmId
-                            ? job.atmId.atmId || "ATM unavailable"
+                            ? getATMDisplayId(job.atmId) || "ATM unavailable"
                             : "ATM unavailable"}
                         </td>
                         <td className="p-3">

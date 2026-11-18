@@ -6,6 +6,7 @@ export type AMCStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "OVERDUE";
 export interface AMCATMReference {
   _id?: string;
   atmId?: string | null;
+  clientAtmId?: string | null;
   locationName?: string | null;
   address?: string | null;
   locationConfigured?: boolean;
@@ -79,6 +80,7 @@ export interface AdminAMCRecord {
   atmId?: {
     _id: string;
     atmId?: string;
+    clientAtmId?: string | null;
     locationName?: string;
     address?: string;
   } | string | null;
@@ -108,6 +110,7 @@ export interface AdminAMCDetails
   atmId?: {
     _id?: string;
     atmId?: string | null;
+    clientAtmId?: string | null;
     locationName?: string | null;
     address?: string | null;
   } | string | null;

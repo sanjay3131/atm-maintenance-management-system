@@ -8,10 +8,7 @@ import http from "http";
 import mongoose from "mongoose";
 import { fileURLToPath } from "url";
 import path from "path";
-import {
-  initSocketServer,
-  closeSocketConnections,
-} from "./realtime/socket.js";
+import { initSocketServer, closeSocketConnections } from "./realtime/socket.js";
 
 import connectDb from "./config/db.js";
 import { initializeDatabaseIndexes } from "./config/databaseIndexReadiness.js";
@@ -85,7 +82,7 @@ app.use(
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key"],
   }),
 );
 

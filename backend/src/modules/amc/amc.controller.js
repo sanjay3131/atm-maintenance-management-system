@@ -82,7 +82,10 @@ export const getMyAMC = asyncHandler(async (req, res) => {
 
   const [amcs, total, statusCounts] = await Promise.all([
     AMC.find(query)
-      .populate("atmId", "atmId locationName bankId address locationConfigured")
+      .populate(
+        "atmId",
+        "atmId clientAtmId locationName bankId address locationConfigured",
+      )
       .populate("bankId", "bankName")
       .sort({ status: 1, deadlineDate: 1 })
       .skip(skip)
@@ -137,6 +140,7 @@ const toSupervisorAMCResponse = (amc, detailed = false) => {
         ? {
             _id: record.atmId._id,
             atmId: record.atmId.atmId,
+            clientAtmId: record.atmId.clientAtmId ?? null,
             locationName: record.atmId.locationName,
             address: record.atmId.address,
           }
@@ -190,6 +194,7 @@ const toAdminAMCResponse = (amc) => {
     atmId: populated(record.atmId, [
       "_id",
       "atmId",
+      "clientAtmId",
       "locationName",
       "address",
     ]),
@@ -235,12 +240,12 @@ export const getAMCById = asyncHandler(async (req, res) => {
   }
   const amc = isSupervisor
     ? await amcQuery
-        .populate("atmId", "atmId locationName address")
+        .populate("atmId", "atmId clientAtmId locationName address")
         .populate("employeeId", "firstName lastName")
     : await amcQuery
         .populate(
           "atmId",
-          "atmId locationName bankId address location locationConfigured locationCapturedBy locationCapturedAt locationRequestReopenedAt locationRequestWindowOpen locationRequestApproved",
+          "atmId clientAtmId locationName bankId address location locationConfigured locationCapturedBy locationCapturedAt locationRequestReopenedAt locationRequestWindowOpen locationRequestApproved",
         )
         .populate("employeeId", "firstName lastName email phoneNumber")
         .populate("supervisorId", "firstName lastName")
@@ -596,10 +601,10 @@ export const getAllAMC = asyncHandler(async (req, res) => {
           .select(
             "amcId atmId employeeId month year status deadlineDate visitDate completedAt",
           )
-          .populate("atmId", "atmId locationName address")
+          .populate("atmId", "atmId clientAtmId locationName address")
           .populate("employeeId", "firstName lastName")
       : AMC.find(query)
-          .populate("atmId", "atmId locationName bankId address")
+          .populate("atmId", "atmId clientAtmId locationName bankId address")
           .populate("employeeId", "firstName lastName email phoneNumber")
           .populate("bankId", "bankName")
           .populate("customerId", "customerName")

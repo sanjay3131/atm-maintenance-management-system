@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Copy, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -263,7 +264,7 @@ export default function ATMLocationTaskRequestDialog({
                 <dt className="text-xs text-muted-foreground">ATM</dt>
                 <dd className="text-sm font-medium">
                   {typeof request.atmId === "object" && request.atmId
-                    ? `${request.atmId.atmId ?? "ATM"} — ${request.atmId.locationName ?? request.atmId.address ?? "Details unavailable"}`
+                    ? `${getATMDisplayId(request.atmId) || "ATM"} — ${request.atmId.locationName ?? request.atmId.address ?? "Details unavailable"}`
                     : "ATM details unavailable"}
                 </dd>
               </div>

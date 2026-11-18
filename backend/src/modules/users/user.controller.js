@@ -10,6 +10,8 @@ import {
   withEmployeeAssignmentTransaction,
 } from "../employees/employeeAssignment.service.js";
 import Customer from "../customers/customer.model.js";
+import { generateCustomerCode } from "../customers/customerCode.service.js";
+import { mapCustomerCodeError } from "../customers/customerCode.errors.js";
 import Bank from "../banks/bank.model.js";
 import { generateEmployeeCode } from "../employees/employee.utils.js";
 import { resolveSupervisorId } from "../employees/employeeSupervisor.service.js";
@@ -560,6 +562,14 @@ const createUserForRole = async (
   }
 
   const hashedPassword = await hashPassword(userData.password);
+  let customerCode;
+  if (role === "customer") {
+    try {
+      customerCode = await generateCustomerCode();
+    } catch (error) {
+      throw mapCustomerCodeError(error);
+    }
+  }
 
   const user = await User.create({
     firstName: userData.firstName,
@@ -613,6 +623,7 @@ const createUserForRole = async (
     if (role === "customer") {
       await Customer.create({
         userId: user._id,
+        customerCode,
         customerName: customer.customerName,
         customerEmail: customer.customerEmail,
         customerPhone: customer.customerPhone,
@@ -625,7 +636,7 @@ const createUserForRole = async (
   } catch (error) {
     await User.findByIdAndDelete(user._id);
 
-    throwEmployeeUserIdConflict(error);
+    throwEmployeeUserIdConflict(mapCustomerCodeError(error));
   }
 
   return res.status(201).json(

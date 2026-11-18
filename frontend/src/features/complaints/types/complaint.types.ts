@@ -11,6 +11,7 @@ export type ComplaintPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export interface ComplaintATM {
   _id: string;
   atmId?: string;
+  clientAtmId?: string | null;
   locationName?: string;
   address?: string;
   bank?: string | null;

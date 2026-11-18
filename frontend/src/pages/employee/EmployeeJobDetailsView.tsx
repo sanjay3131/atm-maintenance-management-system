@@ -13,6 +13,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import {
   Dialog,
   DialogContent,
@@ -465,7 +466,7 @@ export default function EmployeeJobDetailsView() {
         <p className="flex items-start gap-2 text-sm font-semibold leading-6">
           <MapPin className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" />
           <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-            {atm?.atmId || t("Not available")}
+            {getATMDisplayId(atm) || t("Not available")}
             {atm?.locationName ? ` · ${atm.locationName}` : ""}
           </span>
         </p>

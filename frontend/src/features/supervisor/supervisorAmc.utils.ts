@@ -1,3 +1,4 @@
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import type {
   SupervisorAMCListQuery,
   SupervisorAmcStatus,
@@ -92,9 +93,13 @@ export const supervisorAMCEmployeeName = (
 export const supervisorAMCATMName = (
   atm?:
     | string
-    | { atmId?: string | null; locationName?: string | null }
+    | {
+        atmId?: string | null;
+        clientAtmId?: string | null;
+        locationName?: string | null;
+      }
     | null,
 ) => {
   if (!atm || typeof atm === "string") return "ATM unavailable";
-  return atm.atmId || atm.locationName || "ATM unavailable";
+  return getATMDisplayId(atm) || atm.locationName || "ATM unavailable";
 };

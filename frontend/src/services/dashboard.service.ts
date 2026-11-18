@@ -79,6 +79,7 @@ export interface RecentActivity {
   identifier: string;
   atmName: string;
   atmId: string;
+  clientAtmId?: string | null;
   employeeName: string | null;
   createdBy: string;
   timestamp: string;

@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import CustomerEditDialog from "@/features/customers/components/CustomerEditDialog";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import {
   useCustomer,
   useCustomerActiveJobCount,
@@ -487,7 +488,7 @@ export default function CustomerDetailsPage() {
                         to={`/admin/atms/${atm._id}`}
                         className="font-medium text-primary hover:underline"
                       >
-                        {formatValue(atm.atmId)}
+                        {getATMDisplayId(atm) || "ATM unavailable"}
                       </Link>
                       <p className="text-sm text-muted-foreground">
                         {formatValue(atm.locationName)} ·{" "}
@@ -570,7 +571,7 @@ export default function CustomerDetailsPage() {
                           </Link>
                           <p className="text-sm">{formatValue(job.title)}</p>
                           <p className="text-xs text-muted-foreground">
-                            ATM: {formatValue(atm?.atmId)}
+                            ATM: {getATMDisplayId(atm) || "ATM unavailable"}
                             {" · "}
                             {formatJobWorkType(job.workType)}
                             {job.workType === "ac" && job.acSubType
@@ -660,7 +661,7 @@ export default function CustomerDetailsPage() {
                             </p>
                             <p className="text-sm">{formatValue(complaint.title)}</p>
                             <p className="text-xs text-muted-foreground">
-                              ATM: {formatValue(atm?.atmId)}
+                              ATM: {getATMDisplayId(atm) || "ATM unavailable"}
                               {" · "}
                               Created:{" "}
                               {formatDate(complaint.createdAt || complaint.reportedAt)}

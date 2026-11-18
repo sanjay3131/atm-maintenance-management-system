@@ -2,6 +2,7 @@ import { isAxiosError } from "axios";
 import { MapPin, Navigation } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { toast } from "sonner";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -394,7 +395,7 @@ function LocationTaskCard({
                 aria-hidden="true"
               />
               <span className="break-words [overflow-wrap:anywhere]">
-                {atm?.atmId ?? t("ATM unavailable")}
+                {getATMDisplayId(atm) || t("ATM unavailable")}
               </span>
             </CardTitle>
             <p className="mt-1 text-sm font-medium text-foreground break-words">

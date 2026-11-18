@@ -4,7 +4,11 @@ import mongoose from "mongoose";
 import ATM from "../src/modules/atms/atm.model.js";
 import Bank from "../src/modules/banks/bank.model.js";
 import Customer from "../src/modules/customers/customer.model.js";
+import CustomerCodeSequence from "../src/modules/customers/customerCodeSequence.model.js";
 import User from "../src/modules/users/user.model.js";
+import Employee from "../src/modules/employees/employee.model.js";
+import { CustomerCodeSequenceError } from "../src/modules/customers/customerCode.service.js";
+import { mapCustomerCodeError } from "../src/modules/customers/customerCode.errors.js";
 import {
   createCustomerUserWizard,
   createUserWizard,
@@ -376,6 +380,7 @@ test("customer-specific user wizard ignores a client-supplied role", async () =>
           return user;
         },
       ],
+      [CustomerCodeSequence, "findOneAndUpdate", async () => ({ value: 91 })],
       [
         Customer,
         "create",
@@ -395,7 +400,238 @@ test("customer-specific user wizard ignores a client-supplied role", async () =>
 
   assert.equal(createdUser.userType, "customer");
   assert.equal(createdCustomer.userId, "user-id");
+  assert.equal(createdCustomer.customerCode, "CUS-000091");
   assert.equal(createdCustomer.bankName, "Example Bank");
+});
+
+test("direct customer creation cleans up its new User when Customer creation fails", async () => {
+  const user = { _id: "direct-user-id" };
+  const customerError = new Error("customer insert failed");
+  let deletedUserId;
+  await withOverrides(
+    [
+      [User, "findOne", async () => null],
+      [CustomerCodeSequence, "findOneAndUpdate", async () => ({ value: 92 })],
+      [User, "create", async () => user],
+      [
+        User,
+        "findByIdAndDelete",
+        async (userId) => {
+          deletedUserId = userId;
+        },
+      ],
+      [Customer, "create", async () => { throw customerError; }],
+    ],
+    async () => {
+      await assert.rejects(
+        invoke(createCustomer, {
+          user: { _id: "admin-id", userType: "admin" },
+          body: {
+            firstName: "Customer",
+            email: "customer-cleanup@example.com",
+            password: "password123",
+            phoneNumber: "1234567890",
+            customerName: "Customer",
+            customerPhone: "1234567890",
+            bankName: "Bank",
+          },
+        }),
+        (error) => error === customerError,
+      );
+    },
+  );
+  assert.equal(deletedUserId, user._id);
+});
+
+test("direct customer creation retains both errors if User cleanup fails", async () => {
+  const customerError = new Error("customer insert failed");
+  const cleanupError = new Error("user cleanup failed");
+  await withOverrides(
+    [
+      [User, "findOne", async () => null],
+      [CustomerCodeSequence, "findOneAndUpdate", async () => ({ value: 93 })],
+      [User, "create", async () => ({ _id: "direct-user-id" })],
+      [User, "findByIdAndDelete", async () => { throw cleanupError; }],
+      [Customer, "create", async () => { throw customerError; }],
+    ],
+    async () => {
+      await assert.rejects(
+        invoke(createCustomer, {
+          user: { _id: "admin-id", userType: "admin" },
+          body: {
+            firstName: "Customer",
+            email: "customer-cleanup-failure@example.com",
+            password: "password123",
+            phoneNumber: "1234567890",
+            customerName: "Customer",
+            customerPhone: "1234567890",
+            bankName: "Bank",
+          },
+        }),
+        (error) =>
+          error instanceof AggregateError &&
+          error.errors[0] === customerError &&
+          error.errors[1] === cleanupError &&
+          error.cause === customerError,
+      );
+    },
+  );
+});
+
+test("customer wizard cleans up its new User when Customer creation fails", async () => {
+  const customerError = new Error("customer insert failed");
+  let deletedUserId;
+  await withOverrides(
+    [
+      [User, "findOne", async () => null],
+      [CustomerCodeSequence, "findOneAndUpdate", async () => ({ value: 94 })],
+      [User, "create", async () => ({ _id: "wizard-user-id" })],
+      [
+        User,
+        "findByIdAndDelete",
+        async (userId) => {
+          deletedUserId = userId;
+        },
+      ],
+      [Customer, "create", async () => { throw customerError; }],
+    ],
+    async () => {
+      await assert.rejects(
+        invoke(createUserWizard, {
+          user: { _id: "admin-id" },
+          body: {
+            user: {
+              firstName: "Wizard",
+              email: "wizard-cleanup@example.com",
+              password: "password123",
+              phoneNumber: "1234567891",
+            },
+            role: "customer",
+            customer: {
+              customerName: "Wizard Customer",
+              customerEmail: "wizard-cleanup@example.com",
+              customerPhone: "1234567891",
+              bankName: "Bank",
+              districtIds: [],
+            },
+          },
+        }),
+        (error) => error === customerError,
+      );
+    },
+  );
+  assert.equal(deletedUserId, "wizard-user-id");
+});
+
+test("employee and supervisor wizard paths do not allocate customer codes", async () => {
+  let customerCodeAllocations = 0;
+  const user = {
+    _id: "wizard-user-id",
+    toObject: () => ({ _id: "wizard-user-id", userType: "employee" }),
+  };
+  await withOverrides(
+    [
+      [User, "findOne", async () => null],
+      [User, "create", async () => user],
+      [
+        CustomerCodeSequence,
+        "findOneAndUpdate",
+        async () => {
+          customerCodeAllocations += 1;
+          throw new Error("customer code generation must not run");
+        },
+      ],
+      [
+        Employee,
+        "findOne",
+        () => ({ sort: async () => null }),
+      ],
+      [Employee, "create", async () => ({ _id: "employee-id" })],
+    ],
+    async () => {
+      await invoke(createUserWizard, {
+        user: { _id: "admin-id" },
+        body: {
+          user: {
+            firstName: "Employee",
+            email: "employee-no-customer-code@example.com",
+            password: "password123",
+            phoneNumber: "1234567892",
+          },
+          role: "employee",
+          employee: {
+            designation: "Technician",
+            department: "Maintenance",
+            employmentType: "full-time",
+            districtIds: [],
+            assignedAtmIds: [],
+            regionIds: [],
+          },
+        },
+      });
+      await invoke(createUserWizard, {
+        user: {
+          _id: "admin-id",
+        },
+        body: {
+          user: {
+            firstName: "Supervisor",
+            email: "supervisor-no-customer-code@example.com",
+            password: "password123",
+            phoneNumber: "1234567893",
+          },
+          role: "supervisor",
+        },
+      });
+    },
+  );
+  assert.equal(customerCodeAllocations, 0);
+});
+
+test("customer-code sequence errors map to 503", () => {
+  for (const code of [
+    "CUSTOMER_CODE_SEQUENCE_NOT_INITIALIZED",
+    "CUSTOMER_CODE_SEQUENCE_INVALID",
+    "CUSTOMER_CODE_SEQUENCE_EXHAUSTED",
+  ]) {
+    const mapped = mapCustomerCodeError(
+      new CustomerCodeSequenceError("sequence unavailable", code),
+    );
+    assert.equal(mapped.statusCode, 503);
+    assert.equal(mapped.message, "sequence unavailable");
+  }
+});
+
+test("only customerCode duplicate-key errors map to 409", () => {
+  for (const duplicateError of [
+    Object.assign(new Error("duplicate"), {
+      code: 11000,
+      keyPattern: { customerCode: 1 },
+    }),
+    Object.assign(new Error("duplicate"), {
+      code: 11000,
+      keyValue: { customerCode: "CUS-000001" },
+    }),
+    Object.assign(
+      new Error("E11000 duplicate key error index: customerCode_1 dup key"),
+      { code: 11000 },
+    ),
+  ]) {
+    assert.equal(mapCustomerCodeError(duplicateError).statusCode, 409);
+  }
+
+  for (const otherDuplicate of [
+    Object.assign(new Error("duplicate userId"), {
+      code: 11000,
+      keyPattern: { userId: 1 },
+    }),
+    Object.assign(new Error("duplicate customerEmail"), {
+      code: 11000,
+      keyValue: { customerEmail: "customer@example.com" },
+    }),
+  ]) {
+    assert.equal(mapCustomerCodeError(otherDuplicate), otherDuplicate);
+  }
 });
 
 test("rejects nonexistent, inactive, and deleted destination Customers without changing links", async (t) => {
@@ -588,9 +824,22 @@ test("Customer creation and the user wizard ignore supplied ATM IDs", async () =
       password: "hashed",
     }),
   };
+  let generatedCodeCount = 0;
   const overrides = [
     [User, "findOne", async () => null],
-    [User, "create", async () => user],
+    [
+      CustomerCodeSequence,
+      "findOneAndUpdate",
+      async () => ({ value: 40 + ++generatedCodeCount }),
+    ],
+    [
+      User,
+      "create",
+      async () => {
+        assert.equal(generatedCodeCount, createdCustomers.length + 1);
+        return user;
+      },
+    ],
     [
       Customer,
       "create",
@@ -640,6 +889,10 @@ test("Customer creation and the user wizard ignore supplied ATM IDs", async () =
   assert.deepEqual(
     createdCustomers.map(({ atmIds }) => atmIds),
     [[], []],
+  );
+  assert.deepEqual(
+    createdCustomers.map(({ customerCode }) => customerCode),
+    ["CUS-000041", "CUS-000042"],
   );
 });
 

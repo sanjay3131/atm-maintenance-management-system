@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useATMs } from "@/features/atms/hooks/useATMs";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import type { ATM } from "@/features/atms/types/atm.types";
 import { useCustomers } from "@/features/customers/hooks/useCustomers";
 import type { Customer } from "@/features/customers/services/customer.service";
@@ -239,7 +240,7 @@ export default function CreateComplaintDialog({
   const isPending = createMutation.isPending;
   const atmItems = atms.map((atm) => ({
     value: atm._id,
-    label: [atm.atmId, atm.locationName].filter(Boolean).join(" · "),
+    label: [getATMDisplayId(atm), atm.locationName].filter(Boolean).join(" · "),
   }));
   const customerItems = [
     { value: NO_CUSTOMER, label: "No customer" },
@@ -334,7 +335,7 @@ export default function CreateComplaintDialog({
                   }
                 >
                   {selectedATM
-                    ? [selectedATM.atmId, selectedATM.locationName]
+                    ? [getATMDisplayId(selectedATM), selectedATM.locationName]
                         .filter(Boolean)
                         .join(" · ")
                     : undefined}
@@ -343,7 +344,7 @@ export default function CreateComplaintDialog({
               <SelectContent>
                 {atms.map((atm) => (
                   <SelectItem key={atm._id} value={atm._id}>
-                    <span className="font-medium">{atm.atmId}</span>
+                    <span className="font-medium">{getATMDisplayId(atm)}</span>
                     {atm.locationName && (
                       <span className="text-muted-foreground">
                         {atm.locationName}
