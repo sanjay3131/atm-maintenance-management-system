@@ -32,6 +32,7 @@ import JobCostReportSection from "@/features/job-cost-reports/components/JobCost
 import EmployeeFieldWorkPanel from "@/features/jobs/components/EmployeeFieldWorkPanel";
 import EmployeeMaterialUsageSection from "@/features/jobs/components/EmployeeMaterialUsageSection";
 import JobPhotoGallery from "@/features/jobs/components/JobPhotoGallery";
+import JobPhotoDownloadActions from "@/features/jobs/components/JobPhotoDownloadActions";
 import {
   useAcceptJob,
   useApproveJob,
@@ -1328,6 +1329,12 @@ export default function JobDetailsPage({
                 (photo) => Boolean(photo?.url || photo?.thumbnailUrl),
               ))) && (
             <EmployeeDisclosure enabled={readOnly} title={t("Job Photos")}>
+              {!readOnly && (
+                <JobPhotoDownloadActions
+                  jobId={job._id}
+                  jobDisplayId={job.jobId}
+                />
+              )}
               <JobPhotoGallery
                 beforePhotos={job.beforePhotos}
                 afterPhotos={job.afterPhotos}
@@ -1862,6 +1869,12 @@ export default function JobDetailsPage({
 
             {(!readOnly || job.status !== "IN_PROGRESS") && (
               <div className="min-w-0">
+                {!readOnly && (
+                  <JobPhotoDownloadActions
+                    jobId={job._id}
+                    jobDisplayId={job.jobId}
+                  />
+                )}
                 <JobPhotoGallery
                   beforePhotos={job.beforePhotos}
                   afterPhotos={job.afterPhotos}

@@ -11,6 +11,8 @@ import {
   getJobPhotos,
   deletePhoto,
   getPhotoStats,
+  downloadJobPhotosZip,
+  downloadJobPhotosPdf,
 } from "./jobPhotos.controller.js";
 
 const router = Router();
@@ -39,6 +41,22 @@ router.get(
 );
 
 // Get photos for a job
+router.get(
+  "/job/:jobId/download-zip",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(supervisorJobParamsSchema, "params"),
+  downloadJobPhotosZip,
+);
+
+router.get(
+  "/job/:jobId/download-pdf",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(supervisorJobParamsSchema, "params"),
+  downloadJobPhotosPdf,
+);
+
 router.get(
   "/job/:jobId",
   verifyAccessToken,

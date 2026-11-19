@@ -27,6 +27,41 @@ import {
   uploadOrReconcileAsset,
   validateUploadedFile,
 } from "./jobPhotoUpload.service.js";
+import {
+  generateJobPhotoPdf,
+  generateJobPhotoZip,
+} from "./jobPhotoExport.service.js";
+
+const getJobForPhotoDownload = async (jobId, user) => {
+  if (!mongoose.isValidObjectId(jobId)) {
+    throw new ApiError(400, "Invalid job ID");
+  }
+  if (!["admin", "superAdmin"].includes(user.userType)) {
+    throw new ApiError(403, "Admin access required");
+  }
+
+  const job = await Job.findById(jobId);
+  if (!job || job.isDeleted) {
+    throw new ApiError(404, "Job not found");
+  }
+  return job;
+};
+
+export const downloadJobPhotosZip = asyncHandler(async (req, res) => {
+  const job = await getJobForPhotoDownload(req.params.jobId, req.user);
+  const { buffer, filename } = await generateJobPhotoZip(job);
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(buffer);
+});
+
+export const downloadJobPhotosPdf = asyncHandler(async (req, res) => {
+  const job = await getJobForPhotoDownload(req.params.jobId, req.user);
+  const { buffer, filename } = await generateJobPhotoPdf(job);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(buffer);
+});
 
 // ============================================
 // RESERVE AND UPLOAD ONE PHOTO TO CLOUDINARY
