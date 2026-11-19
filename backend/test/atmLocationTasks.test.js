@@ -5,6 +5,8 @@ import ATM from "../src/modules/atms/atm.model.js";
 import ATMLocationRequest from "../src/modules/atms/atmLocationRequest.model.js";
 import Employee from "../src/modules/employees/employee.model.js";
 import ATMLocationTask from "../src/modules/atms/atmLocationTask.model.js";
+import Notification from "../src/modules/notification/notification.model.js";
+import User from "../src/modules/users/user.model.js";
 import {
   cancelATMLocationTask,
   createBulkATMLocationTasks,
@@ -47,6 +49,12 @@ const makeTask = (overrides = {}) => ({
 
 const makeQuery = (value, onResolve) => ({
   session() {
+    return this;
+  },
+  select() {
+    return this;
+  },
+  lean() {
     return this;
   },
   populate() {
@@ -123,6 +131,7 @@ async function withMocks(
     employees,
     tasks: new Map(tasks.map((task) => [String(task._id), task])),
     requests,
+    notifications: [],
     duplicateOnCreate,
     trackAssignmentReads,
     assignmentReadOrder: [],
@@ -133,8 +142,11 @@ async function withMocks(
     [mongoose, "startSession", mongoose.startSession],
     [ATM, "findOne", ATM.findOne],
     [ATM, "bumpLocationWorkflowRevision", ATM.bumpLocationWorkflowRevision],
+    [Employee, "find", Employee.find],
     [Employee, "findById", Employee.findById],
     [Employee, "findOne", Employee.findOne],
+    [User, "find", User.find],
+    [Notification, "create", Notification.create],
     [ATMLocationTask, "create", ATMLocationTask.create],
     [ATMLocationTask, "findOne", ATMLocationTask.findOne],
     [ATMLocationTask, "findOneAndUpdate", ATMLocationTask.findOneAndUpdate],
@@ -195,11 +207,47 @@ async function withMocks(
     makeQuery(
       state.employees.find(
         (employee) =>
-          String(employee.userId?._id ?? employee.userId) ===
-            String(filter.userId) &&
+          (!filter.userId ||
+            String(employee.userId?._id ?? employee.userId) ===
+              String(filter.userId)) &&
+          (!filter._id || String(employee._id) === String(filter._id)) &&
           employee.status === filter.status,
       ) ?? null,
     );
+  Employee.find = (filter) =>
+    makeQuery(
+      state.employees.filter((employee) =>
+        (filter.$or ?? []).some((condition) => {
+          const [field, matcher] = Object.entries(condition)[0];
+          return matcher.$in.some((id) =>
+            field === "_id"
+              ? String(id) === String(employee._id)
+              : String(id) === String(employee.userId?._id ?? employee.userId),
+          );
+        }),
+      ),
+    );
+  User.find = (filter) =>
+    makeQuery(
+      [
+        { _id: adminId, userType: "admin", status: "active" },
+        ...state.employees.map((employee) => ({
+          _id: employee.userId?._id ?? employee.userId,
+          userType: "employee",
+          status: employee.userId?.status ?? "active",
+        })),
+      ].filter(
+        (user) =>
+          user.status === filter.status &&
+          (!filter.userType || filter.userType.$in.includes(user.userType)) &&
+          (!filter._id ||
+            filter._id.$in.some((id) => String(id) === String(user._id))),
+      ),
+    );
+  Notification.create = async (input) => {
+    state.notifications.push(input);
+    return { ...input, _id: String(state.notifications.length) };
+  };
   ATMLocationTask.findOne = (filter) => {
     const task = [...state.tasks.values()].find((candidate) =>
       matches(candidate, filter),
@@ -592,6 +640,102 @@ test("reassignment records history and old assignee cannot start the task", asyn
       assert.equal(state.tasks.get(taskId).assignedEmployeeId, replacementEmployeeId);
     },
   );
+});
+
+test("location task notifications describe assignment, reassignment, and reopening", async () => {
+  const {
+    createATMLocationTasks,
+    reassignATMLocationTask: reassignHandler,
+    reopenATMLocationTask: reopenHandler,
+  } = await import("../src/modules/atms/atm.controller.js");
+  const scenarios = [
+    {
+      action: "assigned",
+      title: "ATM location task assigned to you",
+      message: "An ATM location task has been assigned to you.",
+      handler: createATMLocationTasks,
+    },
+    {
+      action: "reassigned",
+      title: "ATM location task reassigned to you",
+      message: "An ATM location task has been reassigned to you.",
+      handler: reassignHandler,
+      status: "IN_PROGRESS",
+    },
+    {
+      action: "reopened",
+      title: "ATM location task reopened",
+      message:
+        "A rejected ATM location task has been reopened and assigned to you.",
+      handler: reopenHandler,
+      status: "REJECTED",
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    await withMocks(
+      {
+        tasks:
+          scenario.action === "assigned"
+            ? []
+            : [
+                makeTask({
+                  status: scenario.status,
+                  assignmentHistory: [
+                    {
+                      previousEmployeeId: null,
+                      newEmployeeId: employeeId,
+                      actedBy: adminId,
+                      assignedAt: new Date("2026-01-02T03:04:05.000Z"),
+                    },
+                  ],
+                }),
+              ],
+      },
+      async (state) => {
+        const request =
+          scenario.action === "assigned"
+            ? {
+                body: { tasks: [initialTaskInput()] },
+                user: { _id: adminId, userType: "admin" },
+              }
+            : {
+                body: {
+                  employeeId: replacementEmployeeId,
+                  reason: "Coverage update",
+                },
+                validatedParams: { taskId },
+                user: { _id: adminId, userType: "admin" },
+              };
+
+        await new Promise((resolve, reject) => {
+          scenario.handler(
+            request,
+            {
+              status() {
+                return this;
+              },
+              json(response) {
+                resolve(response);
+              },
+            },
+            reject,
+          );
+        });
+
+        assert.equal(state.notifications.length, 1);
+        const [notification] = state.notifications;
+        assert.equal(
+          String(notification.userId),
+          scenario.action === "assigned" ? employeeUserId : replacementUserId,
+        );
+        assert.equal(notification.title, scenario.title);
+        assert.equal(notification.message, scenario.message);
+        assert.equal(notification.data.action, scenario.action);
+        assert.ok(notification.dedupeKey.includes(`:${scenario.action}:`));
+      },
+    );
+  }
 });
 
 test("reassignment to the current employee is rejected without changing task or history", async () => {

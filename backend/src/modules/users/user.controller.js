@@ -537,9 +537,16 @@ const createUserForRole = async (
     supervisorId = await resolveSupervisorId(employee.supervisorId);
   }
 
-  if (role === "customer" && requireActiveCustomerBank) {
+  if (
+    role === "customer" &&
+    requireActiveCustomerBank &&
+    customer.bankName?.trim()
+  ) {
     const bank = await Bank.findOne({
-      bankName: customer.bankName,
+      $or: [
+        { bankName: customer.bankName.trim() },
+        { bankCode: customer.bankName.trim() },
+      ],
       isActive: true,
     });
     if (!bank) {
@@ -627,7 +634,7 @@ const createUserForRole = async (
         customerName: customer.customerName,
         customerEmail: customer.customerEmail,
         customerPhone: customer.customerPhone,
-        bankName: customer.bankName,
+        bankName: customer.bankName ?? "",
         atmIds: [],
         districtIds: customer.districtIds,
         createdBy: req.user._id,

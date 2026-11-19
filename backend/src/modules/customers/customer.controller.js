@@ -6,6 +6,8 @@ import User from "../users/user.model.js";
 import Customer from "./customer.model.js";
 import ATM from "../atms/atm.model.js";
 import Bank from "../banks/bank.model.js";
+import Region from "../region/region.model.js";
+import District from "../districts/district.models.js";
 import Job from "../jobs/jobs.model.js";
 import AMC from "../amc/amc.model.js";
 import { sanitizeUser } from "../../utils/sanitizeUser.js";
@@ -49,6 +51,343 @@ const validateCustomerId = (id) => {
   if (!/^[0-9a-fA-F]{24}$/.test(id)) {
     throw new ApiError(400, "Invalid customer ID");
   }
+};
+
+const getReferenceId = (value) =>
+  value == null ? null : String(value._id ?? value);
+
+const sameReferenceId = (left, right) =>
+  (getReferenceId(left) ?? "").toLowerCase() ===
+  (getReferenceId(right) ?? "").toLowerCase();
+
+const hasOwn = (value, key) =>
+  Object.prototype.hasOwnProperty.call(value, key);
+
+const getReferenceIds = (references) =>
+  Array.isArray(references)
+    ? references.map((reference) => {
+        const id = getReferenceId(reference);
+        return id?.toLowerCase() ?? id;
+      })
+    : [];
+
+const getCustomerGeographyIds = (customer, pluralField, scalarField) =>
+  Array.isArray(customer[pluralField])
+    ? getReferenceIds(customer[pluralField])
+    : getReferenceId(customer[scalarField])
+      ? [getReferenceId(customer[scalarField])]
+      : [];
+
+const populateCustomerGeography = (query) =>
+  query
+    .populate("bankId", "bankName bankCode isActive")
+    .populate("regionIds", "name bankId isActive geographyStatus")
+    .populate(
+      "serviceDistrictIds",
+      "districtName bankId regionId isActive geographyStatus",
+    )
+    .populate("regionId", "name bankId isActive geographyStatus")
+    .populate(
+      "districtId",
+      "districtName bankId regionId isActive geographyStatus",
+    );
+
+const withLegacyCustomerGeography = (customer) => ({
+  ...customer,
+  bankName:
+    (typeof customer.bankId === "object" && customer.bankId?.bankName) ||
+    customer.bankName,
+  regionIds: Array.isArray(customer.regionIds)
+    ? customer.regionIds
+    : customer.regionId
+      ? [customer.regionId]
+      : [],
+  serviceDistrictIds: Array.isArray(customer.serviceDistrictIds)
+    ? customer.serviceDistrictIds
+    : customer.districtId
+      ? [customer.districtId]
+      : [],
+});
+
+const populateCustomerGeographyRecords = async (records) => {
+  if (!records.length) return records;
+
+  const getIds = (values) => [
+    ...new Set(
+      values
+        .filter(Boolean)
+        .map((value) => String(value._id ?? value).toLowerCase()),
+    ),
+  ];
+  const regionIds = getIds(
+    records.flatMap((customer) =>
+      Array.isArray(customer.regionIds)
+        ? customer.regionIds
+        : customer.regionId
+          ? [customer.regionId]
+          : [],
+    ),
+  );
+  const serviceDistrictIds = getIds(
+    records.flatMap((customer) =>
+      Array.isArray(customer.serviceDistrictIds)
+        ? customer.serviceDistrictIds
+        : customer.districtId
+          ? [customer.districtId]
+          : [],
+    ),
+  );
+
+  const [regions, districts] = await Promise.all([
+    regionIds.length
+      ? Region.find({ _id: { $in: regionIds } })
+          .select("name bankId isActive geographyStatus")
+          .lean()
+      : [],
+    serviceDistrictIds.length
+      ? District.find({ _id: { $in: serviceDistrictIds } })
+          .select("districtName bankId regionId isActive geographyStatus")
+          .lean()
+      : [],
+  ]);
+  const regionsById = new Map(
+    regions.map((region) => [String(region._id), region]),
+  );
+  const districtsById = new Map(
+    districts.map((district) => [String(district._id), district]),
+  );
+
+  return records.map((customer) => {
+    const customerRegionIds = Array.isArray(customer.regionIds)
+      ? getReferenceIds(customer.regionIds)
+      : getReferenceId(customer.regionId)
+        ? [getReferenceId(customer.regionId)]
+        : [];
+    const customerServiceDistrictIds = Array.isArray(
+      customer.serviceDistrictIds,
+    )
+      ? getReferenceIds(customer.serviceDistrictIds)
+      : getReferenceId(customer.districtId)
+        ? [getReferenceId(customer.districtId)]
+        : [];
+
+    return {
+      ...customer,
+      regionIds: customerRegionIds
+        .map((id) => regionsById.get(id))
+        .filter(Boolean),
+      serviceDistrictIds: customerServiceDistrictIds
+        .map((id) => districtsById.get(id))
+        .filter(Boolean),
+    };
+  });
+};
+
+const validateCustomerGeographyUpdate = async (customer, body) => {
+  if (
+    (hasOwn(body, "regionIds") && !Array.isArray(body.regionIds)) ||
+    (hasOwn(body, "serviceDistrictIds") &&
+      !Array.isArray(body.serviceDistrictIds))
+  ) {
+    throw new ApiError(400, "Geography assignments must be arrays");
+  }
+
+  let bankId = hasOwn(body, "bankId")
+    ? getReferenceId(body.bankId)
+    : getReferenceId(customer.bankId);
+  bankId = bankId?.toLowerCase() ?? bankId;
+  let legacyBank;
+  if (!hasOwn(body, "bankId") && !bankId && customer.bankName) {
+    legacyBank = await Bank.findOne({
+      $or: [{ bankCode: customer.bankName }, { bankName: customer.bankName }],
+    });
+    bankId = getReferenceId(legacyBank?._id);
+  }
+
+  const bankChanged =
+    hasOwn(body, "bankId") &&
+    (!sameReferenceId(bankId, customer.bankId) ||
+      (!bankId && Boolean(customer.bankName)));
+  const regionIds = hasOwn(body, "regionIds")
+    ? getReferenceIds(body.regionIds)
+    : hasOwn(body, "regionId")
+      ? getReferenceId(body.regionId)
+        ? [getReferenceId(body.regionId)]
+        : []
+      : bankChanged
+        ? []
+        : getCustomerGeographyIds(customer, "regionIds", "regionId");
+  const serviceDistrictIds = hasOwn(body, "serviceDistrictIds")
+    ? getReferenceIds(body.serviceDistrictIds)
+    : hasOwn(body, "districtId")
+      ? getReferenceId(body.districtId)
+        ? [getReferenceId(body.districtId)]
+        : []
+      : bankChanged
+        ? []
+        : getCustomerGeographyIds(
+            customer,
+            "serviceDistrictIds",
+            "districtId",
+          );
+
+  for (const [field, values] of [
+    ["bankId", bankId ? [bankId] : []],
+    ["regionIds", regionIds],
+    ["serviceDistrictIds", serviceDistrictIds],
+  ]) {
+    if (values.some((value) => !value || !/^[0-9a-fA-F]{24}$/.test(value))) {
+      throw new ApiError(400, `Invalid ${field}`);
+    }
+    if (
+      new Set(values.map((value) => value.toLowerCase())).size !== values.length
+    ) {
+      throw new ApiError(400, `Duplicate ${field} are not allowed`);
+    }
+  }
+
+  if (regionIds.length && !bankId) {
+    throw new ApiError(400, "Assign a bank before a region");
+  }
+  if (serviceDistrictIds.length && !regionIds.length) {
+    throw new ApiError(400, "Assign at least one region before a district");
+  }
+
+  const [bank, regions, districts] = await Promise.all([
+    bankId ? legacyBank ?? Bank.findById(bankId) : null,
+    regionIds.length ? Region.find({ _id: { $in: regionIds } }) : [],
+    serviceDistrictIds.length
+      ? District.find({ _id: { $in: serviceDistrictIds } })
+      : [],
+  ]);
+
+  if (bankId && !bank) throw new ApiError(404, "Bank not found");
+  if (bank?.isActive === false) {
+    throw new ApiError(400, "Cannot assign an inactive bank");
+  }
+  const regionsById = new Map(
+    regions.map((region) => [String(region._id), region]),
+  );
+  const districtsById = new Map(
+    districts.map((district) => [String(district._id), district]),
+  );
+  if (regionsById.size !== regionIds.length) {
+    throw new ApiError(404, "One or more regions were not found");
+  }
+  if (districtsById.size !== serviceDistrictIds.length) {
+    throw new ApiError(404, "One or more service districts were not found");
+  }
+
+  for (const regionId of regionIds) {
+    const region = regionsById.get(regionId);
+    if (
+      region.isActive === false ||
+      region.geographyStatus !== "MAPPED" ||
+      !sameReferenceId(region.bankId, bank?._id)
+    ) {
+      throw new ApiError(
+        400,
+        "Every region must be active, mapped, and belong to the selected bank",
+      );
+    }
+  }
+
+  const selectedRegionIds = new Set(regionIds.map((id) => id.toLowerCase()));
+  for (const districtId of serviceDistrictIds) {
+    const district = districtsById.get(districtId);
+    if (
+      district.isActive === false ||
+      district.geographyStatus !== "MAPPED" ||
+      !sameReferenceId(district.bankId, bank?._id) ||
+      !selectedRegionIds.has(
+        (getReferenceId(district.regionId) ?? "").toLowerCase(),
+      )
+    ) {
+      throw new ApiError(
+        400,
+        "Every service district must be active, mapped, and belong to the selected bank and one of its regions",
+      );
+    }
+  }
+
+  const updates = {
+    bankId: bank?._id ?? null,
+    bankName: bank?.bankName ?? "",
+    regionIds: regionIds.map((id) => regionsById.get(id)._id),
+    serviceDistrictIds: serviceDistrictIds.map(
+      (id) => districtsById.get(id)._id,
+    ),
+  };
+  if (hasOwn(body, "regionId") || bankChanged) {
+    updates.regionId = hasOwn(body, "regionId")
+      ? regionsById.get(regionIds[0])?._id ?? null
+      : null;
+  }
+  if (hasOwn(body, "districtId") || bankChanged) {
+    updates.districtId = hasOwn(body, "districtId")
+      ? districtsById.get(serviceDistrictIds[0])?._id ?? null
+      : null;
+  }
+  return updates;
+};
+
+const resolveLegacyBankNameUpdate = async (customer, bankName) => {
+  const normalizedName = typeof bankName === "string" ? bankName.trim() : "";
+  const hasGeographyReferences = Boolean(
+    customer.bankId ||
+      customer.regionId ||
+      customer.districtId ||
+      customer.regionIds?.length ||
+      customer.serviceDistrictIds?.length,
+  );
+  if (normalizedName === (customer.bankName ?? "")) {
+    return { bankName: normalizedName };
+  }
+  if (!normalizedName) {
+    return hasGeographyReferences
+      ? {
+          bankName: "",
+          bankId: null,
+          regionId: null,
+          districtId: null,
+          regionIds: [],
+          serviceDistrictIds: [],
+        }
+      : { bankName: "" };
+  }
+
+  const bank = await Bank.findOne({
+    $or: [
+      { bankCode: normalizedName },
+      { bankName: normalizedName },
+    ],
+  });
+  if (!bank || bank.isActive === false) {
+    return hasGeographyReferences
+      ? {
+          bankName: normalizedName,
+          bankId: null,
+          regionId: null,
+          districtId: null,
+          regionIds: [],
+          serviceDistrictIds: [],
+        }
+      : { bankName: normalizedName };
+  }
+
+  const bankChanged = !sameReferenceId(bank._id, customer.bankId);
+  return {
+    bankName: bank.bankName,
+    bankId: bank._id,
+    ...(bankChanged
+      ? {
+          regionId: null,
+          districtId: null,
+          regionIds: [],
+          serviceDistrictIds: [],
+        }
+      : {}),
+  };
 };
 
 const customerPortalATMFields =
@@ -176,7 +515,11 @@ export const createCustomer = asyncHandler(async (req, res) => {
       201,
       {
         user: sanitizeUser(user),
-        customer,
+        customer: withLegacyCustomerGeography(
+          typeof customer.toObject === "function"
+            ? customer.toObject()
+            : customer,
+        ),
       },
       "Customer created successfully",
     ),
@@ -363,6 +706,23 @@ export const getAllCustomers = asyncHandler(async (req, res) => {
             {
               $lookup: {
                 from: Bank.collection.name,
+                localField: "bankId",
+                foreignField: "_id",
+                pipeline: [
+                  {
+                    $project: {
+                      bankName: 1,
+                      bankCode: 1,
+                      isActive: 1,
+                    },
+                  },
+                ],
+                as: "bankById",
+              },
+            },
+            {
+              $lookup: {
+                from: Bank.collection.name,
                 let: { customerBankName: "$bankName" },
                 pipeline: [
                   {
@@ -375,7 +735,7 @@ export const getAllCustomers = asyncHandler(async (req, res) => {
                       },
                     },
                   },
-                  { $project: { bankName: 1 } },
+                  { $project: { bankName: 1, bankCode: 1, isActive: 1 } },
                 ],
                 as: "bank",
               },
@@ -387,8 +747,19 @@ export const getAllCustomers = asyncHandler(async (req, res) => {
                 customerName: 1,
                 customerEmail: 1,
                 customerPhone: 1,
+                bankId: {
+                  $ifNull: [
+                    { $arrayElemAt: ["$bankById", 0] },
+                    { $arrayElemAt: ["$bank", 0] },
+                  ],
+                },
+                regionId: 1,
+                districtId: 1,
+                regionIds: 1,
+                serviceDistrictIds: 1,
                 bankName: {
                   $ifNull: [
+                    { $arrayElemAt: ["$bankById.bankName", 0] },
                     { $arrayElemAt: ["$bank.bankName", 0] },
                     "$bankName",
                   ],
@@ -413,11 +784,14 @@ export const getAllCustomers = asyncHandler(async (req, res) => {
       ]),
     );
     const matchingTotal = result?.matchingTotal?.[0]?.count ?? 0;
+    const customers = await populateCustomerGeographyRecords(
+      result?.matchingCustomers ?? [],
+    );
     return res.status(200).json(
       new ApiResponse(
         200,
         {
-          customers: result?.matchingCustomers ?? [],
+          customers,
           pagination: {
             page: pagination.page,
             limit: pagination.limit,
@@ -436,9 +810,11 @@ export const getAllCustomers = asyncHandler(async (req, res) => {
   }
 
   const customers = await populateCustomerATMs(
-    Customer.find({ isDeleted: false }).populate(
-      "userId",
-      "firstName lastName email phoneNumber status userType",
+    populateCustomerGeography(
+      Customer.find({ isDeleted: false }).populate(
+        "userId",
+        "firstName lastName email phoneNumber status userType",
+      ),
     ),
   )
     .populate("districtIds", "districtName")
@@ -446,7 +822,15 @@ export const getAllCustomers = asyncHandler(async (req, res) => {
 
   return res
     .status(200)
-    .json(new ApiResponse(200, customers, "Customers fetched successfully"));
+    .json(
+      new ApiResponse(
+        200,
+        customers.map((customer) =>
+          withLegacyCustomerGeography(customer.toObject()),
+        ),
+        "Customers fetched successfully",
+      ),
+    );
 });
 
 /**
@@ -460,10 +844,12 @@ export const getCustomerById = asyncHandler(async (req, res) => {
     req.user.userType === "customer"
       ? await getActiveCustomerForUser(req.user)
       : null;
-  const customer = await Customer.findById(id).populate(
-    "userId",
-    "firstName lastName email phoneNumber status",
-  );
+  const customer = await populateCustomerGeography(
+    Customer.findById(id).populate(
+      "userId",
+      "firstName lastName email phoneNumber status",
+    ),
+  ).populate("districtIds", "districtName");
 
   if (!customer || customer.isDeleted) {
     throw new ApiError(404, "Customer not found");
@@ -488,7 +874,7 @@ export const getCustomerById = asyncHandler(async (req, res) => {
             { bankCode: customer.bankName },
             { bankName: customer.bankName },
           ],
-        }).select("bankName")
+        }).select("bankName bankCode isActive")
       : null,
   ]);
   const customerData =
@@ -500,13 +886,19 @@ export const getCustomerById = asyncHandler(async (req, res) => {
       districts.set(String(district._id), district);
     }
   });
-  const customerResponse = {
+  const customerResponse = withLegacyCustomerGeography({
     ...customerData,
-    bankName: bank?.bankName ?? customer.bankName,
+    bankId: customerData.bankId ?? bank ?? null,
+    bankName:
+      bank?.bankName ??
+      (typeof customerData.bankId === "object"
+        ? customerData.bankId?.bankName
+        : null) ??
+      customer.bankName,
     atmIds: assignedATMs,
     linkedATMCount: assignedATMs.length,
-    districtIds: [...districts.values()],
-  };
+    atmDistrictIds: [...districts.values()],
+  });
 
   return res
     .status(200)
@@ -561,6 +953,9 @@ export const updateCustomer = asyncHandler(async (req, res) => {
         "customerName",
         "customerPhone",
         "bankName",
+        "bankId",
+        "regionId",
+        "districtId",
         "districtIds",
         "isActive",
       ]
@@ -573,19 +968,53 @@ export const updateCustomer = asyncHandler(async (req, res) => {
     }
   });
 
+  const geographyFields = [
+    "bankId",
+    "regionId",
+    "districtId",
+    "regionIds",
+    "serviceDistrictIds",
+  ];
+  const hasGeographyUpdate = geographyFields.some((field) =>
+    hasOwn(req.body, field),
+  );
+  if (isAdmin && hasGeographyUpdate) {
+    Object.assign(
+      updates,
+      await validateCustomerGeographyUpdate(customer, req.body),
+    );
+  } else if (isAdmin && req.body.bankName !== undefined) {
+    Object.assign(
+      updates,
+      await resolveLegacyBankNameUpdate(customer, req.body.bankName),
+    );
+  }
+
   updates.updatedBy = req.user._id;
 
   const updatedCustomer = await populateCustomerATMs(
-    Customer.findByIdAndUpdate(id, updates, {
-      new: true,
-      runValidators: true,
-    }).populate("userId", "firstName lastName email phoneNumber status"),
+    populateCustomerGeography(
+      Customer.findByIdAndUpdate(id, updates, {
+        new: true,
+        runValidators: true,
+      })
+        .populate("userId", "firstName lastName email phoneNumber status")
+        .populate("districtIds", "districtName"),
+    ),
   );
+  const updatedCustomerData =
+    typeof updatedCustomer.toObject === "function"
+      ? updatedCustomer.toObject()
+      : updatedCustomer;
 
   return res
     .status(200)
     .json(
-      new ApiResponse(200, updatedCustomer, "Customer updated successfully"),
+      new ApiResponse(
+        200,
+        withLegacyCustomerGeography(updatedCustomerData),
+        "Customer updated successfully",
+      ),
     );
 });
 

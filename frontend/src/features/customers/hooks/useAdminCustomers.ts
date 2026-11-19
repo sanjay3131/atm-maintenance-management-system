@@ -31,6 +31,8 @@ export const useUpdateCustomer = () => {
         queryClient.invalidateQueries({
           queryKey: [...CUSTOMER_DETAIL_QUERY_KEY, variables.id],
         }),
+        queryClient.invalidateQueries({ queryKey: ["region-customers"] }),
+        queryClient.invalidateQueries({ queryKey: ["district-customers"] }),
       ]);
     },
   });

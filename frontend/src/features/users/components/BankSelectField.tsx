@@ -23,11 +23,10 @@ export default function BankSelectField({
   return (
     <div>
       <label htmlFor={id} className="mb-1 block text-sm font-medium">
-        Bank Name
+        Bank Name (optional)
       </label>
       <select
         id={id}
-        required
         value={value}
         onChange={(event) => onChange(event.target.value)}
         disabled={isLoading || isError || banks.length === 0}
@@ -57,7 +56,7 @@ export default function BankSelectField({
         </div>
       ) : banks.length === 0 && !isLoading ? (
         <p className="mt-1 text-xs text-muted-foreground">
-          Add an active bank before creating a customer.
+          You can create the customer now and assign a bank later.
         </p>
       ) : null}
     </div>

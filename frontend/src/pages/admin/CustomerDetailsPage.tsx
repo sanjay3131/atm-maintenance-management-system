@@ -61,6 +61,18 @@ function getRelatedName(value: unknown, field: string) {
   return typeof displayValue === "string" && displayValue ? displayValue : "—";
 }
 
+function getReferenceNames(values: unknown[], field: string) {
+  return values
+    .map((value) => {
+      if (typeof value === "string") return value;
+      if (typeof value !== "object" || value === null) return "";
+      const name = (value as Record<string, unknown>)[field];
+      return typeof name === "string" ? name : "";
+    })
+    .filter(Boolean)
+    .join(", ");
+}
+
 function getATMFromJob(job: Job): JobATM | null {
   return job.atmId && typeof job.atmId !== "string" ? job.atmId : null;
 }
@@ -336,6 +348,16 @@ export default function CustomerDetailsPage() {
     .map((district) => district.districtName)
     .filter(Boolean)
     .join(", ");
+  const regionNames = getReferenceNames(
+    customer.regionIds ??
+      (customer.regionId ? [customer.regionId] : []),
+    "name",
+  );
+  const serviceDistrictNames = getReferenceNames(
+    customer.serviceDistrictIds ??
+      (customer.districtId ? [customer.districtId] : []),
+    "districtName",
+  );
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
@@ -435,7 +457,15 @@ export default function CustomerDetailsPage() {
                 value={formatValue(customer.customerPhone)}
               />
               <DetailRow label="Bank" value={formatValue(customer.bankName)} />
-              <DetailRow label="Districts" value={formatValue(districtNames)} />
+              <DetailRow label="Regions" value={formatValue(regionNames)} />
+              <DetailRow
+                label="Service districts"
+                value={formatValue(serviceDistrictNames)}
+              />
+              <DetailRow
+                label="ATM eligibility districts"
+                value={formatValue(districtNames)}
+              />
               <DetailRow
                 label="Status"
                 value={customer.isActive ? "Active" : "Inactive"}

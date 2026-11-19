@@ -64,6 +64,36 @@ const customerSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    bankId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Bank",
+    },
+    regionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Region",
+    },
+    districtId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "District",
+    },
+    regionIds: {
+      type: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Region",
+        },
+      ],
+      default: undefined,
+    },
+    serviceDistrictIds: {
+      type: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "District",
+        },
+      ],
+      default: undefined,
+    },
 
     // Which ATMs does this customer own?
     atmIds: [

@@ -134,12 +134,7 @@ export default function CustomerDetailsStep({
         </div>
 
         <div>
-          <input
-            type="hidden"
-            {...register("bankName", {
-              required: "Bank name is required",
-            })}
-          />
+          <input type="hidden" {...register("bankName")} />
           <BankSelectField
             id="customer-details-bank"
             value={watch("bankName")}
@@ -147,16 +142,11 @@ export default function CustomerDetailsStep({
             isLoading={isBanksLoading}
             isError={isBanksError}
             onChange={(value) => {
-              setValue("bankName", value, { shouldValidate: true });
+              setValue("bankName", value);
               onFieldChange("bankName", value);
             }}
             onRetry={onRetryBanks}
           />
-          {errors.bankName && (
-            <p className="mt-1 text-sm text-red-500">
-              {errors.bankName.message}
-            </p>
-          )}
         </div>
       </div>
 

@@ -76,7 +76,7 @@ test("invalidates location request and task families without carrying coordinate
   ]);
 });
 
-test("ATM-scoped request reopening does not invalidate a request detail", async () => {
+test("ATM-scoped request reopening refreshes employee request history", async () => {
   const client = queryClient();
   await invalidateRealtimeEvent(
     client,
@@ -90,6 +90,7 @@ test("ATM-scoped request reopening does not invalidate a request detail", async 
 
   assert.deepEqual(client.calls, [
     ["atm-location-requests"],
+    ["my-atm-location-requests"],
     ["atms"],
     ["atm", "atm-1"],
   ]);

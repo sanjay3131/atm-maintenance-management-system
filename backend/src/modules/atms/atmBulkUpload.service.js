@@ -19,6 +19,8 @@ const MAX_ARCHIVE_EXPANDED_BYTES = 20 * 1024 * 1024;
 const MAX_COMPRESSION_RATIO = 200;
 const MAX_WORKSHEET_ROWS = 10_000;
 const MAX_WORKSHEET_COLUMNS = 10;
+const MAX_INSTRUCTIONS_ROWS = 14;
+const MAX_INSTRUCTIONS_COLUMNS = 26;
 const MAX_WORKSHEET_CELLS = 12_000;
 const MAX_SHARED_STRINGS = 12_000;
 const XLSX_SIGNATURE = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
@@ -29,6 +31,7 @@ const REQUIRED_ARCHIVE_ENTRIES = [
   "xl/_rels/workbook.xml.rels",
 ];
 const WORKSHEET_NAME = "ATM Upload";
+const INSTRUCTIONS_WORKSHEET_NAME = "Instructions";
 const WORKSHEET_HEADERS = [
   "S.No",
   "ATM ID",
@@ -120,15 +123,166 @@ const columnNumber = (letters) => {
   return number;
 };
 
-const validateWorksheetXml = (name, xml) => {
+const decodeXmlAttribute = (value) =>
+  value.replace(/&([^;]+);/g, (_match, entity) => {
+    const namedEntities = {
+      amp: "&",
+      apos: "'",
+      gt: ">",
+      lt: "<",
+      quot: '"',
+    };
+    if (Object.hasOwn(namedEntities, entity)) return namedEntities[entity];
+
+    const numericEntity = entity.match(/^#(?:x([0-9a-f]+)|([0-9]+))$/i);
+    if (numericEntity) {
+      const codePoint = Number.parseInt(
+        numericEntity[1] ?? numericEntity[2],
+        numericEntity[1] ? 16 : 10,
+      );
+      if (
+        Number.isInteger(codePoint) &&
+        codePoint >= 0 &&
+        codePoint <= 0x10ffff &&
+        !(codePoint >= 0xd800 && codePoint <= 0xdfff)
+      ) {
+        return String.fromCodePoint(codePoint);
+      }
+    }
+
+    throw invalidWorkbook("The XLSX workbook relationships are malformed.");
+  });
+
+const xmlElementAttributes = (xml, elementName) => {
+  const content = xml
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "");
+  const elementPattern = new RegExp(
+    `<(?:(?:[A-Za-z_][\\w.-]*):)?${elementName}\\b((?:"[^"]*"|'[^']*'|[^'">])*)>`,
+    "g",
+  );
+  const attributes = [];
+
+  for (const element of content.matchAll(elementPattern)) {
+    const parsed = new Map();
+    const attributePattern = /([A-Za-z_][\w.:-]*)\s*=\s*(["'])(.*?)\2/g;
+    for (const attribute of element[1].matchAll(attributePattern)) {
+      if (parsed.has(attribute[1])) {
+        throw invalidWorkbook("The XLSX workbook relationships are malformed.");
+      }
+      parsed.set(attribute[1], decodeXmlAttribute(attribute[3]));
+    }
+    attributes.push(parsed);
+  }
+
+  return attributes;
+};
+
+const worksheetEntryPath = (target) => {
+  if (
+    typeof target !== "string" ||
+    !target ||
+    target.includes("\\") ||
+    target.includes("?") ||
+    target.includes("#") ||
+    target.startsWith("//") ||
+    /^[a-z][a-z\d+.-]*:/i.test(target)
+  ) {
+    throw invalidWorkbook("The XLSX workbook relationships are malformed.");
+  }
+
+  try {
+    const resolved = new URL(target, "https://xlsx.invalid/xl/workbook.xml");
+    const entryPath = decodeURIComponent(resolved.pathname.slice(1));
+    if (
+      resolved.origin !== "https://xlsx.invalid" ||
+      !/^xl\/worksheets\/sheet\d+\.xml$/.test(entryPath)
+    ) {
+      throw invalidWorkbook("The XLSX workbook relationships are malformed.");
+    }
+    return entryPath;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw invalidWorkbook("The XLSX workbook relationships are malformed.");
+  }
+};
+
+const mapWorksheetEntries = (workbookXml, relationshipsXml, worksheetXmlEntries) => {
+  const expectedNames = [WORKSHEET_NAME, INSTRUCTIONS_WORKSHEET_NAME];
+  const sheets = xmlElementAttributes(workbookXml, "sheet");
+  if (
+    sheets.length !== expectedNames.length ||
+    sheets.some(
+      (sheet, index) =>
+        sheet.get("name") !== expectedNames[index] || !sheet.get("r:id"),
+    )
+  ) {
+    throw invalidWorkbook(
+      'The workbook must contain "ATM Upload" followed by "Instructions".',
+    );
+  }
+
+  const relationships = new Map();
+  for (const relationship of xmlElementAttributes(
+    relationshipsXml,
+    "Relationship",
+  )) {
+    const id = relationship.get("Id");
+    if (!id || relationships.has(id)) {
+      throw invalidWorkbook("The XLSX workbook relationships are malformed.");
+    }
+    relationships.set(id, relationship);
+  }
+
+  const worksheetLimits = new Map();
+  for (const [index, sheet] of sheets.entries()) {
+    const relationship = relationships.get(sheet.get("r:id"));
+    if (
+      !relationship ||
+      !relationship.get("Type")?.endsWith("/worksheet") ||
+      (relationship.has("TargetMode") &&
+        relationship.get("TargetMode") !== "Internal")
+    ) {
+      throw invalidWorkbook("The XLSX workbook relationships are malformed.");
+    }
+
+    const entryPath = worksheetEntryPath(relationship.get("Target"));
+    if (
+      !worksheetXmlEntries.has(entryPath) ||
+      worksheetLimits.has(entryPath)
+    ) {
+      throw invalidWorkbook("The XLSX workbook relationships are malformed.");
+    }
+
+    worksheetLimits.set(entryPath, {
+      maxRows:
+        expectedNames[index] === WORKSHEET_NAME
+          ? MAX_WORKSHEET_ROWS
+          : MAX_INSTRUCTIONS_ROWS,
+      maxColumns:
+        expectedNames[index] === WORKSHEET_NAME
+          ? MAX_WORKSHEET_COLUMNS
+          : MAX_INSTRUCTIONS_COLUMNS,
+    });
+  }
+
+  if (worksheetLimits.size !== worksheetXmlEntries.size) {
+    throw invalidWorkbook(
+      'The workbook must contain "ATM Upload" followed by "Instructions".',
+    );
+  }
+  return worksheetLimits;
+};
+
+const validateWorksheetXml = (xml, maxRows, maxColumns) => {
   const dimension = xml.match(/<dimension\b[^>]*\bref="([^"]+)"/i);
   if (dimension) {
     for (const cellReference of dimension[1].split(":")) {
       const match = cellReference.match(/^([A-Z]+)(\d+)$/i);
       if (
         !match ||
-        columnNumber(match[1]) > MAX_WORKSHEET_COLUMNS ||
-        Number(match[2]) > MAX_WORKSHEET_ROWS
+        columnNumber(match[1]) > maxColumns ||
+        Number(match[2]) > maxRows
       ) {
         throw exceededLimit("The worksheet dimensions exceed the supported limits.");
       }
@@ -136,10 +290,16 @@ const validateWorksheetXml = (name, xml) => {
   }
 
   let rowCount = 0;
-  for (const match of xml.matchAll(/<row\b([^>]*)>/gi)) {
+  let previousRowNumber = 0;
+  const rowPattern = /<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/gi;
+  for (const match of xml.matchAll(rowPattern)) {
     rowCount += 1;
-    const rowNumber = match[1].match(/\br="(\d+)"/i);
-    if (rowNumber && Number(rowNumber[1]) > MAX_WORKSHEET_ROWS) {
+    const rowNumberAttribute = match[1].match(/\br="(\d+)"/i);
+    const rowNumber = rowNumberAttribute
+      ? Number(rowNumberAttribute[1])
+      : previousRowNumber + 1;
+    previousRowNumber = rowNumber;
+    if (/<c\b/i.test(match[2] ?? "") && rowNumber > maxRows) {
       throw exceededLimit("The worksheet dimensions exceed the supported limits.");
     }
   }
@@ -153,21 +313,14 @@ const validateWorksheetXml = (name, xml) => {
     const cellReference = match[1].match(/\br="([A-Z]+)(\d+)"/i);
     if (
       cellReference &&
-      (columnNumber(cellReference[1]) > MAX_WORKSHEET_COLUMNS ||
-        Number(cellReference[2]) > MAX_WORKSHEET_ROWS)
+      (columnNumber(cellReference[1]) > maxColumns ||
+        Number(cellReference[2]) > maxRows)
     ) {
       throw exceededLimit("The worksheet dimensions exceed the supported limits.");
     }
   }
   if (cellCount > MAX_WORKSHEET_CELLS) {
     throw exceededLimit("The worksheet contains too many cells.");
-  }
-
-  if (name === "xl/sharedStrings.xml") {
-    const sharedStringCount = [...xml.matchAll(/<si(?:\s|>)/gi)].length;
-    if (sharedStringCount > MAX_SHARED_STRINGS) {
-      throw exceededLimit("The workbook contains too many shared strings.");
-    }
   }
 };
 
@@ -190,11 +343,14 @@ const inspectXmlEntry = (name, data) => {
     throw invalidWorkbook("Macro-enabled workbooks are not supported.");
   }
 
-  if (name.startsWith("xl/worksheets/") && name.endsWith(".xml")) {
-    validateWorksheetXml(name, xml);
-  } else if (name === "xl/sharedStrings.xml") {
-    validateWorksheetXml(name, xml);
+  if (name === "xl/sharedStrings.xml") {
+    const sharedStringCount = [...xml.matchAll(/<si(?:\s|>)/gi)].length;
+    if (sharedStringCount > MAX_SHARED_STRINGS) {
+      throw exceededLimit("The workbook contains too many shared strings.");
+    }
   }
+
+  return xml;
 };
 
 const preflightXlsxArchive = (buffer) => {
@@ -220,6 +376,9 @@ const preflightXlsxArchive = (buffer) => {
   }
 
   const entryNames = new Set();
+  const worksheetXmlEntries = new Map();
+  let workbookXml;
+  let relationshipsXml;
   const extents = [];
   let declaredExpandedBytes = 0;
   let actualExpandedBytes = 0;
@@ -335,7 +494,14 @@ const preflightXlsxArchive = (buffer) => {
     }
 
     if (name.endsWith(".xml") || name.endsWith(".rels")) {
-      inspectXmlEntry(name, boundedData);
+      const xml = inspectXmlEntry(name, boundedData);
+      if (/^xl\/worksheets\/.*\.xml$/.test(name)) {
+        worksheetXmlEntries.set(name, xml);
+      } else if (name === "xl/workbook.xml") {
+        workbookXml = xml;
+      } else if (name === "xl/_rels/workbook.xml.rels") {
+        relationshipsXml = xml;
+      }
     }
   }
 
@@ -351,11 +517,24 @@ const preflightXlsxArchive = (buffer) => {
       throw invalidWorkbook("The uploaded file is not a supported XLSX workbook.");
     }
   }
-  if (![...entryNames].some((name) => /^xl\/worksheets\/sheet\d+\.xml$/.test(name))) {
+  if (worksheetXmlEntries.size === 0) {
     throw invalidWorkbook("The XLSX archive does not contain a worksheet.");
   }
   if ([...entryNames].some((name) => name.endsWith(".bin"))) {
     throw invalidWorkbook("Binary workbook content is not supported.");
+  }
+
+  const worksheetLimits = mapWorksheetEntries(
+    workbookXml,
+    relationshipsXml,
+    worksheetXmlEntries,
+  );
+  for (const [entryPath, limits] of worksheetLimits) {
+    validateWorksheetXml(
+      worksheetXmlEntries.get(entryPath),
+      limits.maxRows,
+      limits.maxColumns,
+    );
   }
 };
 
@@ -500,7 +679,7 @@ const loadWorkbook = async (buffer) => {
   if (
     sheetNames.length !== 2 ||
     sheetNames[0] !== WORKSHEET_NAME ||
-    sheetNames[1] !== "Instructions"
+    sheetNames[1] !== INSTRUCTIONS_WORKSHEET_NAME
   ) {
     throw invalidWorkbook(
       'The workbook must contain "ATM Upload" followed by "Instructions".',
@@ -560,7 +739,7 @@ export const resolveAtmBulkUploadRows = async (inputRows, { session } = {}) => {
             isActive: true,
             isDeleted: false,
           },
-          "_id customerCode bankName districtIds",
+          "_id customerCode bankName serviceDistrictIds",
           session,
         )
       : [];
@@ -742,11 +921,13 @@ export const resolveAtmBulkUploadRows = async (inputRows, { session } = {}) => {
       }
     }
     if (customer && district) {
-      const customerDistrictIds = Array.isArray(customer.districtIds)
-        ? customer.districtIds
+      const customerServiceDistrictIds = Array.isArray(
+        customer.serviceDistrictIds,
+      )
+        ? customer.serviceDistrictIds
         : [];
       if (
-        !customerDistrictIds.some(
+        !customerServiceDistrictIds.some(
           (districtId) =>
             normalizedId(districtId) === normalizedId(district._id),
         )

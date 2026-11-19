@@ -8,6 +8,8 @@ import Item from "../src/modules/items/item.model.js";
 import Job from "../src/modules/jobs/jobs.model.js";
 import JobHistory from "../src/modules/jobs/jobHistory.model.js";
 import JobMaterialUsage from "../src/modules/jobs/jobMaterialUsage.model.js";
+import Notification from "../src/modules/notification/notification.model.js";
+import User from "../src/modules/users/user.model.js";
 import {
   createJobMaterialUsage,
   deleteJobMaterialUsage,
@@ -394,6 +396,50 @@ test("assigned employee can record material usage using server-derived immutable
     assert.equal(session.ended, true);
     assert.equal(job.materialUsageRevision, 1);
   });
+});
+
+test("employee material usage additions and removals do not persist Admin notifications", async () => {
+  let notificationWrites = 0;
+  const emptyQuery = {
+    select() {
+      return this;
+    },
+    lean: async () => [],
+  };
+
+  await withOverrides(
+    [
+      [
+        Notification,
+        "create",
+        async () => {
+          notificationWrites += 1;
+        },
+      ],
+      [Employee, "find", () => emptyQuery],
+      [User, "find", () => emptyQuery],
+    ],
+    async () => {
+      await withCreateMocks({}, async () => {
+        const result = await invoke(createJobMaterialUsage, request());
+        assert.equal(result.status, 201);
+      });
+      await withDeleteMocks(
+        {
+          usageEntries: [makeUsage({ _id: usageId, jobId })],
+        },
+        async () => {
+          const result = await invoke(deleteJobMaterialUsage, {
+            ...request(),
+            params: { id: jobId, usageId },
+          });
+          assert.equal(result.status, 200);
+        },
+      );
+    },
+  );
+
+  assert.equal(notificationWrites, 0);
 });
 
 test("legacy active Jobs with missing or null isDeleted support material mutations", async () => {

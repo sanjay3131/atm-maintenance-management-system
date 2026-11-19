@@ -1,15 +1,27 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { MapPin, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { useATMLocationRequests } from "@/features/atms/hooks/useATMLocationRequests";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  useATMLocationRequests,
+  useRejectATMLocationRequest,
+} from "@/features/atms/hooks/useATMLocationRequests";
+import {
+  canDecideATMLocationRequest,
   formatATMLocationRequestStatus,
   getATMLocationRequestErrorMessage,
   getATMLocationRequestListState,
+  validateRejectionReason,
 } from "@/features/atms/atmLocationRequest.utils";
 import type {
   ATMLocationRequest,
@@ -87,6 +99,12 @@ export default function ATMLocationRequestsPage() {
     undefined,
     requestFilters,
   );
+  const rejectMutation = useRejectATMLocationRequest();
+  const [rejectionRequest, setRejectionRequest] =
+    useState<ATMLocationRequest | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [rejectionError, setRejectionError] = useState("");
+  const [confirmingRejection, setConfirmingRejection] = useState(false);
   const requests = requestQuery.data?.requests ?? [];
   const pagination = requestQuery.data?.pagination;
   const listState = getATMLocationRequestListState({
@@ -101,6 +119,55 @@ export default function ATMLocationRequestsPage() {
     setRegionId("");
     setEmployeeId("");
     setPage(1);
+  };
+  const closeRejectionDialog = () => {
+    if (rejectMutation.isPending) return;
+    setRejectionRequest(null);
+    setRejectionReason("");
+    setRejectionError("");
+    setConfirmingRejection(false);
+  };
+  const openRejectionDialog = (request: ATMLocationRequest) => {
+    if (!canDecideATMLocationRequest(request.status)) return;
+    setRejectionRequest(request);
+    setRejectionReason("");
+    setRejectionError("");
+    setConfirmingRejection(false);
+  };
+  const continueToRejectionConfirmation = () => {
+    const reasonError = validateRejectionReason(rejectionReason);
+    if (reasonError) {
+      setRejectionError(reasonError);
+      return;
+    }
+    setRejectionError("");
+    setConfirmingRejection(true);
+  };
+  const confirmRejection = async () => {
+    const request = rejectionRequest;
+    if (
+      !request ||
+      rejectMutation.isPending ||
+      !canDecideATMLocationRequest(request.status)
+    ) {
+      return;
+    }
+    const reasonError = validateRejectionReason(rejectionReason);
+    if (reasonError) {
+      setRejectionError(reasonError);
+      return;
+    }
+    setRejectionError("");
+    try {
+      await rejectMutation.mutateAsync({
+        requestId: request._id,
+        reason: rejectionReason.trim(),
+      });
+      closeRejectionDialog();
+      toast.success("Location request rejected.");
+    } catch (actionError) {
+      setRejectionError(getATMLocationRequestErrorMessage(actionError));
+    }
   };
 
   return (
@@ -364,12 +431,25 @@ export default function ATMLocationRequestsPage() {
                       </p>
                     )}
                   </div>
-                  <Link
-                    to={`/admin/location-requests/${request._id}`}
-                    className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/80 sm:w-auto"
-                  >
-                    Review details
-                  </Link>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Link
+                      to={`/admin/location-requests/${request._id}`}
+                      className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:bg-primary/80 sm:w-auto"
+                    >
+                      Review details
+                    </Link>
+                    {canDecideATMLocationRequest(request.status) && (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        className="min-h-11"
+                        disabled={rejectMutation.isPending}
+                        onClick={() => openRejectionDialog(request)}
+                      >
+                        Reject
+                      </Button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             );
@@ -404,6 +484,112 @@ export default function ATMLocationRequestsPage() {
           </div>
         </div>
       )}
+
+      <Dialog
+        open={rejectionRequest !== null}
+        onOpenChange={(open) => {
+          if (!open) closeRejectionDialog();
+        }}
+      >
+        <DialogContent>
+          <DialogTitle>
+            {confirmingRejection
+              ? "Confirm location request rejection?"
+              : "Reject location request"}
+          </DialogTitle>
+          <DialogDescription className="mt-2">
+            {confirmingRejection
+              ? "This proposal will be rejected and the reason will be recorded."
+              : "Enter a reason for rejecting this proposed ATM location."}
+          </DialogDescription>
+          {confirmingRejection ? (
+            <p className="mt-3 rounded-md bg-muted p-3 text-sm">
+              {rejectionReason.trim()}
+            </p>
+          ) : (
+            <div className="mt-4">
+              <label
+                htmlFor="location-request-list-rejection-reason"
+                className="mb-1 block text-sm font-medium"
+              >
+                Rejection reason
+              </label>
+              <textarea
+                id="location-request-list-rejection-reason"
+                value={rejectionReason}
+                onChange={(event) => setRejectionReason(event.target.value)}
+                maxLength={1000}
+                rows={3}
+                disabled={rejectMutation.isPending}
+                placeholder="Required when rejecting"
+                className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                {rejectionReason.length}/1000 characters
+              </p>
+            </div>
+          )}
+          {rejectionError && (
+            <p className="mt-3 text-sm text-destructive" role="alert">
+              {rejectionError}
+            </p>
+          )}
+          <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            {confirmingRejection ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={rejectMutation.isPending}
+                  onClick={() => {
+                    setConfirmingRejection(false);
+                    setRejectionError("");
+                  }}
+                >
+                  Back
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={
+                    rejectMutation.isPending ||
+                    !rejectionRequest ||
+                    !canDecideATMLocationRequest(rejectionRequest.status)
+                  }
+                  onClick={() => void confirmRejection()}
+                >
+                  {rejectMutation.isPending
+                    ? "Rejecting..."
+                    : "Confirm rejection"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={rejectMutation.isPending}
+                  onClick={closeRejectionDialog}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={
+                    rejectMutation.isPending ||
+                    !rejectionRequest ||
+                    !canDecideATMLocationRequest(rejectionRequest.status)
+                  }
+                  onClick={continueToRejectionConfirmation}
+                >
+                  Continue
+                </Button>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

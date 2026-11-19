@@ -161,7 +161,7 @@ test("Customer detail derives assigned ATMs and districts from ATM.customer", as
       assert.equal(body.data.atmIds.length, 9);
       assert.equal(body.data.linkedATMCount, body.data.atmIds.length);
       assert.deepEqual(
-        body.data.districtIds.map(({ districtName }) => districtName),
+        body.data.atmDistrictIds.map(({ districtName }) => districtName),
         ["District A", "District B"],
       );
       assert.equal(body.data.bankName, "Test Bank");
@@ -171,10 +171,10 @@ test("Customer detail derives assigned ATMs and districts from ATM.customer", as
           { bankName: "TEST_BANK_001" },
         ],
       });
-      assert.equal(captures.bank.select, "bankName");
+      assert.equal(captures.bank.select, "bankName bankCode isActive");
       assert.equal(
         captures.atm.select,
-        "atmId locationName bankId districtId regionId address installationType status",
+        "atmId clientAtmId locationName bankId districtId regionId address installationType status",
       );
       assert.deepEqual(captures.atm.populates, [
         { path: "bankId", fields: "bankName" },
@@ -244,7 +244,14 @@ test("scoped paginated list includes customers with zero or multiple assigned AT
     });
 
     assert.equal(status, 200);
-    assert.deepEqual(body.data.customers, customers);
+    assert.deepEqual(
+      body.data.customers,
+      customers.map((customer) => ({
+        ...customer,
+        regionIds: [],
+        serviceDistrictIds: [],
+      })),
+    );
     assert.deepEqual(
       body.data.customers.map(({ linkedATMCount }) => linkedATMCount),
       [0, 3],
@@ -297,7 +304,9 @@ test("Customer status, search, geographic filters, summary, and pagination remai
     });
 
     assert.equal(status, 200);
-    assert.deepEqual(body.data.customers, [customer]);
+    assert.deepEqual(body.data.customers, [
+      { ...customer, regionIds: [], serviceDistrictIds: [] },
+    ]);
     assert.deepEqual(body.data.summary, {
       total: 3,
       active: 2,
@@ -693,6 +702,12 @@ test("Customer create and update schemas validate fields and ObjectIds without s
     bankName: "Example Bank",
     districtIds: [districtId],
   });
+  const validCreateWithoutBank = createCustomerSchema.safeParse({
+    firstName: "Example",
+    email: "example@example.com",
+    password: "password123",
+    phoneNumber: "1234567890",
+  });
   const invalidCreate = createCustomerSchema.safeParse({
     firstName: "Example",
     email: "example@example.com",
@@ -703,16 +718,27 @@ test("Customer create and update schemas validate fields and ObjectIds without s
   });
   const validUpdate = updateCustomerSchema.safeParse({
     customerName: "Example",
+    bankId: districtId,
+    regionId: null,
+    districtId: null,
+    regionIds: [districtId],
+    serviceDistrictIds: [],
     districtIds: [districtId],
     atmIds: ["attempted-direct-assignment"],
   });
   const invalidUpdate = updateCustomerSchema.safeParse({
     districtIds: ["not-an-object-id"],
   });
+  const duplicateGeographyUpdate = updateCustomerSchema.safeParse({
+    regionIds: [districtId, districtId.toUpperCase()],
+    serviceDistrictIds: [],
+  });
 
   assert.equal(validCreate.success, true);
+  assert.equal(validCreateWithoutBank.success, true);
   assert.equal(invalidCreate.success, false);
   assert.equal(validUpdate.success, true);
+  assert.equal(duplicateGeographyUpdate.success, false);
   if (validUpdate.success) {
     assert.deepEqual(validUpdate.data.atmIds, ["attempted-direct-assignment"]);
   }

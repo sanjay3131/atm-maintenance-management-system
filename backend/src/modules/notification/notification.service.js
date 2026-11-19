@@ -53,5 +53,53 @@ export const createNotification = async ({
   }
 };
 
+export const createWorkflowNotificationsSafely = async ({
+  resolveRecipients,
+  context,
+  title,
+  message,
+  data,
+  dedupeKey,
+}) => {
+  let recipients;
+  try {
+    recipients = await resolveRecipients();
+  } catch (error) {
+    console.error(
+      `Notification recipient lookup failed for ${context}:`,
+      error.message,
+    );
+    return;
+  }
+
+  const userIds = [
+    ...new Set(
+      (Array.isArray(recipients) ? recipients : [])
+        .map((userId) => String(userId ?? ""))
+        .filter(Boolean),
+    ),
+  ];
+
+  await Promise.all(
+    userIds.map(async (userId) => {
+      try {
+        await createNotification({
+          userId,
+          type: "system",
+          title,
+          message,
+          data,
+          dedupeKey,
+        });
+      } catch (error) {
+        console.error(
+          `Notification creation failed for ${context} recipient ${userId}:`,
+          error.message,
+        );
+      }
+    }),
+  );
+};
+
 export const countUnreadNotifications = (userId) =>
   Notification.countDocuments({ userId, isRead: false });

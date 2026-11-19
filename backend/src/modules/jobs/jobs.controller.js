@@ -35,12 +35,21 @@ import { withDistrictGeographyFence } from "../districts/districtGeography.servi
 import {
   publishDomainEventSafely,
 } from "../../realtime/domain-events.js";
-import { resolveJobRecipients } from "../../realtime/recipient-resolver.js";
+import {
+  resolveActiveNotificationAdminRecipients,
+  resolveAssignedJobEmployeeNotificationRecipients,
+  resolveJobRecipients,
+} from "../../realtime/recipient-resolver.js";
+import { createWorkflowNotificationsSafely } from "../notification/notification.service.js";
 
 // ============================================
 // HELPERS
 // ============================================
 const REQUIRED_PHOTOS_PER_TYPE = 3;
+
+const jobAdminNotificationText = {
+  completed: ["Job completed", "An employee completed a job."],
+};
 
 const publishJobUpdated = ({ job, action, previousEmployeeId } = {}) =>
   publishDomainEventSafely({
@@ -50,6 +59,33 @@ const publishJobUpdated = ({ job, action, previousEmployeeId } = {}) =>
     action,
     resolveRecipients: () =>
       resolveJobRecipients(job, { previousEmployeeId }),
+  });
+
+const notifyJobAdmins = ({ job, action, actorId, dedupeKey }) => {
+  const [title, message] = jobAdminNotificationText[action];
+  return createWorkflowNotificationsSafely({
+    resolveRecipients: () => resolveActiveNotificationAdminRecipients(actorId),
+    context: `job ${job._id} ${action}`,
+    title,
+    message,
+    data: { entityType: "job", jobId: String(job._id), action },
+    dedupeKey:
+      dedupeKey ?? `job:${job._id}:${action}:${job.updatedAt?.getTime?.() ?? ""}`,
+  });
+};
+
+const notifyAssignedJobEmployee = (job, action) =>
+  createWorkflowNotificationsSafely({
+    resolveRecipients: () =>
+      resolveAssignedJobEmployeeNotificationRecipients(job),
+    context: `job ${job._id} ${action}`,
+    title: action === "reassigned" ? "Job reassigned to you" : "Job assigned to you",
+    message:
+      action === "reassigned"
+        ? "A job has been reassigned to you."
+        : "A job has been assigned to you.",
+    data: { entityType: "job", jobId: String(job._id), action },
+    dedupeKey: `job:${job._id}:${action}:${job.assignedAt?.getTime?.() ?? ""}`,
   });
 
 const assertCleaningEvidence = async (job) => {
@@ -413,6 +449,7 @@ export const assignJob = asyncHandler(async (req, res) => {
     .populate("complaintId", "complaintNumber title");
 
   await publishJobUpdated({ job: populatedJob, action: "assigned" });
+  await notifyAssignedJobEmployee(populatedJob, "assigned");
 
   return res
     .status(200)
@@ -581,6 +618,12 @@ export const completeJob = asyncHandler(async (req, res) => {
     .populate("complaintId", "complaintNumber title");
 
   await publishJobUpdated({ job: populatedJob, action: "completed" });
+  await notifyJobAdmins({
+    job,
+    action: "completed",
+    actorId: req.user._id,
+    dedupeKey: `job:${job._id}:completed:${completedAt.getTime()}`,
+  });
 
   return res
     .status(200)
@@ -856,6 +899,7 @@ export const reassignJob = asyncHandler(async (req, res) => {
     action: "reassigned",
     previousEmployeeId: oldEmployeeId,
   });
+  await notifyAssignedJobEmployee(populatedJob, "reassigned");
 
   return res
     .status(200)

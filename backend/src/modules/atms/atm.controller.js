@@ -52,10 +52,14 @@ import {
 } from "../../utils/geographicQuery.js";
 import { publishDomainEventSafely } from "../../realtime/domain-events.js";
 import {
+  resolveActiveNotificationAdminRecipients,
   resolveATMRecipients,
+  resolveAssignedLocationTaskEmployeeNotificationRecipients,
+  resolveLocationRequestEmployeeNotificationRecipients,
   resolveLocationRequestRecipients,
   resolveLocationTaskRecipients,
 } from "../../realtime/recipient-resolver.js";
+import { createWorkflowNotificationsSafely } from "../notification/notification.service.js";
 
 const isClientAtmIdDuplicate = (error) =>
   error?.code === 11000 &&
@@ -69,6 +73,84 @@ const throwClientAtmIdDuplicateError = (error) => {
   if (!isClientAtmIdDuplicate(error)) throw error;
   throw new ApiError(409, "Client ATM ID already exists");
 };
+
+const notifyLocationRequestAdmins = (request, action, actorId) =>
+  createWorkflowNotificationsSafely({
+    resolveRecipients: () => resolveActiveNotificationAdminRecipients(actorId),
+    context: `ATM location request ${request._id} ${action}`,
+    title:
+      action === "submitted"
+        ? "ATM location request submitted"
+        : "ATM location request updated",
+    message:
+      action === "submitted"
+        ? "An employee submitted an ATM location proposal for review."
+        : `An employee ${action} an ATM location request.`,
+    data: {
+      entityType: "atm-location-request",
+      locationRequestId: String(request._id),
+      atmId: String(request.atmId?._id ?? request.atmId),
+      ...(request.locationTaskId
+        ? { locationTaskId: String(request.locationTaskId) }
+        : {}),
+      action,
+    },
+    dedupeKey: `atm-location-request:${request._id}:${action}`,
+  });
+
+const notifyLocationRequestEmployee = (request, action, actorId) =>
+  createWorkflowNotificationsSafely({
+    resolveRecipients: () =>
+      resolveLocationRequestEmployeeNotificationRecipients(request, actorId),
+    context: `ATM location request ${request._id} ${action}`,
+    title:
+      action === "approved"
+        ? "ATM location request approved"
+        : "ATM location request rejected",
+    message:
+      action === "approved"
+        ? "Your ATM location proposal was approved."
+        : "Your ATM location proposal was rejected.",
+    data: {
+      entityType: "atm-location-request",
+      locationRequestId: String(request._id),
+      atmId: String(request.atmId?._id ?? request.atmId),
+      action,
+    },
+    dedupeKey: `atm-location-request:${request._id}:${action}`,
+  });
+
+const locationTaskNotificationCopy = {
+  assigned: {
+    title: "ATM location task assigned to you",
+    message: "An ATM location task has been assigned to you.",
+  },
+  reassigned: {
+    title: "ATM location task reassigned to you",
+    message: "An ATM location task has been reassigned to you.",
+  },
+  reopened: {
+    title: "ATM location task reopened",
+    message: "A rejected ATM location task has been reopened and assigned to you.",
+  },
+};
+
+const notifyLocationTaskEmployee = (task, action) =>
+  createWorkflowNotificationsSafely({
+    resolveRecipients: () =>
+      resolveAssignedLocationTaskEmployeeNotificationRecipients(task),
+    context: `ATM location task ${task._id} ${action}`,
+    ...locationTaskNotificationCopy[action],
+    data: {
+      entityType: "atm-location-task",
+      taskId: String(task._id),
+      atmId: String(task.atmId?._id ?? task.atmId),
+      action,
+    },
+    dedupeKey: `atm-location-task:${task._id}:${action}:${new Date(
+      task.assignmentHistory?.at(-1)?.assignedAt ?? "",
+    ).getTime() || ""}`,
+  });
 
 export const publishLocationRequestUpdated = async (
   request,
@@ -919,6 +1001,9 @@ export const submitATMLocationRequest = asyncHandler(async (req, res) => {
       resolveRecipients: () => resolveLocationRequestRecipients(request),
     });
   }
+  if (req.user.userType === "employee") {
+    await notifyLocationRequestAdmins(request, "submitted", req.user._id);
+  }
   return res
     .status(201)
     .json(new ApiResponse(201, request, "ATM location request submitted"));
@@ -950,6 +1035,7 @@ export const approveATMLocationRequest = asyncHandler(async (req, res) => {
     includeLinkedTask: true,
   });
   await publishLocationRequestUpdated(request, "approved", { linkedTask });
+  await notifyLocationRequestEmployee(request, "approved", req.user._id);
   return res
     .status(200)
     .json(new ApiResponse(200, request, "ATM location request approved"));
@@ -963,6 +1049,7 @@ export const rejectATMLocationRequest = asyncHandler(async (req, res) => {
     includeLinkedTask: true,
   });
   await publishLocationRequestUpdated(request, "rejected", { linkedTask });
+  await notifyLocationRequestEmployee(request, "rejected", req.user._id);
   return res
     .status(200)
     .json(new ApiResponse(200, request, "ATM location request rejected"));
@@ -985,8 +1072,8 @@ export const createATMLocationTasks = asyncHandler(async (req, res) => {
     adminId: req.user._id,
   });
   await Promise.all(
-    tasks.map((task) =>
-      publishDomainEventSafely({
+    tasks.map(async (task) => {
+      await publishDomainEventSafely({
         event: "domain:atm-location-task:updated",
         entityType: "atm-location-task",
         entityId: task._id,
@@ -998,8 +1085,9 @@ export const createATMLocationTasks = asyncHandler(async (req, res) => {
             : {}),
         },
         resolveRecipients: () => resolveLocationTaskRecipients(task),
-      }),
-    ),
+      });
+      await notifyLocationTaskEmployee(task, "assigned");
+    }),
   );
   return res
     .status(201)
@@ -1108,6 +1196,7 @@ export const reassignATMLocationTask = asyncHandler(async (req, res) => {
     },
     resolveRecipients: () => resolveLocationTaskRecipients(task),
   });
+  await notifyLocationTaskEmployee(task, "reassigned");
   return res
     .status(200)
     .json(new ApiResponse(200, task, "ATM location task reassigned"));
@@ -1133,6 +1222,7 @@ export const reopenATMLocationTask = asyncHandler(async (req, res) => {
     },
     resolveRecipients: () => resolveLocationTaskRecipients(task),
   });
+  await notifyLocationTaskEmployee(task, "reopened");
   return res
     .status(200)
     .json(new ApiResponse(200, task, "Rejected ATM location task reopened"));

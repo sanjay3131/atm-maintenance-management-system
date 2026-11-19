@@ -264,7 +264,7 @@ export default function EmployeeATMAssignmentEditor({
             No ATMs are currently assigned.
           </p>
         ) : (
-          <ul className="flex flex-wrap gap-2">
+          <ul className="flex flex-wrap gap-2 ">
             {assignedATMLabels.map(({ atmId, label, isLoading }) => {
               const removalStaged = !desiredAtmIds.has(atmId);
 

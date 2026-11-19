@@ -80,6 +80,7 @@ const defaultFixtures = () => ({
       customerCode: "CUS-000001",
       bankName: "Example Bank",
       districtIds: [DISTRICT_ID],
+      serviceDistrictIds: [DISTRICT_ID],
     },
   ],
   Bank: [{ _id: BANK_ID, bankName: "Example Bank", bankCode: "BANK1" }],
@@ -665,16 +666,16 @@ test("checks existing ATM IDs without excluding soft-deleted records", async (t)
   assert.equal(Object.hasOwn(existingAtmQuery.filter, "isDeleted"), false);
 });
 
-test("accepts a Customer with matching Bank and District assignments", async (t) => {
+test("accepts a Customer whose service districts include the selected District", async (t) => {
   const result = await previewWithFixtures(t, defaultFixtures());
 
   assert.equal(result.rows[0].status, "valid");
   assert.deepEqual(result.rows[0].errors, []);
 });
 
-test("rejects a Customer assigned to a different District", async (t) => {
+test("rejects a District absent from serviceDistrictIds even when districtIds contains it", async (t) => {
   const fixtures = defaultFixtures();
-  fixtures.Customer[0].districtIds = [OTHER_DISTRICT_ID];
+  fixtures.Customer[0].serviceDistrictIds = [OTHER_DISTRICT_ID];
 
   const result = await previewWithFixtures(t, fixtures);
 
@@ -688,9 +689,9 @@ test("rejects a Customer assigned to a different District", async (t) => {
   );
 });
 
-test("rejects a Customer with no configured District assignments", async (t) => {
+test("rejects an empty serviceDistrictIds list", async (t) => {
   const fixtures = defaultFixtures();
-  fixtures.Customer[0].districtIds = [];
+  fixtures.Customer[0].serviceDistrictIds = [];
 
   const result = await previewWithFixtures(t, fixtures);
 
@@ -701,6 +702,53 @@ test("rejects a Customer with no configured District assignments", async (t) => 
         error.field === "Customer Code" &&
         /not assigned to the selected district/.test(error.message),
     ),
+  );
+});
+
+test("rejects legacy Customers without serviceDistrictIds instead of using districtIds", async (t) => {
+  const fixtures = defaultFixtures();
+  delete fixtures.Customer[0].serviceDistrictIds;
+
+  const result = await previewWithFixtures(t, fixtures);
+
+  assert.equal(result.rows[0].status, "invalid");
+  assert.ok(
+    result.rows[0].errors.some(
+      (error) =>
+        error.field === "Customer Code" &&
+        /not assigned to the selected district/.test(error.message),
+    ),
+  );
+});
+
+test("accepts each selected District when both are in serviceDistrictIds", async (t) => {
+  const fixtures = defaultFixtures();
+  fixtures.Customer[0].serviceDistrictIds = [
+    DISTRICT_ID,
+    OTHER_DISTRICT_ID,
+  ];
+  fixtures.District.push({
+    _id: OTHER_DISTRICT_ID,
+    districtNameNormalized: "other district",
+    bankId: BANK_ID,
+    regionId: REGION_ID,
+    isActive: true,
+    geographyStatus: "MAPPED",
+  });
+  const otherDistrictRow = validRow();
+  otherDistrictRow[1] = "00001235";
+  otherDistrictRow[9] = "Other District";
+  mockReadModels(t, fixtures);
+
+  const result = await previewAtmBulkUpload(
+    await makeWorkbookBuffer({ rows: [validRow(), otherDistrictRow] }),
+  );
+
+  assert.equal(result.validCount, 2);
+  assert.equal(result.invalidCount, 0);
+  assert.deepEqual(
+    result.rows.map((row) => row.status),
+    ["valid", "valid"],
   );
 });
 
