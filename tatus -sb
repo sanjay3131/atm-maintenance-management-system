@@ -1,0 +1,5 @@
+[33m959671f[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m Merge ATM feature development into main
+[33me0e1ffe[m[33m ([m[1;31morigin/chore/fresh-database-bootstrap-readiness[m[33m, [m[1;32mchore/fresh-database-bootstrap-readiness[m[33m)[m job photos now can be download in zip/pdf
+[33m35622b1[m bugs in workflow and socket.io connection are fixed, job notification is done
+[33m9de87b1[m  customer code is added in customer detail page
+[33mf68a576[m bulk atm assignment for employee is done
