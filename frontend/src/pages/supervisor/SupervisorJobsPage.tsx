@@ -10,6 +10,7 @@ import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { SkeletonBlock } from "@/features/dashboard/components/DashboardSkeleton";
 import { useSupervisorJobs } from "@/features/supervisor/hooks/useSupervisorJobs";
 import {
@@ -105,7 +106,7 @@ function JobCard({ job }: { job: SupervisorEmployeeJob }) {
           </p>
           <p className="truncate">
             <span className="font-medium text-slate-800">ATM: </span>
-            {job.atm?.atmId || job.atm?.locationName || "Not available"}
+            {getATMDisplayId(job.atm) || job.atm?.locationName || "Not available"}
           </p>
           <p>
             <span className="font-medium text-slate-800">Type: </span>

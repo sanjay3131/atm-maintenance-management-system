@@ -10,6 +10,8 @@ import {
   withEmployeeAssignmentTransaction,
 } from "../employees/employeeAssignment.service.js";
 import Customer from "../customers/customer.model.js";
+import { generateCustomerCode } from "../customers/customerCode.service.js";
+import { mapCustomerCodeError } from "../customers/customerCode.errors.js";
 import Bank from "../banks/bank.model.js";
 import { generateEmployeeCode } from "../employees/employee.utils.js";
 import { resolveSupervisorId } from "../employees/employeeSupervisor.service.js";
@@ -535,9 +537,16 @@ const createUserForRole = async (
     supervisorId = await resolveSupervisorId(employee.supervisorId);
   }
 
-  if (role === "customer" && requireActiveCustomerBank) {
+  if (
+    role === "customer" &&
+    requireActiveCustomerBank &&
+    customer.bankName?.trim()
+  ) {
     const bank = await Bank.findOne({
-      bankName: customer.bankName,
+      $or: [
+        { bankName: customer.bankName.trim() },
+        { bankCode: customer.bankName.trim() },
+      ],
       isActive: true,
     });
     if (!bank) {
@@ -560,6 +569,14 @@ const createUserForRole = async (
   }
 
   const hashedPassword = await hashPassword(userData.password);
+  let customerCode;
+  if (role === "customer") {
+    try {
+      customerCode = await generateCustomerCode();
+    } catch (error) {
+      throw mapCustomerCodeError(error);
+    }
+  }
 
   const user = await User.create({
     firstName: userData.firstName,
@@ -613,10 +630,11 @@ const createUserForRole = async (
     if (role === "customer") {
       await Customer.create({
         userId: user._id,
+        customerCode,
         customerName: customer.customerName,
         customerEmail: customer.customerEmail,
         customerPhone: customer.customerPhone,
-        bankName: customer.bankName,
+        bankName: customer.bankName ?? "",
         atmIds: [],
         districtIds: customer.districtIds,
         createdBy: req.user._id,
@@ -625,7 +643,7 @@ const createUserForRole = async (
   } catch (error) {
     await User.findByIdAndDelete(user._id);
 
-    throwEmployeeUserIdConflict(error);
+    throwEmployeeUserIdConflict(mapCustomerCodeError(error));
   }
 
   return res.status(201).json(

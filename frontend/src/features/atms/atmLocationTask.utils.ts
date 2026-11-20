@@ -1,5 +1,6 @@
 import { isAxiosError } from "axios";
 import type { ATM } from "./types/atm.types";
+import { getATMDisplayId } from "./atmDisplay.utils";
 import type {
   ATMLocationTask,
   CreateATMLocationTaskItem,
@@ -46,9 +47,12 @@ export const filterATMLocationTaskInventory = (
     }
     return (
       !search ||
-      [atm.atmId, atm.locationName, atm.address].some((value) =>
-        value.toLocaleLowerCase().includes(search),
-      )
+      [
+        atm.clientAtmId,
+        atm.atmId,
+        atm.locationName,
+        atm.address,
+      ].some((value) => value?.toLocaleLowerCase().includes(search))
     );
   });
 };
@@ -294,13 +298,17 @@ export const buildBulkATMLocationTaskPayload = (
     const atm = atmsById.get(atmId);
     if (!atm) throw new Error("A selected ATM is no longer available.");
     if (activeATMIds.has(atmId)) {
-      throw new Error(`${atm.atmId} already has an active location task.`);
+      throw new Error(
+        `${getATMDisplayId(atm)} already has an active location task.`,
+      );
     }
     if (typeof atm.locationConfigured !== "boolean") {
-      throw new Error(`${atm.atmId} location status is unavailable.`);
+      throw new Error(
+        `${getATMDisplayId(atm)} location status is unavailable.`,
+      );
     }
     if (!assignment.employeeId) {
-      throw new Error(`Select an employee for ${atm.atmId}.`);
+      throw new Error(`Select an employee for ${getATMDisplayId(atm)}.`);
     }
 
     tasks.push({
@@ -431,7 +439,7 @@ export const setManualATMLocationTaskSelection = ({
 
 export const getBulkATMLocationTaskErrorMessage = (
   error: unknown,
-  getATMLabel: (atmId: string) => string = (atmId) => atmId,
+  getATMLabel: (atmId: string) => string = () => "ATM unavailable",
 ) => {
   const message = getLocationTaskActionErrorMessage(error);
   const errors =

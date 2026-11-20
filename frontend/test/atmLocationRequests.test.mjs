@@ -445,6 +445,23 @@ test("admin request filters share paginated server query parameters and reset de
   assert.match(page, /setPage\(1\)/);
 });
 
+test("admin location request list rejects only pending requests through the shared review mutation", async () => {
+  const page = await readFile(
+    new URL("../src/pages/admin/ATMLocationRequestsPage.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(page, /useRejectATMLocationRequest/);
+  assert.match(page, /canDecideATMLocationRequest\(request\.status\)/);
+  assert.match(page, /validateRejectionReason\(rejectionReason\)/);
+  assert.match(
+    page,
+    /rejectMutation\.mutateAsync\(\{\s*requestId:\s*request\._id,\s*reason:\s*rejectionReason\.trim\(\)/s,
+  );
+  assert.match(page, /getATMLocationRequestErrorMessage\(actionError\)/);
+  assert.match(page, /toast\.success\("Location request rejected\."\)/);
+  assert.match(page, /rejectMutation\.isPending\s*\?\s*"Rejecting\.\.\."/);
+});
+
 test("review mutations refresh request lists, request detail, and ATM data after server success", async () => {
   const hooks = await readFile(
     new URL(

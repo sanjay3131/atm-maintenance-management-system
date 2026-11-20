@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import EmployeeATMAssignmentEditor from "@/features/employees/components/EmployeeATMAssignmentEditor";
 import {
   Dialog,
   DialogContent,
@@ -21,6 +22,7 @@ import { useEmployee } from "@/features/employees/hooks/useEmployee";
 import EmployeePerformance from "@/features/dashboard/components/EmployeePerformance";
 import EmployeeAttendanceCalendar from "@/features/attendance/components/EmployeeAttendanceCalendar";
 import { useJobs } from "@/features/jobs/hooks/useJobs";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 
 const JOBS_PAGE_LIMIT = 10;
 
@@ -153,6 +155,7 @@ export default function EmployeeDetailsPage() {
   const [isEditOpen, setIsEditOpen] = useState(
     searchParams.get("edit") === "true",
   );
+  const [isAtmEditorOpen, setIsAtmEditorOpen] = useState(false);
   const [jobsPageState, setJobsPageState] = useState({
     employeeId,
     page: 1,
@@ -340,6 +343,29 @@ export default function EmployeeDetailsPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={isAtmEditorOpen}
+        onOpenChange={setIsAtmEditorOpen}
+      >
+        <DialogContent className="max-h-[90vh] max-w-6xl overflow-y-auto">
+          <div className="space-y-2">
+            <DialogTitle>Edit ATM assignments</DialogTitle>
+            <DialogDescription>
+              Update assignments for {linkedUserName || employee.employeeCode}.
+              Changes are staged until saved.
+            </DialogDescription>
+          </div>
+          {isAtmEditorOpen && (
+            <EmployeeATMAssignmentEditor
+              key={`${employee._id}-${employee.updatedAt}`}
+              employee={employee}
+              onCancel={() => setIsAtmEditorOpen(false)}
+              onSaved={() => setIsAtmEditorOpen(false)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -400,8 +426,16 @@ export default function EmployeeDetailsPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between gap-3">
             <CardTitle>Geographic and ATM assignments</CardTitle>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsAtmEditorOpen(true)}
+            >
+              <Pencil aria-hidden="true" />
+              Edit ATMs
+            </Button>
           </CardHeader>
           <CardContent>
             <dl>
@@ -425,7 +459,7 @@ export default function EmployeeDetailsPage() {
                 label="Assigned ATMs"
                 values={assignmentNames(
                   employee.assignedAtms ?? [],
-                  (atm) => atm.atmId,
+                  (atm) => getATMDisplayId(atm) || "ATM unavailable",
                   "ATM unavailable",
                 )}
               />
@@ -512,7 +546,7 @@ export default function EmployeeDetailsPage() {
                         </td>
                         <td className="p-3">
                           {typeof job.atmId === "object" && job.atmId
-                            ? job.atmId.atmId || "ATM unavailable"
+                            ? getATMDisplayId(job.atmId) || "ATM unavailable"
                             : "ATM unavailable"}
                         </td>
                         <td className="p-3">

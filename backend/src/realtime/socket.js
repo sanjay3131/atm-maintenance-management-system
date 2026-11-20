@@ -11,6 +11,9 @@ export const VEHICLE_EVENT = "domain:vehicle:updated";
 const MAX_TIMEOUT_MS = 2 ** 31 - 1;
 
 let io = null;
+let socketClosePromise;
+let socketCleanupInProgress = false;
+let socketCleanupFailed = false;
 
 export const userRoom = (userId) => `user:${String(userId)}`;
 export const roleRoom = (role) => `role:${String(role)}`;
@@ -96,7 +99,14 @@ const handleConnection = (socket) => {
 
 export const initSocketServer = (httpServer, { allowedOrigins = [] } = {}) => {
   if (io) return io;
+  if (socketCleanupInProgress) {
+    throw new Error("Cannot initialize Socket.IO while cleanup is in progress");
+  }
+  if (socketCleanupFailed) {
+    throw new Error("Cannot initialize Socket.IO after cleanup failed");
+  }
 
+  socketClosePromise = undefined;
   io = new Server(httpServer, {
     cors: {
       origin: (origin, callback) => {
@@ -115,11 +125,85 @@ export const initSocketServer = (httpServer, { allowedOrigins = [] } = {}) => {
   return io;
 };
 
-export const closeSocketServer = async () => {
-  if (!io) return;
+export const closeSocketConnections = () => {
+  if (socketClosePromise) return socketClosePromise;
+
+  if (!io) {
+    socketClosePromise = Promise.resolve();
+    return socketClosePromise;
+  }
+
   const current = io;
   io = null;
-  await new Promise((resolve) => current.close(resolve));
+  socketCleanupInProgress = true;
+
+  socketClosePromise = (async () => {
+    try {
+      const cleanupErrors = [];
+
+      try {
+        current.disconnectSockets(true);
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+
+      try {
+        await current.sockets.adapter.close();
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+
+      try {
+        current.engine.close();
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+
+      if (cleanupErrors.length) {
+        throw new AggregateError(
+          cleanupErrors,
+          "Socket.IO connection cleanup failed",
+        );
+      }
+    } catch (error) {
+      socketCleanupFailed = true;
+      throw error;
+    } finally {
+      socketCleanupInProgress = false;
+    }
+  })();
+
+  return socketClosePromise;
+};
+
+export const closeSocketServer = () => {
+  if (socketClosePromise) return socketClosePromise;
+
+  if (!io) {
+    socketClosePromise = Promise.resolve();
+    return socketClosePromise;
+  }
+
+  const current = io;
+  io = null;
+  socketCleanupInProgress = true;
+
+  socketClosePromise = (async () => {
+    try {
+      let httpCloseError;
+      await current.close((error) => {
+        httpCloseError = error;
+      });
+      if (httpCloseError) throw httpCloseError;
+    } catch (error) {
+      socketCleanupFailed = true;
+      throw error;
+    } finally {
+      socketCleanupInProgress = false;
+    }
+  })();
+
+  return socketClosePromise;
 };
 
 export const emitToUser = (userId, event, payload) => {

@@ -345,7 +345,7 @@ export const getRecentActivity = asyncHandler(async (req, res) => {
 
   // Get recent jobs
   const recentJobs = await Job.find({ isDeleted: false })
-    .populate("atmId", "atmId locationName")
+    .populate("atmId", "atmId clientAtmId locationName")
     .populate("assignedEmployeeId", "firstName lastName")
     .populate("createdBy", "firstName lastName")
     .sort({ updatedAt: -1 })
@@ -354,7 +354,7 @@ export const getRecentActivity = asyncHandler(async (req, res) => {
 
   // Get recent complaints
   const recentComplaints = await Complaint.find({ isDeleted: false })
-    .populate("atmId", "atmId locationName")
+    .populate("atmId", "atmId clientAtmId locationName")
     .populate("createdBy", "firstName lastName")
     .sort({ updatedAt: -1 })
     .limit(limitNum)
@@ -370,6 +370,7 @@ export const getRecentActivity = asyncHandler(async (req, res) => {
       identifier: j.jobId,
       atmName: j.atmId?.locationName || "Unknown ATM",
       atmId: j.atmId?.atmId || "",
+      clientAtmId: j.atmId?.clientAtmId || null,
       employeeName: j.assignedEmployeeId
         ? `${j.assignedEmployeeId.firstName} ${j.assignedEmployeeId.lastName}`
         : null,
@@ -387,6 +388,7 @@ export const getRecentActivity = asyncHandler(async (req, res) => {
       identifier: c.complaintNumber,
       atmName: c.atmId?.locationName || "Unknown ATM",
       atmId: c.atmId?.atmId || "",
+      clientAtmId: c.atmId?.clientAtmId || null,
       employeeName: null,
       createdBy: c.createdBy
         ? `${c.createdBy.firstName} ${c.createdBy.lastName}`

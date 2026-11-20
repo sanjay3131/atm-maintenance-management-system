@@ -320,7 +320,7 @@ export default function CustomersPage() {
           <CardContent className="p-0">
             {data?.customers.length ? (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[880px] text-sm">
+                <table className="w-full min-w-[1100px] text-sm">
                   <thead className="border-b bg-muted/40">
                     <tr>
                       <th className="px-4 py-3 text-left font-medium">
@@ -328,6 +328,10 @@ export default function CustomersPage() {
                       </th>
                       <th className="px-4 py-3 text-left font-medium">Phone</th>
                       <th className="px-4 py-3 text-left font-medium">Bank</th>
+                      <th className="px-4 py-3 text-left font-medium">Regions</th>
+                      <th className="px-4 py-3 text-left font-medium">
+                        Service districts
+                      </th>
                       <th className="px-4 py-3 text-left font-medium">ATMs</th>
                       <th className="px-4 py-3 text-left font-medium">Status</th>
                       <th className="px-4 py-3 text-right font-medium">
@@ -350,6 +354,15 @@ export default function CustomersPage() {
                         <td className="px-4 py-3">{customer.customerPhone}</td>
                         <td className="px-4 py-3">
                           {customer.bankName || "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          {customer.regionIds?.map((region) => region.name).join(", ") ||
+                            "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          {customer.serviceDistrictIds
+                            ?.map((district) => district.districtName)
+                            .join(", ") || "—"}
                         </td>
                         <td className="px-4 py-3">
                           {customer.linkedATMCount}

@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { useMyJobs } from "@/features/jobs/hooks/useMyJobs";
 import type {
   Job,
@@ -197,7 +198,14 @@ export default function EmployeeJobsPage() {
   const visibleJobs = jobs.filter((job) => {
     if (!searchTerm) return true;
     const atm = getATM(job);
-    return [job.jobId, job.jobNumber, job.title, atm?.atmId, atm?.locationName]
+    return [
+      job.jobId,
+      job.jobNumber,
+      job.title,
+      atm?.clientAtmId,
+      atm?.atmId,
+      atm?.locationName,
+    ]
       .filter(Boolean)
       .some((value) => value!.toLowerCase().includes(searchTerm));
   });
@@ -415,7 +423,7 @@ export default function EmployeeJobsPage() {
                         {t("ATM")}
                       </p>
                       <p className="mt-0.5 min-w-0 break-words text-sm font-semibold [overflow-wrap:anywhere]">
-                        {atm?.atmId || t("Not available")}
+                        {getATMDisplayId(atm) || t("Not available")}
                       </p>
                       {atm?.locationName || atm?.address ? (
                         <div className="mt-2 min-w-0 space-y-1">

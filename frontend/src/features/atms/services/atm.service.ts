@@ -6,6 +6,57 @@ import type {
   UpdateATMData,
 } from "../types/atm.types";
 
+export interface ATMUploadPreviewError {
+  field: string;
+  message: string;
+}
+
+export interface ATMUploadPreviewRow {
+  rowNumber: number;
+  status: "valid" | "invalid";
+  values: {
+    atmId: string;
+    location: string;
+    city: string;
+  };
+  errors: ATMUploadPreviewError[];
+}
+
+export interface ATMUploadPreview {
+  totalRows: number;
+  validCount: number;
+  invalidCount: number;
+  rows: ATMUploadPreviewRow[];
+}
+
+export interface ATMUploadImportResult {
+  totalRows: number;
+  createdCount: number;
+}
+
+export interface ATMUploadImportError {
+  rowNumber?: number;
+  field?: string;
+  message: string;
+}
+
+export interface ATMUploadImportErrorResponse {
+  message?: string;
+  errors?: ATMUploadImportError[];
+}
+
+export interface GetScopedATMsParams {
+  bankId?: string;
+  regionId?: string;
+  districtId?: string;
+  assignmentStatus: "all" | "assigned" | "unassigned";
+  employeeId?: string;
+  search?: string;
+  status?: ATM["status"];
+  page: number;
+  limit: number;
+}
+
 export const getDistrictATMs = async (
   districtId: string,
   page: number,
@@ -30,8 +81,67 @@ export const getRegionATMs = async (
   return response.data.data;
 };
 
+export const getScopedATMs = async (
+  params: GetScopedATMsParams,
+  signal?: AbortSignal,
+): Promise<ScopedATMsResponse> => {
+  const response = await api.get<{ data: ScopedATMsResponse }>(
+    "/atm/getAllATMs",
+    { params, signal },
+  );
+  return response.data.data;
+};
+
 export const getATMs = async (): Promise<ATM[]> => {
   const response = await api.get("/atm/getAllATMs");
+  return response.data.data;
+};
+
+export const downloadATMUploadTemplate = async () => {
+  const response = await api.get<Blob>("/atm/bulk-upload/template", {
+    responseType: "blob",
+  });
+  return {
+    blob: response.data,
+    filename:
+      response.headers["content-disposition"]?.match(
+        /filename="([^"]+)"/,
+      )?.[1] ?? "atm-upload-template.xlsx",
+  };
+};
+
+export const previewATMUpload = async (
+  file: File,
+): Promise<ATMUploadPreview> => {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  const response = await api.post<{ data: ATMUploadPreview }>(
+    "/atm/bulk-upload/preview",
+    formData,
+    {
+      // Clear the shared JSON default so Axios and the browser can set the multipart boundary.
+      headers: { "Content-Type": undefined },
+    },
+  );
+  return response.data.data;
+};
+
+export const importATMUpload = async (
+  file: File,
+  idempotencyKey: string,
+): Promise<ATMUploadImportResult> => {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  const response = await api.post<{ data: ATMUploadImportResult }>(
+    "/atm/bulk-upload/import",
+    formData,
+    {
+      headers: {
+        "Content-Type": undefined,
+        "Idempotency-Key": idempotencyKey,
+      },
+    },
+  );
   return response.data.data;
 };
 

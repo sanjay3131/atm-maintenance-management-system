@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { isAxiosError } from "axios";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import api from "@/lib/axios";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { useATMs } from "@/features/atms/hooks/useATMs";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,12 +21,20 @@ import {
   createJobFormSchema,
   type CreateJobFormValues,
 } from "../types/create-job.schema";
+import type { ATM } from "@/features/atms/types/atm.types";
 import type {
   CreateJobData,
   JobPriority,
   SelectableJobWorkType,
 } from "../types/job.types";
 import { getAcSubTypeAfterWorkTypeChange } from "../utils/jobWorkType.utils";
+
+const ALL_FILTER_VALUE = "__all__";
+
+interface ATMFilterOption {
+  id: string;
+  label: string;
+}
 
 interface CreateJobFormProps {
   onCancel: () => void;
@@ -45,6 +54,20 @@ interface ComplaintOption {
 }
 
 const priorities: JobPriority[] = ["low", "medium", "high", "critical"];
+
+function getUniqueATMFilterOptions(
+  atms: ATM[],
+  getOption: (atm: ATM) => ATMFilterOption | undefined,
+): ATMFilterOption[] {
+  const options = new Map<string, ATMFilterOption>();
+  for (const atm of atms) {
+    const option = getOption(atm);
+    if (option && !options.has(option.id)) options.set(option.id, option);
+  }
+  return [...options.values()].sort((left, right) =>
+    left.label.localeCompare(right.label),
+  );
+}
 
 function getErrorMessage(error: unknown) {
   if (isAxiosError<{ message?: string }>(error)) {
@@ -99,6 +122,53 @@ export default function CreateJobForm({
   const selectedWorkType = watch("workType");
   const selectedAcSubType = watch("acSubType");
   const selectedATM = atms.find((atm) => atm._id === selectedATMId);
+  const [bankFilter, setBankFilter] = useState("");
+  const [regionFilter, setRegionFilter] = useState("");
+  const [districtFilter, setDistrictFilter] = useState("");
+  const bankOptions = useMemo(
+    () =>
+      getUniqueATMFilterOptions(atms, (atm) => ({
+        id: atm.bankId._id,
+        label: atm.bankId.bankName,
+      })),
+    [atms],
+  );
+  const regionOptions = useMemo(
+    () =>
+      getUniqueATMFilterOptions(
+        atms.filter((atm) => !bankFilter || atm.bankId._id === bankFilter),
+        (atm) =>
+          atm.regionId
+            ? { id: atm.regionId._id, label: atm.regionId.name }
+            : undefined,
+      ),
+    [atms, bankFilter],
+  );
+  const districtOptions = useMemo(
+    () =>
+      getUniqueATMFilterOptions(
+        atms.filter(
+          (atm) =>
+            (!bankFilter || atm.bankId._id === bankFilter) &&
+            (!regionFilter || atm.regionId?._id === regionFilter),
+        ),
+        (atm) => ({
+          id: atm.districtId._id,
+          label: atm.districtId.districtName,
+        }),
+      ),
+    [atms, bankFilter, regionFilter],
+  );
+  const filteredATMs = useMemo(
+    () =>
+      atms.filter(
+        (atm) =>
+          (!bankFilter || atm.bankId._id === bankFilter) &&
+          (!regionFilter || atm.regionId?._id === regionFilter) &&
+          (!districtFilter || atm.districtId._id === districtFilter),
+      ),
+    [atms, bankFilter, regionFilter, districtFilter],
+  );
   const {
     data: complaints = [],
     isLoading: areComplaintsLoading,
@@ -130,6 +200,7 @@ export default function CreateJobForm({
   useEffect(() => {
     if (
       !initialAtmId ||
+      atmPrefillStatus !== "pending" ||
       isAtmsLoading ||
       isAtmsError ||
       selectedATMId
@@ -148,6 +219,7 @@ export default function CreateJobForm({
   }, [
     atms,
     initialAtmId,
+    atmPrefillStatus,
     isAtmsError,
     isAtmsLoading,
     selectedATMId,
@@ -271,6 +343,126 @@ export default function CreateJobForm({
         )}
       </div>
 
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div>
+          <label
+            htmlFor="job-atm-bank-filter"
+            className="mb-2 block text-sm font-medium"
+          >
+            Bank filter
+          </label>
+          <Select
+            value={bankFilter || ALL_FILTER_VALUE}
+            onValueChange={(value) => {
+              setBankFilter(value && value !== ALL_FILTER_VALUE ? value : "");
+              setRegionFilter("");
+              setDistrictFilter("");
+              setValue("atmId", "", { shouldDirty: true });
+              setValue("complaintId", "", { shouldDirty: true });
+            }}
+            disabled={isAtmsLoading || isAtmsError || bankOptions.length === 0}
+          >
+            <SelectTrigger id="job-atm-bank-filter" className="w-full">
+              <SelectValue placeholder="All banks">
+                {bankFilter
+                  ? bankOptions.find((bank) => bank.id === bankFilter)?.label
+                  : "All banks"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_FILTER_VALUE}>All banks</SelectItem>
+              {bankOptions.map((bank) => (
+                <SelectItem key={bank.id} value={bank.id}>
+                  {bank.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <label
+            htmlFor="job-atm-region-filter"
+            className="mb-2 block text-sm font-medium"
+          >
+            Region filter
+          </label>
+          <Select
+            value={regionFilter || ALL_FILTER_VALUE}
+            onValueChange={(value) => {
+              setRegionFilter(value && value !== ALL_FILTER_VALUE ? value : "");
+              setDistrictFilter("");
+              setValue("atmId", "", { shouldDirty: true });
+              setValue("complaintId", "", { shouldDirty: true });
+            }}
+            disabled={
+              isAtmsLoading ||
+              isAtmsError ||
+              !bankFilter ||
+              regionOptions.length === 0
+            }
+          >
+            <SelectTrigger id="job-atm-region-filter" className="w-full">
+              <SelectValue placeholder="All regions">
+                {regionFilter
+                  ? regionOptions.find((region) => region.id === regionFilter)
+                      ?.label
+                  : "All regions"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_FILTER_VALUE}>All regions</SelectItem>
+              {regionOptions.map((region) => (
+                <SelectItem key={region.id} value={region.id}>
+                  {region.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <label
+            htmlFor="job-atm-district-filter"
+            className="mb-2 block text-sm font-medium"
+          >
+            District filter
+          </label>
+          <Select
+            value={districtFilter || ALL_FILTER_VALUE}
+            onValueChange={(value) => {
+              setDistrictFilter(value && value !== ALL_FILTER_VALUE ? value : "");
+              setValue("atmId", "", { shouldDirty: true });
+              setValue("complaintId", "", { shouldDirty: true });
+            }}
+            disabled={
+              isAtmsLoading ||
+              isAtmsError ||
+              !regionFilter ||
+              districtOptions.length === 0
+            }
+          >
+            <SelectTrigger id="job-atm-district-filter" className="w-full">
+              <SelectValue placeholder="All districts">
+                {districtFilter
+                  ? districtOptions.find(
+                      (district) => district.id === districtFilter,
+                    )?.label
+                  : "All districts"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_FILTER_VALUE}>All districts</SelectItem>
+              {districtOptions.map((district) => (
+                <SelectItem key={district.id} value={district.id}>
+                  {district.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
       <div>
         <label className="mb-2 block text-sm font-medium">ATM</label>
         <Select
@@ -283,27 +475,29 @@ export default function CreateJobForm({
             });
             setValue("complaintId", "", { shouldDirty: true });
           }}
-          disabled={isAtmsLoading || isAtmsError || atms.length === 0}
+          disabled={isAtmsLoading || isAtmsError || filteredATMs.length === 0}
         >
           <SelectTrigger className="w-full">
             <SelectValue
               placeholder={
                 isAtmsLoading
                   ? "Loading ATMs..."
-                  : atms.length === 0
-                    ? "No ATMs available"
+                  : filteredATMs.length === 0
+                    ? atms.length === 0
+                      ? "No ATMs available"
+                      : "No ATMs match these filters"
                     : "Select an ATM"
               }
             >
               {selectedATM
-                ? `${selectedATM.atmId} · ${selectedATM.locationName}`
+                ? `${getATMDisplayId(selectedATM)} · ${selectedATM.locationName}`
                 : undefined}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {atms.map((atm) => (
+            {filteredATMs.map((atm) => (
               <SelectItem key={atm._id} value={atm._id}>
-                <span className="font-medium">{atm.atmId}</span>
+                <span className="font-medium">{getATMDisplayId(atm)}</span>
                 <span className="text-muted-foreground">
                   {atm.locationName}
                 </span>
@@ -488,7 +682,7 @@ export default function CreateJobForm({
             createJobMutation.isPending ||
             isAtmsLoading ||
             isAtmsError ||
-            atms.length === 0
+            filteredATMs.length === 0
           }
         >
           {createJobMutation.isPending ? "Creating..." : "Create job"}

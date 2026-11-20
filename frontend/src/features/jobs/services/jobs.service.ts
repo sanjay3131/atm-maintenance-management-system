@@ -122,6 +122,20 @@ export const getJobById = async (jobId: string): Promise<Job> => {
   return response.data.data;
 };
 
+export const downloadJobPhotosZip = async (jobId: string): Promise<Blob> => {
+  const response = await api.get<Blob>(`/photos/job/${jobId}/download-zip`, {
+    responseType: "blob",
+  });
+  return response.data;
+};
+
+export const downloadJobPhotosPdf = async (jobId: string): Promise<Blob> => {
+  const response = await api.get<Blob>(`/photos/job/${jobId}/download-pdf`, {
+    responseType: "blob",
+  });
+  return response.data;
+};
+
 export const getJobHistory = async (
   jobId: string,
 ): Promise<JobHistoryEntry[]> => {

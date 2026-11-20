@@ -301,6 +301,7 @@ export const listATMlocationRequests = async ({
       ...(search
         ? {
             $or: [
+              { clientAtmId: { $regex: escapeRegex(search), $options: "i" } },
               { atmId: { $regex: escapeRegex(search), $options: "i" } },
               { locationName: { $regex: escapeRegex(search), $options: "i" } },
               { address: { $regex: escapeRegex(search), $options: "i" } },
@@ -330,7 +331,7 @@ export const listATMlocationRequests = async ({
       .limit(limit)
       .populate(
         "atmId",
-        "atmId locationName address locationConfigured locationRequestReopenedAt locationRequestWindowOpen districtId regionId",
+        "atmId clientAtmId locationName address locationConfigured locationRequestReopenedAt locationRequestWindowOpen districtId regionId",
       )
       .populate("atmId.districtId", "districtName")
       .populate("atmId.regionId", "name")
@@ -349,7 +350,7 @@ export const getATMlocationRequest = async (requestId) => {
   const request = await ATMLocationRequest.findById(requestId)
     .populate(
       "atmId",
-      "atmId locationName address locationConfigured locationRequestReopenedAt locationRequestWindowOpen districtId regionId",
+      "atmId clientAtmId locationName address locationConfigured locationRequestReopenedAt locationRequestWindowOpen districtId regionId",
     )
     .populate("atmId.districtId", "districtName")
     .populate("atmId.regionId", "name")

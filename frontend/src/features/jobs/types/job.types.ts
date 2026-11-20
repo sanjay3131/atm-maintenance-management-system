@@ -41,6 +41,7 @@ export type JobWorkType =
 export interface JobATM {
   _id: string;
   atmId?: string;
+  clientAtmId?: string | null;
   locationName?: string;
   address?: string;
   bank?: string;

@@ -5,6 +5,7 @@ export type RecurringMaintenanceType =
 export interface RecurringMaintenanceATM {
   _id: string;
   atmId: string;
+  clientAtmId?: string | null;
   locationName: string;
   status: "ACTIVE" | "INACTIVE" | "UNDER_MAINTENANCE" | "REMOVED";
 }

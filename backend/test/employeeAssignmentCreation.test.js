@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
 import ATM from "../src/modules/atms/atm.model.js";
+import ATMIdSequence from "../src/modules/atms/atmIdSequence.model.js";
 import Customer from "../src/modules/customers/customer.model.js";
 import District from "../src/modules/districts/district.models.js";
 import Employee from "../src/modules/employees/employee.model.js";
@@ -9,6 +10,7 @@ import Region from "../src/modules/region/region.model.js";
 import User from "../src/modules/users/user.model.js";
 import { createATM } from "../src/modules/atms/atm.controller.js";
 import { createEmployee } from "../src/modules/employees/employee.controller.js";
+import Bank from "../src/modules/banks/bank.model.js";
 
 const atmId = "64b000000000000000000001";
 const employeeId = "64b000000000000000000002";
@@ -16,6 +18,8 @@ const userId = "64b000000000000000000003";
 const customerId = "64b000000000000000000004";
 const districtId = "64b000000000000000000005";
 const adminId = "64b000000000000000000006";
+const regionId = "64b000000000000000000008";
+const bankId = "64b000000000000000000007";
 
 const matchesId = (left, right) =>
   String(left?._id ?? left).toLowerCase() ===
@@ -78,6 +82,8 @@ async function withCreationMocks(callback, { withEmployee = true } = {}) {
     users: [
       { _id: userId, userType: "employee", status: "active" },
     ],
+    atmSequenceValue: 0,
+    transactionSession: null,
   };
   const originals = [];
   const override = (target, key, value) => {
@@ -100,6 +106,7 @@ async function withCreationMocks(callback, { withEmployee = true } = {}) {
     async withTransaction(operation) {
       const atmCount = state.atms.length;
       const employeeCount = state.employees.length;
+      const sequenceValue = state.atmSequenceValue;
       const atmSnapshot = atmAssignments();
       const employeeSnapshot = employeeAssignments();
       const customerATMIds = state.customers.map((customer) => [
@@ -107,10 +114,12 @@ async function withCreationMocks(callback, { withEmployee = true } = {}) {
         [...customer.atmIds],
       ]);
       try {
+        state.transactionSession = this;
         return await operation(this);
       } catch (error) {
         state.atms.length = atmCount;
         state.employees.length = employeeCount;
+        state.atmSequenceValue = sequenceValue;
         for (const { atm, assignedEmployeeId, customer } of atmSnapshot) {
           atm.assignedEmployeeId = assignedEmployeeId;
           atm.customer = customer;
@@ -126,8 +135,29 @@ async function withCreationMocks(callback, { withEmployee = true } = {}) {
     },
     async endSession() {},
   }));
+  override(ATMIdSequence, "findOneAndUpdate", async (_filter, update, options) => {
+    assert.strictEqual(options.session, state.transactionSession);
+    state.atmSequenceValue += update.$inc.value;
+    return { value: state.atmSequenceValue };
+  });
   override(District, "findById", () =>
-    query({ _id: districtId, isActive: true }),
+    query({
+      _id: districtId,
+      bankId,
+      regionId,
+      geographyStatus: "MAPPED",
+      isActive: true,
+    }),
+  );
+  override(District, "updateOne", async () => ({ matchedCount: 1 }));
+  override(Bank, "findById", () => query({ _id: bankId, isActive: true }));
+  override(Region, "findById", () =>
+    query({
+      _id: regionId,
+      bankId,
+      geographyStatus: "MAPPED",
+      isActive: true,
+    }),
   );
   override(Region, "countDocuments", async () => 0);
   override(ATM, "findOne", (filter) => {
@@ -233,10 +263,12 @@ async function withCreationMocks(callback, { withEmployee = true } = {}) {
 }
 
 const atmPayload = {
-  bankId: "64b000000000000000000007",
+  bankId,
+  clientAtmId: "EMPLOYEE-ASSIGNMENT-TEST-ATM",
   districtId,
-  regionId: null,
+  regionId,
   locationName: "Test ATM",
+  city: "Test City",
   address: "Test address",
   installationType: "ONSITE",
   customerId,
@@ -257,6 +289,7 @@ test("ATM creation rejects assigning an Employee to a new inactive ATM atomicall
     );
     assert.deepEqual(state.atms, []);
     assert.deepEqual(state.employees[0].assignedAtmIds, []);
+    assert.equal(state.atmSequenceValue, 0);
   });
 });
 

@@ -3,13 +3,25 @@ import type { EmployeeDetailsForm } from "../types/user.types";
 import { useDistricts } from "../hooks/useDistricts";
 import { useAllRegions } from "../hooks/useAllRegions";
 import { useATMs } from "../../atms/hooks/useATMs";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import SupervisorSelect from "@/features/employees/components/SupervisorSelect";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
+import type { ATM } from "@/features/atms/types/atm.types";
+import type { District } from "../types/district.types";
 
 interface EmployeeDetailsStepProps {
   defaultValues: EmployeeDetailsForm;
   onSubmit: (data: EmployeeDetailsForm) => void;
   onBack: () => void;
+}
+
+const EMPTY_ATMS: ATM[] = [];
+const EMPTY_DISTRICTS: District[] = [];
+
+function getDistrictRegionId(district: District) {
+  return typeof district.regionId === "string"
+    ? district.regionId
+    : district.regionId?._id;
 }
 
 export default function EmployeeDetailsStep({
@@ -21,43 +33,137 @@ export default function EmployeeDetailsStep({
     register,
     handleSubmit,
     watch,
+    getValues,
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<EmployeeDetailsForm>({
     defaultValues,
   });
-  const { data: districts = [], isLoading: isDistrictsLoading } =
-    useDistricts();
-  const selectedDistrictIds = watch("districtIds");
-  const selectedRegionIds = watch("regionIds");
-  const selectedAtmIds = watch("assignedAtmIds");
+  const selectedDistrictIds = watch("districtIds") ?? [];
+  const selectedRegionIds = watch("regionIds") ?? [];
+  const selectedAtmIds = watch("assignedAtmIds") ?? [];
+  const selectedDistrictIdsKey = selectedDistrictIds.join("|");
+  const selectedRegionIdsKey = selectedRegionIds.join("|");
+  const selectedAtmIdsKey = selectedAtmIds.join("|");
+  const districtsQuery = useDistricts(
+    selectedRegionIds.length > 0,
+    selectedRegionIds,
+  );
+  const districts = districtsQuery.data ?? EMPTY_DISTRICTS;
+  const isDistrictsLoading = districtsQuery.isLoading;
 
-  const { data: atms = [], isLoading: isATMsLoading } = useATMs();
+  const atmsQuery = useATMs();
+  const atms = atmsQuery.data ?? EMPTY_ATMS;
+  const isATMsLoading = atmsQuery.isLoading;
   const { data: regions = [], isLoading: isRegionsLoading } = useAllRegions();
 
-  const filteredATMs = atms.filter((atm) => {
-    const districtMatch =
-      selectedDistrictIds.length > 0 &&
-      !!atm.districtId &&
-      selectedDistrictIds.includes(atm.districtId._id);
-
-    const regionMatch =
-      selectedRegionIds.length === 0 ||
-      (atm.regionId && selectedRegionIds.includes(atm.regionId._id));
-
-    return districtMatch && regionMatch;
-  });
-
-  const visibleAtmIds = new Set(filteredATMs.map((atm) => atm._id));
-
-  const validSelectedAtmIds = selectedAtmIds.filter((id) =>
-    visibleAtmIds.has(id),
+  const districtRegionIdsById = useMemo(
+    () =>
+      new Map(
+        districts.map((district) => [
+          district._id,
+          getDistrictRegionId(district),
+        ]),
+      ),
+    [districts],
   );
+  const validDistrictIds = useMemo(
+    () => new Set(districts.map((district) => district._id)),
+    [districts],
+  );
+  const selectedDistrictIdSet = useMemo(
+    () => new Set(selectedDistrictIdsKey ? selectedDistrictIdsKey.split("|") : []),
+    [selectedDistrictIdsKey],
+  );
+  const selectedRegionIdSet = useMemo(
+    () => new Set(selectedRegionIdsKey ? selectedRegionIdsKey.split("|") : []),
+    [selectedRegionIdsKey],
+  );
+  const visibleAtmIds = useMemo(
+    () =>
+      new Set(
+        atms
+          .filter((atm) => {
+            const districtMatch =
+              selectedDistrictIdSet.size > 0 &&
+              !!atm.districtId &&
+              selectedDistrictIdSet.has(atm.districtId._id);
+            const regionMatch =
+              selectedRegionIdSet.size === 0 ||
+              (!!atm.regionId && selectedRegionIdSet.has(atm.regionId._id));
+            return districtMatch && regionMatch;
+          })
+          .map((atm) => atm._id),
+      ),
+    [atms, selectedDistrictIdSet, selectedRegionIdSet],
+  );
+
   useEffect(() => {
-    if (selectedAtmIds.length !== validSelectedAtmIds.length) {
-      setValue("assignedAtmIds", validSelectedAtmIds);
+    const currentRegionIds = getValues("regionIds") ?? [];
+    const currentDistrictIds = getValues("districtIds") ?? [];
+    if (currentRegionIds.length === 0) {
+      if (currentDistrictIds.length > 0) {
+        setValue("districtIds", [], { shouldDirty: true });
+      }
+      return;
     }
-  }, [selectedAtmIds, validSelectedAtmIds, setValue]);
+
+    if (!districtsQuery.isSuccess) return;
+
+    const nextDistrictIds = currentDistrictIds.filter((id) =>
+      validDistrictIds.has(id),
+    );
+    if (nextDistrictIds.length !== currentDistrictIds.length) {
+      setValue("districtIds", nextDistrictIds, { shouldDirty: true });
+    }
+  }, [
+    districtsQuery.isSuccess,
+    districtsQuery.dataUpdatedAt,
+    getValues,
+    selectedDistrictIdsKey,
+    selectedRegionIdsKey,
+    setValue,
+    validDistrictIds,
+  ]);
+
+  const updateRegionSelection = (regionId: string, selected: boolean) => {
+    const nextRegionIds = selected
+      ? [...new Set([...selectedRegionIds, regionId])]
+      : selectedRegionIds.filter((id) => id !== regionId);
+    const nextDistrictIds = selectedDistrictIds.filter((districtId) => {
+      const districtRegionId = districtRegionIdsById.get(districtId);
+      return !districtRegionId || nextRegionIds.includes(districtRegionId);
+    });
+
+    setValue("regionIds", nextRegionIds, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    if (nextDistrictIds.length !== selectedDistrictIds.length) {
+      setValue("districtIds", nextDistrictIds, { shouldDirty: true });
+    }
+  };
+
+  const filteredATMs = atms.filter((atm) => visibleAtmIds.has(atm._id));
+
+  useEffect(() => {
+    if (!atmsQuery.isSuccess) return;
+
+    const currentSelectedAtmIds = getValues("assignedAtmIds") ?? [];
+    const nextSelectedAtmIds = currentSelectedAtmIds.filter((id) =>
+      visibleAtmIds.has(id),
+    );
+    if (currentSelectedAtmIds.length !== nextSelectedAtmIds.length) {
+      setValue("assignedAtmIds", nextSelectedAtmIds);
+    }
+  }, [
+    atmsQuery.dataUpdatedAt,
+    atmsQuery.isSuccess,
+    getValues,
+    selectedAtmIdsKey,
+    setValue,
+    visibleAtmIds,
+  ]);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -115,62 +221,6 @@ export default function EmployeeDetailsStep({
             </p>
           )}
         </div>
-        {/* District */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Districts</label>
-
-          <div className="rounded-md border">
-            <details className="group">
-              <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-sm">
-                <span>
-                  {watch("districtIds").length === 0
-                    ? "Select districts"
-                    : `${watch("districtIds").length} district(s) selected`}
-                </span>
-
-                <span className="text-gray-400 group-open:rotate-180">▾</span>
-              </summary>
-
-              <div className="max-h-48 overflow-y-auto border-t p-2">
-                {isDistrictsLoading ? (
-                  <p className="px-2 py-2 text-sm text-gray-500">
-                    Loading districts...
-                  </p>
-                ) : (
-                  districts.map((district) => {
-                    const selected = watch("districtIds").includes(
-                      district._id,
-                    );
-
-                    return (
-                      <label
-                        key={district._id}
-                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-gray-100"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selected}
-                          onChange={(e) => {
-                            const current = watch("districtIds");
-
-                            setValue(
-                              "districtIds",
-                              e.target.checked
-                                ? [...current, district._id]
-                                : current.filter((id) => id !== district._id),
-                            );
-                          }}
-                        />
-
-                        <span>{district.districtName}</span>
-                      </label>
-                    );
-                  })
-                )}
-              </div>
-            </details>
-          </div>
-        </div>
         {/* Regions */}
         <div className="space-y-2">
           <label className="text-sm font-medium">Regions</label>
@@ -198,7 +248,7 @@ export default function EmployeeDetailsStep({
                   </p>
                 ) : (
                   regions.map((region) => {
-                    const selected = watch("regionIds").includes(region._id);
+                    const selected = selectedRegionIds.includes(region._id);
 
                     return (
                       <label
@@ -209,13 +259,9 @@ export default function EmployeeDetailsStep({
                           type="checkbox"
                           checked={selected}
                           onChange={(e) => {
-                            const current = watch("regionIds");
-
-                            setValue(
-                              "regionIds",
-                              e.target.checked
-                                ? [...current, region._id]
-                                : current.filter((id) => id !== region._id),
+                            updateRegionSelection(
+                              region._id,
+                              e.target.checked,
                             );
                           }}
                         />
@@ -230,6 +276,80 @@ export default function EmployeeDetailsStep({
                       </label>
                     );
                   })
+                )}
+              </div>
+            </details>
+          </div>
+          {districtsQuery.isError && (
+            <p className="text-sm text-red-500" role="alert">
+              Districts could not be loaded for the selected regions.{" "}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => void districtsQuery.refetch()}
+              >
+                Retry
+              </button>
+            </p>
+          )}
+        </div>
+        {/* District */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Districts</label>
+
+          <div className="rounded-md border">
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-sm">
+                <span>
+                  {selectedDistrictIds.length === 0
+                    ? "Select districts"
+                    : `${selectedDistrictIds.length} district(s) selected`}
+                </span>
+
+                <span className="text-gray-400 group-open:rotate-180">▾</span>
+              </summary>
+
+              <div className="max-h-48 overflow-y-auto border-t p-2">
+                {selectedRegionIds.length === 0 ? (
+                  <p className="px-2 py-2 text-sm text-gray-500">
+                    Select a region first
+                  </p>
+                ) : isDistrictsLoading ? (
+                  <p className="px-2 py-2 text-sm text-gray-500">
+                    Loading districts...
+                  </p>
+                ) : districtsQuery.isError ? (
+                  <p className="px-2 py-2 text-sm text-red-500" role="alert">
+                    Districts could not be loaded. Use the retry control above.
+                  </p>
+                ) : districts.length === 0 ? (
+                  <p className="px-2 py-2 text-sm text-gray-500">
+                    No districts found for the selected regions
+                  </p>
+                ) : (
+                  districts.map((district) => (
+                    <label
+                      key={district._id}
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-gray-100"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedDistrictIds.includes(district._id)}
+                        onChange={(event) => {
+                          const nextDistrictIds = event.target.checked
+                            ? [...new Set([...selectedDistrictIds, district._id])]
+                            : selectedDistrictIds.filter(
+                                (id) => id !== district._id,
+                              );
+                          setValue("districtIds", nextDistrictIds, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          });
+                        }}
+                      />
+                      <span>{district.districtName}</span>
+                    </label>
+                  ))
                 )}
               </div>
             </details>
@@ -332,7 +452,9 @@ export default function EmployeeDetailsStep({
                         />
 
                         <div>
-                          <div className="font-medium">{atm.atmId}</div>
+                          <div className="font-medium">
+                            {getATMDisplayId(atm)}
+                          </div>
 
                           <div className="text-xs text-gray-500">
                             {atm.locationName}

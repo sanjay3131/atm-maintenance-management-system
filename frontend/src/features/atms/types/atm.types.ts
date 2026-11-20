@@ -34,11 +34,13 @@ export interface SetATMLocationData {
 }
 
 export interface UpdateATMData {
+  clientAtmId?: string;
   bankId: string;
   customerId?: string;
   districtId?: string;
   regionId?: string | null;
   locationName: string;
+  city?: string;
   address: string;
   installationType: InstallationType;
   status: ATMStatus;
@@ -48,7 +50,9 @@ export interface UpdateATMData {
 export interface ATM {
   _id: string;
   atmId: string;
+  clientAtmId?: string | null;
   locationName: string;
+  city?: string | null;
   address: string;
   installationType: InstallationType;
   status: ATMStatus;

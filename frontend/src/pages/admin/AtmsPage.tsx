@@ -5,6 +5,8 @@ import { useDistricts } from "@/features/users/hooks/useDistricts";
 import { useRegionsByBank } from "@/features/users/hooks/useRegionsByBank";
 import { useBanks } from "@/features/banks/hooks/useBanks";
 import { Button } from "@/components/ui/button";
+import { downloadATMUploadTemplate } from "@/features/atms/services/atm.service";
+import ATMUploadPreviewDialog from "@/features/atms/components/ATMUploadPreviewDialog";
 import {
   Select,
   SelectContent,
@@ -12,6 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Download, Upload } from "lucide-react";
+import { toast } from "sonner";
 import { useMemo, useState } from "react";
 
 const ALL_FILTER_VALUE = "ALL";
@@ -32,6 +36,8 @@ export default function AtmsPage() {
     isFetching,
   } = useATMs();
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showUploadPreview, setShowUploadPreview] = useState(false);
+  const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] =
     useState<StatusFilter>(ALL_FILTER_VALUE);
@@ -53,8 +59,13 @@ export default function AtmsPage() {
 
     return atms.filter((atm) => {
       const matchesSearch = normalizedSearch
-        ? [atm.atmId, atm.locationName, atm.address].some((value) =>
-            value.toLowerCase().includes(normalizedSearch),
+        ? [
+            atm.clientAtmId,
+            atm.atmId,
+            atm.locationName,
+            atm.address,
+          ].some((value) =>
+            value?.toLowerCase().includes(normalizedSearch),
           )
         : true;
       const matchesStatus =
@@ -84,6 +95,24 @@ export default function AtmsPage() {
     setBankFilter(ALL_FILTER_VALUE);
     setDistrictFilter(ALL_FILTER_VALUE);
     setRegionFilter(ALL_FILTER_VALUE);
+  };
+
+  const downloadTemplate = async () => {
+    setIsDownloadingTemplate(true);
+    try {
+      const { blob, filename } = await downloadATMUploadTemplate();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success("ATM upload template downloaded.");
+    } catch {
+      toast.error("ATM upload template could not be downloaded. Try again.");
+    } finally {
+      setIsDownloadingTemplate(false);
+    }
   };
 
   if (isLoading) {
@@ -128,9 +157,28 @@ export default function AtmsPage() {
             Showing {filteredATMs.length} of {atms.length} ATMs
           </p>
         </div>
-        <Button type="button" onClick={() => setShowCreateForm(true)}>
-          Create ATM
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void downloadTemplate()}
+            disabled={isDownloadingTemplate}
+          >
+            <Download className="size-4" aria-hidden="true" />
+            {isDownloadingTemplate ? "Preparing template..." : "Bulk Upload Template"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setShowUploadPreview(true)}
+          >
+            <Upload className="size-4" aria-hidden="true" />
+            Bulk Upload
+          </Button>
+          <Button type="button" onClick={() => setShowCreateForm(true)}>
+            Create ATM
+          </Button>
+        </div>
       </div>
 
       <div className="mt-6 grid gap-4 rounded-lg border bg-card p-4 md:grid-cols-2 lg:grid-cols-5">
@@ -275,6 +323,11 @@ export default function AtmsPage() {
           </div>
         </div>
       )}
+      <ATMUploadPreviewDialog
+        open={showUploadPreview}
+        onOpenChange={setShowUploadPreview}
+        onImportSuccess={() => void refetch()}
+      />
       <div className="mt-6">
         <ATMTable
           atms={filteredATMs}

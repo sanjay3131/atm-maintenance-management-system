@@ -401,7 +401,7 @@ export const transferDistrict = asyncHandler(async (req, res) => {
       }
 
       const atms = await ATM.find({ districtId, isDeleted: false })
-        .select("_id atmId bankId regionId geographyStatus")
+        .select("_id atmId clientAtmId bankId regionId geographyStatus")
         .session(session)
         .lean();
       const inconsistentATM = atms.find(
@@ -413,7 +413,7 @@ export const transferDistrict = asyncHandler(async (req, res) => {
       if (inconsistentATM) {
         throw new ApiError(
           409,
-          `ATM ${inconsistentATM.atmId} does not match the district's source geography and must be reconciled before transfer`,
+          `ATM ${inconsistentATM.clientAtmId?.trim() || inconsistentATM.atmId} does not match the district's source geography and must be reconciled before transfer`,
         );
       }
       const atmIds = atms.map((atm) => atm._id);

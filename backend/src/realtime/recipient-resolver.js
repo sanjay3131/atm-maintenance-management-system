@@ -29,6 +29,95 @@ const activeAdminIds = async () => {
   return users.map((user) => asId(user._id));
 };
 
+const activeNotificationUserIds = async ({
+  userIds,
+  userTypes,
+  excludeUserId,
+}) => {
+  const candidates = [...new Set(userIds.map(asId).filter(Boolean))];
+  if (!candidates.length) return [];
+
+  const users = await User.find({
+    _id: { $in: candidates },
+    userType: { $in: userTypes },
+    status: "active",
+  })
+    .select("_id")
+    .lean();
+  const excludedId = asId(excludeUserId);
+  return users
+    .map((user) => asId(user._id))
+    .filter((userId) => userId && userId !== excludedId);
+};
+
+export const resolveActiveNotificationAdminRecipients = async (
+  excludeUserId,
+) => {
+  const users = await User.find({
+    userType: { $in: ["admin", "superAdmin"] },
+    status: "active",
+  })
+    .select("_id")
+    .lean();
+  const excludedId = asId(excludeUserId);
+  return users
+    .map((user) => asId(user._id))
+    .filter((userId) => userId && userId !== excludedId);
+};
+
+export const resolveAssignedJobEmployeeNotificationRecipients = async (
+  job,
+) => {
+  const employee = await Employee.findOne({
+    userId: asId(job.assignedEmployeeId),
+    status: "active",
+  })
+    .select("userId")
+    .lean();
+  if (!employee) return [];
+  return activeNotificationUserIds({
+    userIds: [employee.userId],
+    userTypes: ["employee"],
+  });
+};
+
+export const resolveAssignedLocationTaskEmployeeNotificationRecipients =
+  async (task) => {
+    const employee = await Employee.findOne({
+      _id: asId(task.assignedEmployeeId),
+      status: "active",
+    })
+      .select("userId")
+      .lean();
+    if (!employee) return [];
+    return activeNotificationUserIds({
+      userIds: [employee.userId],
+      userTypes: ["employee"],
+    });
+  };
+
+export const resolveLocationRequestEmployeeNotificationRecipients = async (
+  request,
+  excludeUserId,
+) => {
+  if (request.requesterRole !== "employee" || !request.requesterEmployeeId) {
+    return [];
+  }
+  const employee = await Employee.findOne({
+    _id: asId(request.requesterEmployeeId),
+    userId: asId(request.requestedBy),
+    status: "active",
+  })
+    .select("userId")
+    .lean();
+  if (!employee) return [];
+  return activeNotificationUserIds({
+    userIds: [employee.userId],
+    userTypes: ["employee"],
+    excludeUserId,
+  });
+};
+
 const employeeRelationshipUserIds = async (employeeIds) => {
   const ids = [...new Set(employeeIds.map(asId).filter(Boolean))];
   if (!ids.length) return [];

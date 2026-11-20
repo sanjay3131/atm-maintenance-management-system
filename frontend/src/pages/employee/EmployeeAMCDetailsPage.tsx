@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -417,7 +418,7 @@ export default function EmployeeAMCDetailsPage() {
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">{amc.amcId}</p>
-            <CardTitle className="mt-1 break-words text-2xl [overflow-wrap:anywhere]">{atm?.atmId || t("ATM unavailable")}</CardTitle>
+            <CardTitle className="mt-1 break-words text-2xl [overflow-wrap:anywhere]">{getATMDisplayId(atm) || t("ATM unavailable")}</CardTitle>
             {(atm?.locationName || atm?.address) && (
               <p className="mt-1 text-sm text-muted-foreground">
                 {atm.locationName || atm.address}
@@ -443,7 +444,7 @@ export default function EmployeeAMCDetailsPage() {
       {["PENDING", "IN_PROGRESS", "OVERDUE"].includes(amc.status) && atm?._id && (
         <EmployeeATMLocationRequest
           atmId={atm._id}
-          atmCode={atm.atmId || "ATM"}
+          atmCode={getATMDisplayId(atm) || "ATM"}
           amcId={amc._id}
           locationConfigured={atm.locationConfigured}
           officialCoordinates={atm.location?.coordinates}

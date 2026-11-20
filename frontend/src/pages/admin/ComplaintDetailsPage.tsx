@@ -10,6 +10,7 @@ import {
 } from "@/features/complaints/components/ComplaintBadges";
 import { useComplaint } from "@/features/complaints/hooks/useComplaint";
 import { useJob } from "@/features/jobs/hooks/useJob";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import type { JobUser } from "@/features/jobs/types/job.types";
 import type {
   ComplaintUser,
@@ -502,7 +503,10 @@ export default function ComplaintDetailsPage() {
           </CardHeader>
           <CardContent>
             <dl>
-              <DetailRow label="ATM ID" value={formatValue(atm?.atmId)} />
+              <DetailRow
+                label="ATM ID"
+                value={formatValue(getATMDisplayId(atm))}
+              />
               <DetailRow
                 label="Location"
                 value={formatValue(atm?.locationName)}

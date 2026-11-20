@@ -80,6 +80,7 @@ export interface SupervisorEmployeeSummary {
 export interface SupervisorAssignedATM {
   _id: string;
   atmId?: string | null;
+  clientAtmId?: string | null;
   locationName?: string | null;
   address?: string | null;
   status?: string | null;
@@ -264,6 +265,7 @@ export interface SupervisorAMCRecord {
     | {
         _id?: string;
         atmId?: string | null;
+        clientAtmId?: string | null;
         locationName?: string | null;
         address?: string | null;
       }
@@ -315,6 +317,7 @@ export interface SupervisorAMCDetailsResponse
     | {
         _id?: string;
         atmId?: string | null;
+        clientAtmId?: string | null;
         locationName?: string | null;
         address?: string | null;
       }

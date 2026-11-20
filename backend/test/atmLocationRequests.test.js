@@ -13,6 +13,8 @@ import {
 } from "../src/modules/atms/atmLocationRequest.service.js";
 import ATMLocationRequest from "../src/modules/atms/atmLocationRequest.model.js";
 import ATMLocationTask from "../src/modules/atms/atmLocationTask.model.js";
+import Notification from "../src/modules/notification/notification.model.js";
+import User from "../src/modules/users/user.model.js";
 import {
   rejectATMLocationRequestSchema,
   submitATMLocationRequestSchema,
@@ -197,6 +199,7 @@ async function withHarness(
     amcs: amcs ?? [],
     requests: new Map(requests.map((request) => [String(request._id), request])),
     tasks: new Map(tasks.map((task) => [String(task._id), task])),
+    notifications: [],
     failATMWrite,
     failTaskUpdate,
     committedTransactions: 0,
@@ -210,7 +213,10 @@ async function withHarness(
     [ATM, "findOne", ATM.findOne],
     [ATM, "findOneAndUpdate", ATM.findOneAndUpdate],
     [ATM, "bumpLocationWorkflowRevision", ATM.bumpLocationWorkflowRevision],
+    [Employee, "find", Employee.find],
     [Employee, "findOne", Employee.findOne],
+    [User, "find", User.find],
+    [Notification, "create", Notification.create],
     [AMC, "findOne", AMC.findOne],
     [ATMLocationRequest, "create", ATMLocationRequest.create],
     [ATMLocationRequest, "findOne", ATMLocationRequest.findOne],
@@ -319,12 +325,71 @@ async function withHarness(
     }
     return state.atm;
   };
-  Employee.findOne = async (filter) =>
-    state.employees.find(
+  Employee.find = (filter) => ({
+    select() {
+      return this;
+    },
+    lean: async () => state.employees.filter((employee) =>
+      (filter.$or ?? []).some((condition) => {
+        const [field, matcher] = Object.entries(condition)[0];
+        return matcher.$in.some((id) =>
+          field === "_id"
+            ? String(id) === String(employee._id)
+            : String(id) === String(employee.userId),
+        );
+      }),
+    ),
+  });
+  Employee.findOne = (filter) => {
+    const employee = state.employees.find(
       (employee) =>
-        String(employee.userId) === String(filter.userId) &&
+        (!filter.userId ||
+          String(employee.userId) === String(filter.userId)) &&
+        (!filter._id || String(employee._id) === String(filter._id)) &&
         employee.status === filter.status,
     ) ?? null;
+    return {
+      select() {
+        return this;
+      },
+      lean: async () => employee,
+      populate: async () => employee,
+      then: (resolve, reject) =>
+        Promise.resolve(employee).then(resolve, reject),
+    };
+  };
+  User.find = (filter) => ({
+    select() {
+      return this;
+    },
+    lean: async () => {
+      const users = [
+        { _id: adminId, userType: "admin", status: "active" },
+        { _id: superAdminId, userType: "superAdmin", status: "active" },
+        { _id: employeeUserId, userType: "employee", status: "active" },
+      ];
+      return users.filter(
+        (user) =>
+          user.status === filter.status &&
+          (!filter.userType || filter.userType.$in.includes(user.userType)) &&
+          (!filter._id ||
+            filter._id.$in.some((id) => String(id) === String(user._id))),
+      );
+    },
+  });
+  Notification.create = async (notification) => {
+    if (
+      state.notifications.some(
+        (existing) =>
+          String(existing.userId) === String(notification.userId) &&
+          existing.dedupeKey === notification.dedupeKey,
+      )
+    ) {
+      throw { code: 11000 };
+    }
+    state.notifications.push(notification);
+    return { ...notification, _id: String(state.notifications.length) };
+  };
   AMC.findOne = async (filter) =>
     state.amcs.find(
       (amc) =>
@@ -1333,32 +1398,62 @@ test("submission route derives requester identity from the authenticated user", 
   const { submitATMLocationRequest: submitHandler } = await import(
     "../src/modules/atms/atm.controller.js"
   );
-  await withHarness({}, async (state) => {
-    const result = await new Promise((resolve, reject) => {
-      submitHandler(
+  const locationTaskId = "64b000000000000000000125";
+  await withHarness(
+    {
+      atm: makeATM({ assignedEmployeeId: [] }),
+      tasks: [
         {
-          body: {
-            ...proposal(),
-            requestedBy: adminId,
-            requesterRole: "superAdmin",
-          },
-          user: employee,
+          _id: locationTaskId,
+          atmId,
+          assignedEmployeeId: employeeRecordId,
+          taskType: "INITIAL_COLLECTION",
+          status: "IN_PROGRESS",
+          active: true,
+          locationRequestId: null,
         },
-        {
-          status() {
-            return this;
+      ],
+    },
+    async (state) => {
+      const result = await new Promise((resolve, reject) => {
+        submitHandler(
+          {
+            body: {
+              ...proposal({ locationTaskId }),
+              requestedBy: adminId,
+              requesterRole: "superAdmin",
+            },
+            user: employee,
           },
-          json(response) {
-            resolve(response);
+          {
+            status() {
+              return this;
+            },
+            json(response) {
+              resolve(response);
+            },
           },
-        },
-        reject,
+          reject,
+        );
+      });
+      assert.equal(result.data.requestedBy, employeeUserId);
+      assert.equal(result.data.requesterRole, "employee");
+      assert.equal(state.requests.size, 1);
+      assert.equal(state.notifications.length, 2);
+      assert.deepEqual(
+        state.notifications.map(({ userId }) => String(userId)).sort(),
+        [adminId, superAdminId].sort(),
       );
-    });
-    assert.equal(result.data.requestedBy, employeeUserId);
-    assert.equal(result.data.requesterRole, "employee");
-    assert.equal(state.requests.size, 1);
-  });
+      assert.ok(
+        state.notifications.every(
+          ({ dedupeKey, data }) =>
+            dedupeKey ===
+              `atm-location-request:${result.data._id}:submitted` &&
+            String(data.locationTaskId) === locationTaskId,
+        ),
+      );
+    },
+  );
 });
 
 test("approval atomically applies GeoJSON coordinates and official audit metadata", async () => {

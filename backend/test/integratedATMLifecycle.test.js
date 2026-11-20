@@ -4,8 +4,10 @@ import express from "express";
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import ATM from "../src/modules/atms/atm.model.js";
+import ATMIdSequence from "../src/modules/atms/atmIdSequence.model.js";
 import ATMLocationRequest from "../src/modules/atms/atmLocationRequest.model.js";
 import ATMLocationTask from "../src/modules/atms/atmLocationTask.model.js";
+import Bank from "../src/modules/banks/bank.model.js";
 import Customer from "../src/modules/customers/customer.model.js";
 import District from "../src/modules/districts/district.models.js";
 import Employee from "../src/modules/employees/employee.model.js";
@@ -79,6 +81,7 @@ function createMemoryPersistence() {
     customer: objectId(),
     bank: objectId(),
     district: objectId(),
+    region: objectId(),
   };
   const users = new Map([
     [
@@ -172,13 +175,26 @@ function createMemoryPersistence() {
       },
     ],
   ]);
-  const district = { _id: ids.district, isActive: true };
+  const district = {
+    _id: ids.district,
+    bankId: ids.bank,
+    regionId: ids.region,
+    geographyStatus: "MAPPED",
+    isActive: true,
+  };
+  const region = {
+    _id: ids.region,
+    bankId: ids.bank,
+    geographyStatus: "MAPPED",
+    isActive: true,
+  };
   const atms = new Map();
   const jobs = new Map();
   const requests = new Map();
   const locationTasks = new Map();
   const photos = new Map();
   const jobHistory = [];
+  const atmIdSequence = { value: 0, transactionSession: null };
   let workflowLockTail = Promise.resolve();
 
   const matchesATM = (atm, filter) => {
@@ -236,6 +252,7 @@ function createMemoryPersistence() {
   replace(mongoose, "startSession", async () => ({
     async withTransaction(operation) {
       const captureSnapshots = () => ({
+        atmIdSequenceValue: atmIdSequence.value,
         atms: new Map(
           [...atms].map(([id, atm]) => [
             id,
@@ -256,8 +273,10 @@ function createMemoryPersistence() {
         snapshots = captureSnapshots();
       };
       try {
+        atmIdSequence.transactionSession = this;
         return await operation(this);
       } catch (error) {
+        atmIdSequence.value = snapshots.atmIdSequenceValue;
         for (const [id, snapshot] of snapshots.atms) {
           Object.assign(atms.get(id), snapshot);
         }
@@ -280,7 +299,17 @@ function createMemoryPersistence() {
     },
     async endSession() {},
   }));
+  replace(ATMIdSequence, "findOneAndUpdate", async (_filter, update, options) => {
+    if (options.session !== atmIdSequence.transactionSession) {
+      throw new Error("ATM ID reservation did not use the active transaction");
+    }
+    atmIdSequence.value += update.$inc.value;
+    return { value: atmIdSequence.value };
+  });
   replace(User, "findById", (id) => makeQuery(users.get(String(id)) ?? null));
+  replace(Bank, "findById", (id) =>
+    makeQuery(banks.get(String(id)) ?? null),
+  );
   replace(Employee, "findById", (id) =>
     makeQuery(employees.get(String(id)) ?? null),
   );
@@ -302,6 +331,10 @@ function createMemoryPersistence() {
   );
   replace(District, "findById", (id) =>
     makeQuery(sameId(district._id, id) ? district : null),
+  );
+  replace(District, "updateOne", async () => ({ matchedCount: 1 }));
+  replace(Region, "findById", (id) =>
+    makeQuery(sameId(region._id, id) ? region : null),
   );
   replace(Region, "countDocuments", async () => 0);
   replace(Customer, "findOne", () =>
@@ -358,14 +391,17 @@ function createMemoryPersistence() {
   });
   replace(Job, "countDocuments", async () => jobs.size);
   replace(Job, "create", async (data) => {
-    const job = makePersistedRecord(data, {
-      _id: objectId(),
-      isDeleted: false,
-      beforePhotos: [],
-      afterPhotos: [],
-    });
-    jobs.set(String(job._id), job);
-    return job;
+    const records = Array.isArray(data) ? data : [data];
+    const createdJobs = records.map((record) =>
+      makePersistedRecord(record, {
+        _id: objectId(),
+        isDeleted: false,
+        beforePhotos: [],
+        afterPhotos: [],
+      }),
+    );
+    for (const job of createdJobs) jobs.set(String(job._id), job);
+    return Array.isArray(data) ? createdJobs : createdJobs[0];
   });
   replace(Job, "findById", (id) =>
     makeQuery(jobs.get(String(id)) ?? null),
@@ -523,6 +559,7 @@ function createMemoryPersistence() {
     requests,
     locationTasks,
     photos,
+    atmIdSequence,
     jobHistory,
     restore() {
       for (const [target, key, original] of originals.reverse()) {
@@ -602,10 +639,12 @@ test("integrated ATM lifecycle runs through authenticated HTTP routes", async (t
 
   const createATMResponse = await adminRequest("POST", "/api/v1/atm/createATM", {
     bankId: ids.bank,
+    clientAtmId: "LIFECYCLE-TEST-ATM-001",
     customerId: ids.customer,
     districtId: ids.district,
-    regionId: null,
+    regionId: ids.region,
     locationName: "Integrated lifecycle test ATM",
+    city: "Test City",
     address: "Test-only address",
     installationType: "ONSITE",
   });
@@ -613,6 +652,8 @@ test("integrated ATM lifecycle runs through authenticated HTTP routes", async (t
   const atmId = createATMResponse.body.data._id;
   const atm = memory.atms.get(atmId);
   assert.ok(atm);
+  assert.equal(atm.atmId, "ATM0001");
+  assert.equal(memory.atmIdSequence.value, 1);
   assert.equal(String(atm.bankId), ids.bank);
   assert.equal(String(atm.customer), ids.customer);
   assert.ok(memory.banks.has(String(atm.bankId)));
@@ -643,7 +684,11 @@ test("integrated ATM lifecycle runs through authenticated HTTP routes", async (t
     workType: "maintenance",
     priority: "medium",
   });
-  assert.equal(createJobResponse.status, 201);
+  assert.equal(
+    createJobResponse.status,
+    201,
+    JSON.stringify(createJobResponse.body),
+  );
   const jobId = createJobResponse.body.data._id;
   const job = memory.jobs.get(jobId);
   assert.ok(job);
@@ -927,10 +972,12 @@ test("integrated ATM lifecycle runs through authenticated HTTP routes", async (t
         "/api/v1/atm/createATM",
         {
           bankId: ids.bank,
+          clientAtmId: "LIFECYCLE-TEST-ATM-002",
           customerId: ids.customer,
           districtId: ids.district,
-          regionId: null,
+          regionId: ids.region,
           locationName: "Integrated location-task initial ATM",
+          city: "Test City",
           address: "Test-only location-task address",
           installationType: "ONSITE",
         },
@@ -942,10 +989,12 @@ test("integrated ATM lifecycle runs through authenticated HTTP routes", async (t
         "/api/v1/atm/createATM",
         {
           bankId: ids.bank,
+          clientAtmId: "LIFECYCLE-TEST-ATM-003",
           customerId: ids.customer,
           districtId: ids.district,
-          regionId: null,
+          regionId: ids.region,
           locationName: "Integrated location-task conflict ATM",
+          city: "Test City",
           address: "Test-only conflict address",
           installationType: "ONSITE",
         },
@@ -1044,10 +1093,12 @@ test("integrated ATM lifecycle runs through authenticated HTTP routes", async (t
         "/api/v1/atm/createATM",
         {
           bankId: ids.bank,
+          clientAtmId: "LIFECYCLE-TEST-ATM-004",
           customerId: ids.customer,
           districtId: ids.district,
-          regionId: null,
+          regionId: ids.region,
           locationName: "Integrated location-task race ATM",
+          city: "Test City",
           address: "Test-only race address",
           installationType: "ONSITE",
         },

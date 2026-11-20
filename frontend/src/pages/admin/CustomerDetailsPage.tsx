@@ -12,12 +12,7 @@ import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import CustomerEditDialog from "@/features/customers/components/CustomerEditDialog";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import {
   useCustomer,
   useCustomerActiveJobCount,
@@ -62,9 +58,19 @@ function formatDate(value?: string | null) {
 function getRelatedName(value: unknown, field: string) {
   if (typeof value !== "object" || value === null) return "—";
   const displayValue = (value as Record<string, unknown>)[field];
-  return typeof displayValue === "string" && displayValue
-    ? displayValue
-    : "—";
+  return typeof displayValue === "string" && displayValue ? displayValue : "—";
+}
+
+function getReferenceNames(values: unknown[], field: string) {
+  return values
+    .map((value) => {
+      if (typeof value === "string") return value;
+      if (typeof value !== "object" || value === null) return "";
+      const name = (value as Record<string, unknown>)[field];
+      return typeof name === "string" ? name : "";
+    })
+    .filter(Boolean)
+    .join(", ");
 }
 
 function getATMFromJob(job: Job): JobATM | null {
@@ -72,8 +78,7 @@ function getATMFromJob(job: Job): JobATM | null {
 }
 
 function getAssignedEmployee(job: Job): JobUser | null {
-  return job.assignedEmployeeId &&
-    typeof job.assignedEmployeeId !== "string"
+  return job.assignedEmployeeId && typeof job.assignedEmployeeId !== "string"
     ? job.assignedEmployeeId
     : null;
 }
@@ -95,9 +100,10 @@ function getJobStatusVariant(status: Job["status"]) {
 }
 
 function getPriorityVariant(priority: string) {
-  return priority.toLowerCase() === "critical" || priority.toLowerCase() === "high"
-    ? "destructive" as const
-    : "secondary" as const;
+  return priority.toLowerCase() === "critical" ||
+    priority.toLowerCase() === "high"
+    ? ("destructive" as const)
+    : ("secondary" as const);
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {
@@ -158,10 +164,7 @@ function SectionLoading({ label }: { label: string }) {
   return (
     <div className="space-y-3 p-4" role="status">
       {Array.from({ length: 3 }, (_, index) => (
-        <div
-          key={index}
-          className="h-10 animate-pulse rounded bg-muted/50"
-        />
+        <div key={index} className="h-10 animate-pulse rounded bg-muted/50" />
       ))}
       <p className="sr-only">Loading {label.toLowerCase()}...</p>
     </div>
@@ -215,12 +218,17 @@ function SectionPagination({
 }
 
 function notFoundError(error: unknown) {
-  return isAxiosError(error) && [400, 404].includes(error.response?.status ?? 0);
+  return (
+    isAxiosError(error) && [400, 404].includes(error.response?.status ?? 0)
+  );
 }
 
 function getCustomerErrorMessage(error: unknown) {
   if (isAxiosError<{ message?: string }>(error)) {
-    return error.response?.data?.message || "The customer request could not be completed.";
+    return (
+      error.response?.data?.message ||
+      "The customer request could not be completed."
+    );
   }
   return error instanceof Error
     ? error.message
@@ -236,11 +244,7 @@ export default function CustomerDetailsPage() {
   const customerQuery = useCustomer(id);
   const customer = customerQuery.data;
   const relatedCustomerId = customer?._id ?? "";
-  const jobsQuery = useCustomerJobs(
-    relatedCustomerId,
-    jobPage,
-    JOB_PAGE_SIZE,
-  );
+  const jobsQuery = useCustomerJobs(relatedCustomerId, jobPage, JOB_PAGE_SIZE);
   const complaintsQuery = useCustomerComplaints(
     relatedCustomerId,
     complaintPage,
@@ -261,7 +265,10 @@ export default function CustomerDetailsPage() {
     updates: CustomerUpdateData,
   ) => {
     try {
-      await updateCustomerMutation.mutateAsync({ id: customerId, data: updates });
+      await updateCustomerMutation.mutateAsync({
+        id: customerId,
+        data: updates,
+      });
       toast.success("Customer updated successfully.");
       setIsEditOpen(false);
     } catch (error) {
@@ -341,6 +348,16 @@ export default function CustomerDetailsPage() {
     .map((district) => district.districtName)
     .filter(Boolean)
     .join(", ");
+  const regionNames = getReferenceNames(
+    customer.regionIds ??
+      (customer.regionId ? [customer.regionId] : []),
+    "name",
+  );
+  const serviceDistrictNames = getReferenceNames(
+    customer.serviceDistrictIds ??
+      (customer.districtId ? [customer.districtId] : []),
+    "districtName",
+  );
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
@@ -370,6 +387,7 @@ export default function CustomerDetailsPage() {
               >
                 {customer.isActive ? "Active" : "Inactive"}
               </Badge>
+              <Badge>{formatValue(customer.customerCode)}</Badge>
             </div>
             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
               <span>{formatValue(customer.bankName)}</span>
@@ -411,14 +429,8 @@ export default function CustomerDetailsPage() {
       </Card>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <SummaryCard
-          label="Assigned ATMs"
-          value={customer.linkedATMCount}
-        />
-        <SummaryCard
-          label="Active Jobs"
-          value={activeJobsQuery.count}
-        />
+        <SummaryCard label="Assigned ATMs" value={customer.linkedATMCount} />
+        <SummaryCard label="Active Jobs" value={activeJobsQuery.count} />
         <SummaryCard
           label="Open Complaints"
           value={openComplaintsQuery.data?.pagination.total}
@@ -445,8 +457,13 @@ export default function CustomerDetailsPage() {
                 value={formatValue(customer.customerPhone)}
               />
               <DetailRow label="Bank" value={formatValue(customer.bankName)} />
+              <DetailRow label="Regions" value={formatValue(regionNames)} />
               <DetailRow
-                label="Districts"
+                label="Service districts"
+                value={formatValue(serviceDistrictNames)}
+              />
+              <DetailRow
+                label="ATM eligibility districts"
                 value={formatValue(districtNames)}
               />
               <DetailRow
@@ -487,7 +504,7 @@ export default function CustomerDetailsPage() {
                         to={`/admin/atms/${atm._id}`}
                         className="font-medium text-primary hover:underline"
                       >
-                        {formatValue(atm.atmId)}
+                        {getATMDisplayId(atm) || "ATM unavailable"}
                       </Link>
                       <p className="text-sm text-muted-foreground">
                         {formatValue(atm.locationName)} ·{" "}
@@ -498,16 +515,24 @@ export default function CustomerDetailsPage() {
                         <span>{formatValue(atm.address)}</span>
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        District: {formatValue(getRelatedName(atm.districtId, "districtName"))}
+                        District:{" "}
+                        {formatValue(
+                          getRelatedName(atm.districtId, "districtName"),
+                        )}
                         {" · "}
-                        Region: {formatValue(getRelatedName(atm.regionId, "name"))}
+                        Region:{" "}
+                        {formatValue(getRelatedName(atm.regionId, "name"))}
                         {" · "}
                         Installation: {formatValue(atm.installationType)}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       {atm.status && (
-                        <Badge variant={atm.status === "ACTIVE" ? "default" : "secondary"}>
+                        <Badge
+                          variant={
+                            atm.status === "ACTIVE" ? "default" : "secondary"
+                          }
+                        >
                           {atm.status.replaceAll("_", " ")}
                         </Badge>
                       )}
@@ -529,7 +554,9 @@ export default function CustomerDetailsPage() {
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle>Jobs</CardTitle>
             {jobsQuery.data && (
-              <Badge variant="secondary">{jobsQuery.data.pagination.total}</Badge>
+              <Badge variant="secondary">
+                {jobsQuery.data.pagination.total}
+              </Badge>
             )}
           </CardHeader>
           <CardContent className="p-0">
@@ -570,7 +597,7 @@ export default function CustomerDetailsPage() {
                           </Link>
                           <p className="text-sm">{formatValue(job.title)}</p>
                           <p className="text-xs text-muted-foreground">
-                            ATM: {formatValue(atm?.atmId)}
+                            ATM: {getATMDisplayId(atm) || "ATM unavailable"}
                             {" · "}
                             {formatJobWorkType(job.workType)}
                             {job.workType === "ac" && job.acSubType
@@ -658,21 +685,31 @@ export default function CustomerDetailsPage() {
                             <p className="font-medium">
                               {formatValue(complaint.complaintNumber)}
                             </p>
-                            <p className="text-sm">{formatValue(complaint.title)}</p>
+                            <p className="text-sm">
+                              {formatValue(complaint.title)}
+                            </p>
                             <p className="text-xs text-muted-foreground">
-                              ATM: {formatValue(atm?.atmId)}
+                              ATM: {getATMDisplayId(atm) || "ATM unavailable"}
                               {" · "}
                               Created:{" "}
-                              {formatDate(complaint.createdAt || complaint.reportedAt)}
+                              {formatDate(
+                                complaint.createdAt || complaint.reportedAt,
+                              )}
                             </p>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <Badge
-                              variant={complaint.status === "OPEN" ? "destructive" : "secondary"}
+                              variant={
+                                complaint.status === "OPEN"
+                                  ? "destructive"
+                                  : "secondary"
+                              }
                             >
                               {complaint.status.replaceAll("_", " ")}
                             </Badge>
-                            <Badge variant={getPriorityVariant(complaint.priority)}>
+                            <Badge
+                              variant={getPriorityVariant(complaint.priority)}
+                            >
                               {complaint.priority}
                             </Badge>
                           </div>

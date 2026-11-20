@@ -212,7 +212,7 @@ export const markOverdueAMCs = async () => {
     isDeleted: false,
   })
     .populate("employeeId", "firstName lastName")
-    .populate("atmId", "atmId locationName");
+    .populate("atmId", "atmId clientAtmId locationName");
 
   const admins = await User.find({
     userType: { $in: ["admin", "superAdmin"] },
@@ -233,10 +233,12 @@ export const markOverdueAMCs = async () => {
       { new: true, runValidators: true },
     )
       .populate("employeeId", "firstName lastName")
-      .populate("atmId", "atmId locationName");
+      .populate("atmId", "atmId clientAtmId locationName");
     if (!updatedAMC) continue;
 
     results.marked++;
+    const atmDisplayId =
+      updatedAMC.atmId.clientAtmId?.trim() || updatedAMC.atmId.atmId;
 
     // Each recipient is deduplicated independently, so an existing
     // notification for one recipient never suppresses the others.
@@ -245,7 +247,7 @@ export const markOverdueAMCs = async () => {
       recipients.push({
         userId: updatedAMC.employeeId._id,
         title: "AMC Overdue",
-        message: `AMC for ${updatedAMC.atmId.locationName} (${updatedAMC.atmId.atmId}) is overdue. Deadline was ${updatedAMC.deadlineDate.toDateString()}.`,
+        message: `AMC for ${atmDisplayId} (${updatedAMC.atmId.locationName}) is overdue. Deadline was ${updatedAMC.deadlineDate.toDateString()}.`,
         data: {
           amcId: updatedAMC._id,
           month: updatedAMC.month,
@@ -257,7 +259,7 @@ export const markOverdueAMCs = async () => {
       recipients.push({
         userId: admin._id,
         title: "AMC Overdue Alert",
-        message: `Employee ${updatedAMC.employeeId?.firstName} ${updatedAMC.employeeId?.lastName} has overdue AMC for ${updatedAMC.atmId.atmId}.`,
+        message: `Employee ${updatedAMC.employeeId?.firstName} ${updatedAMC.employeeId?.lastName} has overdue AMC for ${atmDisplayId}.`,
         data: {
           amcId: updatedAMC._id,
           employeeId: updatedAMC.employeeId?._id,

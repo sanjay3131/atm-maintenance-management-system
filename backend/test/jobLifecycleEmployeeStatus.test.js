@@ -6,9 +6,12 @@ import Employee from "../src/modules/employees/employee.model.js";
 import Job from "../src/modules/jobs/jobs.model.js";
 import JobHistory from "../src/modules/jobs/jobHistory.model.js";
 import JobPhoto from "../src/modules/jobPhotos/jobPhotos.model.js";
+import Notification from "../src/modules/notification/notification.model.js";
+import User from "../src/modules/users/user.model.js";
 import {
   acceptJob,
   completeJob,
+  holdJob,
   reassignJob,
   startJob,
 } from "../src/modules/jobs/jobs.controller.js";
@@ -20,6 +23,7 @@ const employeeUserId = "64b000000000000000000094";
 const nextEmployeeId = "64b000000000000000000095";
 const nextEmployeeUserId = "64b000000000000000000096";
 const adminId = "64b000000000000000000097";
+const superAdminId = "64b000000000000000000098";
 
 const invoke = (handler, req) =>
   new Promise((resolve) => {
@@ -132,13 +136,17 @@ async function withLifecycleMocks(
   };
   const historyEntries = [];
   const employeeLookups = [];
+  const notifications = [];
   const employee = makeEmployee(employeeStatus, userStatus);
   const originals = [
     [Job, "findById", Job.findById],
     [JobHistory, "create", JobHistory.create],
     [JobPhoto, "countDocuments", JobPhoto.countDocuments],
     [ATM, "findById", ATM.findById],
+    [Employee, "find", Employee.find],
     [Employee, "findOne", Employee.findOne],
+    [User, "find", User.find],
+    [Notification, "create", Notification.create],
   ];
 
   Job.findById = () => makeQuery(job);
@@ -149,16 +157,70 @@ async function withLifecycleMocks(
   JobPhoto.countDocuments = async (filter) =>
     filter.photoType === "before" ? 3 : 3;
   ATM.findById = async () => atm;
+  Employee.find = (filter) => ({
+    select() {
+      return this;
+    },
+    lean: async () => {
+      const employees = [
+        employee,
+        makeEmployee("active", "active", nextEmployeeUserId),
+      ];
+      return employees.filter((candidate) =>
+        (filter.$or ?? []).some((condition) => {
+          const [field, matcher] = Object.entries(condition)[0];
+          return matcher.$in.some((id) =>
+            field === "_id"
+              ? String(id) === String(candidate._id)
+              : String(id) === String(candidate.userId?._id ?? candidate.userId),
+          );
+        }),
+      );
+    },
+  });
   Employee.findOne = (filter) => {
     employeeLookups.push(filter);
+    const found =
+      filter.userId === employeeUserId &&
+      (!filter.status || filter.status === employeeStatus)
+        ? employee
+        : null;
     return {
-      populate: async () =>
-        filter.userId === employeeUserId ? employee : null,
+      populate: async () => found,
+      select() {
+        return this;
+      },
+      lean: async () =>
+        found && found.status === "active" && userStatus === "active"
+          ? { userId: employeeUserId }
+          : null,
     };
+  };
+  User.find = (filter) => ({
+    select() {
+      return this;
+    },
+    lean: async () =>
+      [
+        { _id: adminId, userType: "admin", status: "active" },
+        { _id: superAdminId, userType: "superAdmin", status: "active" },
+        { _id: employeeUserId, userType: "employee", status: userStatus },
+        { _id: nextEmployeeUserId, userType: "employee", status: "active" },
+      ].filter(
+        (user) =>
+          user.status === filter.status &&
+          (!filter.userType || filter.userType.$in.includes(user.userType)) &&
+          (!filter._id ||
+            filter._id.$in.some((id) => String(id) === String(user._id))),
+      ),
+  });
+  Notification.create = async (input) => {
+    notifications.push(input);
+    return { ...input, _id: String(notifications.length) };
   };
 
   try {
-    await callback({ job, historyEntries, employeeLookups });
+    await callback({ job, historyEntries, employeeLookups, notifications });
   } finally {
     for (const [target, key, original] of originals.reverse()) {
       target[key] = original;
@@ -169,7 +231,7 @@ async function withLifecycleMocks(
 test("active Employee with active User can accept an assigned Job", async () => {
   await withLifecycleMocks(
     { status: "ASSIGNED" },
-    async ({ job, historyEntries, employeeLookups }) => {
+    async ({ job, historyEntries, employeeLookups, notifications }) => {
       const result = await invoke(acceptJob, employeeRequest("ASSIGNED"));
 
       assert.equal(result.error, undefined);
@@ -178,6 +240,68 @@ test("active Employee with active User can accept an assigned Job", async () => 
       assert.equal(job.assignedEmployeeId, employeeUserId);
       assert.ok(job.acceptedAt instanceof Date);
       assert.equal(historyEntries.length, 1);
+      assert.equal(notifications.length, 0);
+    },
+  );
+});
+
+test("employee start and resume update realtime state without Admin notifications", async () => {
+  for (const status of ["ACCEPTED", "ON_HOLD"]) {
+    await withLifecycleMocks(
+      { status },
+      async ({ job, historyEntries, notifications }) => {
+        const result = await invoke(startJob, employeeRequest(status));
+
+        assert.equal(result.error, undefined);
+        assert.equal(result.statusCode, 200);
+        assert.equal(job.status, "IN_PROGRESS");
+        assert.equal(historyEntries.length, 1);
+        assert.equal(notifications.length, 0);
+      },
+    );
+  }
+});
+
+test("employee hold updates realtime state without an Admin notification", async () => {
+  await withLifecycleMocks(
+    { status: "IN_PROGRESS" },
+    async ({ job, historyEntries, notifications }) => {
+      const result = await invoke(holdJob, {
+        ...employeeRequest("IN_PROGRESS"),
+        body: { reason: "Waiting for access" },
+      });
+
+      assert.equal(result.error, undefined);
+      assert.equal(result.statusCode, 200);
+      assert.equal(job.status, "ON_HOLD");
+      assert.equal(historyEntries.length, 1);
+      assert.equal(notifications.length, 0);
+    },
+  );
+});
+
+test("employee completion creates one notification per active Admin and Super Admin", async () => {
+  await withLifecycleMocks(
+    { status: "IN_PROGRESS" },
+    async ({ job, historyEntries, notifications }) => {
+      const result = await invoke(completeJob, employeeRequest("IN_PROGRESS"));
+
+      assert.equal(result.error, undefined);
+      assert.equal(result.statusCode, 200);
+      assert.equal(job.status, "COMPLETED");
+      assert.equal(historyEntries.length, 1);
+      assert.equal(notifications.length, 2);
+      assert.deepEqual(
+        notifications.map(({ userId }) => String(userId)).sort(),
+        [adminId, superAdminId].sort(),
+      );
+      assert.ok(
+        notifications.every(
+          ({ data, dedupeKey }) =>
+            data.action === "completed" &&
+            dedupeKey.startsWith(`job:${jobId}:completed:`),
+        ),
+      );
     },
   );
 });
@@ -351,11 +475,15 @@ test("Admin can reassign a Job away from a non-active incumbent to an active Emp
         assignedEmployeeId: [employeeId, nextEmployeeId],
       };
       const historyEntries = [];
+      const notifications = [];
       const originals = [
         [Job, "findById", Job.findById],
         [JobHistory, "create", JobHistory.create],
         [ATM, "findById", ATM.findById],
+        [Employee, "find", Employee.find],
         [Employee, "findOne", Employee.findOne],
+        [User, "find", User.find],
+        [Notification, "create", Notification.create],
       ];
       Job.findById = () => makeQuery(job);
       JobHistory.create = async (entry) => {
@@ -363,12 +491,47 @@ test("Admin can reassign a Job away from a non-active incumbent to an active Emp
         return entry;
       };
       ATM.findById = async () => atm;
-      Employee.findOne = (filter) => ({
-        populate: async () =>
+      Employee.find = () => ({
+        select() {
+          return this;
+        },
+        lean: async () => [],
+      });
+      Employee.findOne = (filter) => {
+        const found =
           filter.userId === nextEmployeeUserId
             ? makeEmployee("active", "active", nextEmployeeUserId)
-            : null,
+            : null;
+        return {
+          populate: async () => found,
+          select() {
+            return this;
+          },
+          lean: async () =>
+            found ? { userId: nextEmployeeUserId } : null,
+        };
+      };
+      User.find = (filter) => ({
+        select() {
+          return this;
+        },
+        lean: async () =>
+          [
+            { _id: adminId, userType: "admin", status: "active" },
+            { _id: nextEmployeeUserId, userType: "employee", status: "active" },
+          ].filter(
+            (user) =>
+              user.status === filter.status &&
+              (!filter.userType ||
+                filter.userType.$in.includes(user.userType)) &&
+              (!filter._id ||
+                filter._id.$in.some((id) => String(id) === String(user._id))),
+          ),
       });
+      Notification.create = async (input) => {
+        notifications.push(input);
+        return { ...input, _id: String(notifications.length) };
+      };
 
       try {
         const result = await invoke(reassignJob, {
@@ -389,6 +552,8 @@ test("Admin can reassign a Job away from a non-active incumbent to an active Emp
         assert.equal(job.reassignmentHistory[0].toEmployee, nextEmployeeUserId);
         assert.equal(historyEntries.length, 1);
         assert.equal(historyEntries[0].action, "reassigned");
+        assert.equal(notifications.length, 1);
+        assert.equal(String(notifications[0].userId), nextEmployeeUserId);
       } finally {
         for (const [target, key, original] of originals.reverse()) {
           target[key] = original;

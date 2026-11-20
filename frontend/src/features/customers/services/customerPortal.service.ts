@@ -4,6 +4,7 @@ import type { Job } from "@/features/jobs/types/job.types";
 export interface CustomerPortalATM {
   _id: string;
   atmId: string;
+  clientAtmId?: string | null;
   locationName: string;
   address: string;
   installationType?: string;
@@ -27,6 +28,7 @@ export interface CustomerPortalAMC {
   atmId?: {
     _id: string;
     atmId?: string;
+    clientAtmId?: string | null;
     locationName?: string;
     address?: string;
   } | string | null;

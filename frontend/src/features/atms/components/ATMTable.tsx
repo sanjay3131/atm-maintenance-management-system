@@ -1,4 +1,5 @@
 import type { ATM } from "../types/atm.types";
+import { getATMDisplayId } from "../atmDisplay.utils";
 import { Link } from "react-router-dom";
 
 interface ATMTableProps {
@@ -17,6 +18,7 @@ export default function ATMTable({
           <tr>
             <th className="px-4 py-3 text-left font-medium">ATM ID</th>
             <th className="px-4 py-3 text-left font-medium">Location</th>
+            <th className="px-4 py-3 text-left font-medium">City</th>
             <th className="px-4 py-3 text-left font-medium">Bank</th>
             <th className="px-4 py-3 text-left font-medium">District</th>
             <th className="px-4 py-3 text-left font-medium">Region</th>
@@ -30,7 +32,7 @@ export default function ATMTable({
           {atms.length === 0 ? (
             <tr>
               <td
-                colSpan={7}
+                colSpan={8}
                 className="px-4 py-12 text-center text-sm text-muted-foreground"
               >
                 {emptyMessage}
@@ -44,7 +46,7 @@ export default function ATMTable({
                     to={`/admin/atms/${atm._id}`}
                     className="text-primary underline-offset-4 hover:underline"
                   >
-                    {atm.atmId}
+                    {getATMDisplayId(atm)}
                   </Link>
                 </td>
 
@@ -54,6 +56,8 @@ export default function ATMTable({
                     {atm.address}
                   </div>
                 </td>
+
+                <td className="px-4 py-3">{atm.city || "Not available"}</td>
 
                 <td className="px-4 py-3">
                   {atm.bankId?.bankName || "Not assigned"}

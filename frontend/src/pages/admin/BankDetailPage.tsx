@@ -46,6 +46,7 @@ import {
   formatJobWorkType,
 } from "@/features/jobs/utils/jobWorkType.utils";
 import { useATMs } from "@/features/atms/hooks/useATMs";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import type {
   ATM,
   ATMEmployee,
@@ -390,7 +391,9 @@ function ATMRows({
         <tbody>
           {atms.map((atm) => (
             <tr key={atm._id} className="border-b last:border-0">
-              <td className="px-4 py-3 font-medium">{atm.atmId || "—"}</td>
+              <td className="px-4 py-3 font-medium">
+                {getATMDisplayId(atm) || "—"}
+              </td>
               <td className="px-4 py-3">
                 <p>{atm.locationName || "Location unavailable"}</p>
                 <p className="text-xs text-muted-foreground">
@@ -656,9 +659,12 @@ export default function BankDetailPage() {
     return bankATMs.filter((atm) => {
       const matchesSearch =
         !normalizedSearch ||
-        [atm.atmId, atm.locationName, atm.address].some((value) =>
-          value?.toLowerCase().includes(normalizedSearch),
-        );
+        [
+          atm.clientAtmId,
+          atm.atmId,
+          atm.locationName,
+          atm.address,
+        ].some((value) => value?.toLowerCase().includes(normalizedSearch));
       const matchesStatus =
         statusFilter === ALL || atm.status === statusFilter;
       const matchesDistrict =
@@ -1146,7 +1152,9 @@ export default function BankDetailPage() {
                               <div className="border-t">
                                 <ATMRows
                                   atms={[...region.atms].sort((a, b) =>
-                                    a.atmId.localeCompare(b.atmId),
+                                    getATMDisplayId(a).localeCompare(
+                                      getATMDisplayId(b),
+                                    ),
                                   )}
                                   emptyMessage="No ATMs in this region."
                                 />
@@ -2169,7 +2177,8 @@ export default function BankDetailPage() {
                                   {job.jobNumber || job.jobId}
                                 </td>
                                 <td className="whitespace-nowrap px-4 py-3">
-                                  {atm?.atmId ?? "Unknown ATM"}
+                                  {getATMDisplayId(atm ?? populatedATM) ||
+                                    "Unknown ATM"}
                                 </td>
                                 <td className="min-w-40 px-4 py-3">
                                   {atm?.locationName ??
@@ -2364,14 +2373,16 @@ export default function BankDetailPage() {
             ) : (
               <ul className="divide-y rounded-md border">
                 {[...(selectedCustomer?.atms ?? [])]
-                  .sort((a, b) => a.atmId.localeCompare(b.atmId))
+                  .sort((a, b) =>
+                    getATMDisplayId(a).localeCompare(getATMDisplayId(b)),
+                  )
                   .map((atm) => (
                     <li
                       key={atm._id}
                       className="flex flex-wrap items-center justify-between gap-3 p-3"
                     >
                       <div>
-                        <p className="font-medium">{atm.atmId}</p>
+                        <p className="font-medium">{getATMDisplayId(atm)}</p>
                         <p className="text-xs text-muted-foreground">
                           {atm.locationName}
                         </p>
@@ -2476,14 +2487,16 @@ export default function BankDetailPage() {
             ) : (
               <ul className="divide-y rounded-md border">
                 {[...(selectedEmployee?.atms ?? [])]
-                  .sort((a, b) => a.atmId.localeCompare(b.atmId))
+                  .sort((a, b) =>
+                    getATMDisplayId(a).localeCompare(getATMDisplayId(b)),
+                  )
                   .map((atm) => (
                     <li
                       key={atm._id}
                       className="flex flex-wrap items-center justify-between gap-3 p-3"
                     >
                       <div>
-                        <p className="font-medium">{atm.atmId}</p>
+                        <p className="font-medium">{getATMDisplayId(atm)}</p>
                         <p className="text-xs text-muted-foreground">
                           {atm.locationName}
                         </p>

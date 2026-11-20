@@ -3,6 +3,7 @@ import type { KeyboardEvent, ReactNode } from "react";
 import { toast } from "sonner";
 import { ExternalLink } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,7 +60,9 @@ const statusLabel = (status: ATMLocationTaskStatus) =>
   status.replaceAll("_", " ");
 
 const getATMLabel = (atm?: ATM | null) =>
-  atm ? `${atm.atmId} — ${atm.locationName}` : "ATM unavailable";
+  atm
+    ? `${getATMDisplayId(atm)} — ${atm.locationName}`
+    : "ATM unavailable";
 
 const getTaskATMObject = (task: ATMLocationTask): ATM | null =>
   typeof task.atmId === "string" ? null : task.atmId;
@@ -470,7 +473,8 @@ export default function ATMLocationTasksPage() {
     for (const [atmId, assignment] of Object.entries(selectedAssignments)) {
       const employee = employeesById.get(assignment.employeeId);
       if (!employee || !isEligibleLocationTaskEmployee(employee)) {
-        const atmLabel = atmsById.get(atmId)?.atmId ?? atmId;
+        const atmLabel =
+          getATMDisplayId(atmsById.get(atmId)) || "ATM unavailable";
         throw new Error(`Select an active eligible employee for ${atmLabel}.`);
       }
     }
@@ -507,7 +511,8 @@ export default function ATMLocationTasksPage() {
     } catch (error) {
       let message = getBulkATMLocationTaskErrorMessage(
         error,
-        (atmId) => atmsById.get(atmId)?.atmId ?? atmId,
+        (atmId) =>
+          getATMDisplayId(atmsById.get(atmId)) || "ATM unavailable",
       );
       if (shouldRefreshATMLocationTaskInventory(error)) {
         const refreshed = await refreshBulkConflictInventory();
@@ -809,7 +814,7 @@ export default function ATMLocationTasksPage() {
                         className="grid grid-cols-[2rem_minmax(0,1fr)] items-center gap-3 border-b px-3 py-3 last:border-b-0 sm:grid-cols-[2rem_minmax(12rem,1.5fr)_minmax(10rem,1fr)_minmax(14rem,1.2fr)]"
                       >
                         <input
-                          aria-label={`Select ${atm.atmId}`}
+                          aria-label={`Select ${getATMDisplayId(atm)}`}
                           type="checkbox"
                           checked={selected}
                           disabled={!canSelect}
@@ -817,7 +822,9 @@ export default function ATMLocationTasksPage() {
                           className="size-4 accent-primary"
                         />
                         <div className="col-start-2 min-w-0 sm:col-start-auto">
-                          <div className="font-medium">{atm.atmId}</div>
+                          <div className="font-medium">
+                            {getATMDisplayId(atm)}
+                          </div>
                           <div className="truncate text-xs text-muted-foreground">
                             {atm.locationName} · {atm.districtId?.districtName ?? "District unavailable"}
                           </div>
@@ -843,7 +850,7 @@ export default function ATMLocationTasksPage() {
                               onValueChange={(employeeId) =>
                                 updateAssignment(atm._id, { employeeId })
                               }
-                              label={`Employee for ${atm.atmId}`}
+                              label={`Employee for ${getATMDisplayId(atm)}`}
                               placeholder="Search employee"
                               disabled={!eligibleEmployees.length}
                             />
@@ -852,7 +859,7 @@ export default function ATMLocationTasksPage() {
                             )}
                             {atm.locationConfigured && (
                               <input
-                                aria-label={`Optional correction reason for ${atm.atmId}`}
+                                aria-label={`Optional correction reason for ${getATMDisplayId(atm)}`}
                                 className={inputClass}
                                 placeholder="Correction reason (optional)"
                                 value={selectedAssignments[atm._id]?.correctionReason ?? ""}
@@ -982,8 +989,12 @@ export default function ATMLocationTasksPage() {
                     return (
                       <tr key={task._id} className="align-top">
                         <td className="px-4 py-3">
-                          <div className="font-medium">{atm?.atmId ?? "ATM unavailable"}</div>
-                          <div className="text-xs text-muted-foreground">{atm?.locationName ?? atmId}</div>
+                          <div className="font-medium">
+                            {getATMDisplayId(atm) || "ATM unavailable"}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {atm?.locationName ?? "Location unavailable"}
+                          </div>
                           {linkedRequestId && (
                             <Button
                               type="button"

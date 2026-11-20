@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { isAxiosError } from "axios";
 import { toast } from "sonner";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { useATMs } from "@/features/atms/hooks/useATMs";
 import { useEmployees } from "@/features/employees/hooks/useEmployees";
 import type { Employee } from "@/services/employee.service";
@@ -203,7 +204,9 @@ export default function AssignJobDialog({
             <span className="text-muted-foreground">ATM: </span>
             <span className="font-medium">
               {atm
-                ? [atm.atmId, atm.locationName].filter(Boolean).join(" · ") ||
+                ? [getATMDisplayId(atm), atm.locationName]
+                    .filter(Boolean)
+                    .join(" · ") ||
                   "ATM details unavailable"
                 : "ATM details unavailable"}
             </span>

@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useDistrictATMs } from "@/features/atms/hooks/useDistrictATMs";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import type { ATM } from "@/features/atms/types/atm.types";
 import { useDistrictCustomers } from "@/features/customers/hooks/useDistrictCustomers";
 import type { DistrictCustomer } from "@/features/customers/services/customer.service";
@@ -619,7 +620,9 @@ export default function DistrictDetailPage() {
                           return (
                             <tr key={atm._id} className="border-b last:border-0">
                               <td className="px-4 py-3">
-                                <p className="font-medium">{atm.atmId}</p>
+                                <p className="font-medium">
+                                  {getATMDisplayId(atm)}
+                                </p>
                                 <p className="text-xs text-muted-foreground">
                                   {atm.locationName || "Location unavailable"}
                                 </p>

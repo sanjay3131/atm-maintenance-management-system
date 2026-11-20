@@ -8,6 +8,7 @@ import {
   Image,
 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -282,7 +283,7 @@ export default function AdminAMCDetailsPage() {
           <dl className="mt-5 grid gap-4 border-t pt-4 sm:grid-cols-2 lg:grid-cols-4">
             <Detail
               label="ATM"
-              value={atm?.atmId || atm?.locationName || "ATM unavailable"}
+              value={getATMDisplayId(atm) || atm?.locationName || "ATM unavailable"}
             />
             <Detail label="Bank" value={getPopulatedName(amc.bankId)} />
             <Detail label="Customer" value={getPopulatedName(amc.customerId)} />

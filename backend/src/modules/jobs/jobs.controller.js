@@ -35,12 +35,21 @@ import { withDistrictGeographyFence } from "../districts/districtGeography.servi
 import {
   publishDomainEventSafely,
 } from "../../realtime/domain-events.js";
-import { resolveJobRecipients } from "../../realtime/recipient-resolver.js";
+import {
+  resolveActiveNotificationAdminRecipients,
+  resolveAssignedJobEmployeeNotificationRecipients,
+  resolveJobRecipients,
+} from "../../realtime/recipient-resolver.js";
+import { createWorkflowNotificationsSafely } from "../notification/notification.service.js";
 
 // ============================================
 // HELPERS
 // ============================================
 const REQUIRED_PHOTOS_PER_TYPE = 3;
+
+const jobAdminNotificationText = {
+  completed: ["Job completed", "An employee completed a job."],
+};
 
 const publishJobUpdated = ({ job, action, previousEmployeeId } = {}) =>
   publishDomainEventSafely({
@@ -50,6 +59,33 @@ const publishJobUpdated = ({ job, action, previousEmployeeId } = {}) =>
     action,
     resolveRecipients: () =>
       resolveJobRecipients(job, { previousEmployeeId }),
+  });
+
+const notifyJobAdmins = ({ job, action, actorId, dedupeKey }) => {
+  const [title, message] = jobAdminNotificationText[action];
+  return createWorkflowNotificationsSafely({
+    resolveRecipients: () => resolveActiveNotificationAdminRecipients(actorId),
+    context: `job ${job._id} ${action}`,
+    title,
+    message,
+    data: { entityType: "job", jobId: String(job._id), action },
+    dedupeKey:
+      dedupeKey ?? `job:${job._id}:${action}:${job.updatedAt?.getTime?.() ?? ""}`,
+  });
+};
+
+const notifyAssignedJobEmployee = (job, action) =>
+  createWorkflowNotificationsSafely({
+    resolveRecipients: () =>
+      resolveAssignedJobEmployeeNotificationRecipients(job),
+    context: `job ${job._id} ${action}`,
+    title: action === "reassigned" ? "Job reassigned to you" : "Job assigned to you",
+    message:
+      action === "reassigned"
+        ? "A job has been reassigned to you."
+        : "A job has been assigned to you.",
+    data: { entityType: "job", jobId: String(job._id), action },
+    dedupeKey: `job:${job._id}:${action}:${job.assignedAt?.getTime?.() ?? ""}`,
   });
 
 const assertCleaningEvidence = async (job) => {
@@ -357,7 +393,10 @@ export const createJob = asyncHandler(async (req, res) => {
   });
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address districtId regionId")
+    .populate(
+      "atmId",
+      "atmId clientAtmId locationName bank address districtId regionId",
+    )
     // .populate("complaintId", "complaintNumber title")
     .populate("createdBy", "firstName lastName");
 
@@ -405,11 +444,12 @@ export const assignJob = asyncHandler(async (req, res) => {
   });
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address")
+    .populate("atmId", "atmId clientAtmId locationName bank address")
     .populate("assignedEmployeeId", "firstName lastName employeeCode")
     .populate("complaintId", "complaintNumber title");
 
   await publishJobUpdated({ job: populatedJob, action: "assigned" });
+  await notifyAssignedJobEmployee(populatedJob, "assigned");
 
   return res
     .status(200)
@@ -446,7 +486,7 @@ export const acceptJob = asyncHandler(async (req, res) => {
   });
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address")
+    .populate("atmId", "atmId clientAtmId locationName bank address")
     .populate("complaintId", "complaintNumber title");
   await publishJobUpdated({ job: populatedJob, action: "accepted" });
   return res
@@ -486,7 +526,7 @@ export const startJob = asyncHandler(async (req, res) => {
   });
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address")
+    .populate("atmId", "atmId clientAtmId locationName bank address")
     .populate("complaintId", "complaintNumber title");
   await publishJobUpdated({ job: populatedJob, action: "started" });
   return res
@@ -573,11 +613,17 @@ export const completeJob = asyncHandler(async (req, res) => {
   });
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address")
+    .populate("atmId", "atmId clientAtmId locationName bank address")
     .populate("assignedEmployeeId", "firstName lastName")
     .populate("complaintId", "complaintNumber title");
 
   await publishJobUpdated({ job: populatedJob, action: "completed" });
+  await notifyJobAdmins({
+    job,
+    action: "completed",
+    actorId: req.user._id,
+    dedupeKey: `job:${job._id}:completed:${completedAt.getTime()}`,
+  });
 
   return res
     .status(200)
@@ -636,7 +682,7 @@ export const verifyJob = asyncHandler(async (req, res) => {
   }
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address")
+    .populate("atmId", "atmId clientAtmId locationName bank address")
     .populate("assignedEmployeeId", "firstName lastName")
     .populate("complaintId", "complaintNumber title");
   await publishJobUpdated({
@@ -703,7 +749,7 @@ export const approveJob = asyncHandler(async (req, res) => {
   }
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address")
+    .populate("atmId", "atmId clientAtmId locationName bank address")
     .populate("assignedEmployeeId", "firstName lastName")
     .populate("complaintId", "complaintNumber title");
   await publishJobUpdated({
@@ -844,7 +890,7 @@ export const reassignJob = asyncHandler(async (req, res) => {
   });
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address")
+    .populate("atmId", "atmId clientAtmId locationName bank address")
     .populate("assignedEmployeeId", "firstName lastName employeeCode")
     .populate("complaintId", "complaintNumber title");
 
@@ -853,6 +899,7 @@ export const reassignJob = asyncHandler(async (req, res) => {
     action: "reassigned",
     previousEmployeeId: oldEmployeeId,
   });
+  await notifyAssignedJobEmployee(populatedJob, "reassigned");
 
   return res
     .status(200)
@@ -963,9 +1010,22 @@ export const getAllJobs = asyncHandler(async (req, res) => {
   }
 
   if (search) {
+    const matchingATMIds = await ATM.distinct("_id", {
+      isDeleted: false,
+      $or: [
+        {
+          clientAtmId: {
+            $regex: escapeRegex(search.trim()),
+            $options: "i",
+          },
+        },
+        { atmId: { $regex: escapeRegex(search.trim()), $options: "i" } },
+      ],
+    });
     query.$or = [
       { jobId: { $regex: search, $options: "i" } },
       { title: { $regex: search, $options: "i" } },
+      { atmId: { $in: matchingATMIds } },
     ];
   }
 
@@ -977,7 +1037,10 @@ export const getAllJobs = asyncHandler(async (req, res) => {
   const skip = (parseInt(page) - 1) * parseInt(limit);
 
   const jobs = await Job.find(query)
-    .populate("atmId", "atmId locationName bank address districtId regionId")
+    .populate(
+      "atmId",
+      "atmId clientAtmId locationName bank address districtId regionId",
+    )
     .populate("assignedEmployeeId", "firstName lastName employeeCode")
     // .populate("complaintId", "complaintNumber title")
     .populate("createdBy", "firstName lastName")
@@ -1051,7 +1114,7 @@ export const getJobById = asyncHandler(async (req, res) => {
   const job = await jobQuery
     .populate(
       "atmId",
-      "atmId locationName bank address districtId regionId location locationConfigured locationRequestWindowOpen",
+      "atmId clientAtmId locationName bank address districtId regionId location locationConfigured locationRequestWindowOpen",
     )
     .populate("assignedEmployeeId", "firstName lastName phoneNumber")
     .populate("reassignmentHistory.fromEmployee", "firstName lastName")
@@ -1106,7 +1169,10 @@ export const getMyJobs = asyncHandler(async (req, res) => {
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
   const jobs = await Job.find(query)
-    .populate("atmId", "atmId locationName bank address districtId regionId")
+    .populate(
+      "atmId",
+      "atmId clientAtmId locationName bank address districtId regionId",
+    )
     .populate("complaintId", "complaintNumber title")
     .sort({ createdAt: -1 })
     .skip(skip)
@@ -1265,7 +1331,7 @@ export const updateJob = asyncHandler(async (req, res) => {
   await job.save();
 
   const populatedJob = await Job.findById(job._id)
-    .populate("atmId", "atmId locationName bank address")
+    .populate("atmId", "atmId clientAtmId locationName bank address")
     .populate("assignedEmployeeId", "firstName lastName")
     .populate("complaintId", "complaintNumber title");
 

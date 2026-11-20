@@ -141,6 +141,77 @@ export const addATMsToCustomerInTransaction = async ({
   return customer;
 };
 
+export const addATMGroupsToCustomersInTransaction = async ({
+  customerAtmGroups,
+  updatedBy,
+  session,
+}) => {
+  if (!Array.isArray(customerAtmGroups)) {
+    throw new ApiError(400, "Customer ATM groups must be an array");
+  }
+  if (customerAtmGroups.length === 0) return;
+  if (
+    !session ||
+    typeof session.inTransaction !== "function" ||
+    session.inTransaction() !== true
+  ) {
+    throw new ApiError(
+      500,
+      "An active transaction session is required for Customer ATM assignments",
+    );
+  }
+
+  const groupsByCustomer = new Map();
+  for (const group of customerAtmGroups) {
+    if (!Array.isArray(group?.atmIds) || group.atmIds.length === 0) {
+      throw new ApiError(400, "Each Customer ATM group must contain ATM IDs");
+    }
+    if (!mongoose.isValidObjectId(group.customerId)) {
+      throw new ApiError(400, "Customer ID is invalid");
+    }
+
+    const customerId = new mongoose.Types.ObjectId(group.customerId);
+    const customerKey = customerId.toString();
+    let customerGroup = groupsByCustomer.get(customerKey);
+    if (!customerGroup) {
+      customerGroup = { customerId, atmIds: [], atmIdKeys: new Set() };
+      groupsByCustomer.set(customerKey, customerGroup);
+    }
+
+    for (const atmId of group.atmIds) {
+      if (!mongoose.isValidObjectId(atmId)) {
+        throw new ApiError(400, "ATM ID is invalid");
+      }
+      const atmObjectId = new mongoose.Types.ObjectId(atmId);
+      const atmKey = atmObjectId.toString();
+      if (!customerGroup.atmIdKeys.has(atmKey)) {
+        customerGroup.atmIdKeys.add(atmKey);
+        customerGroup.atmIds.push(atmObjectId);
+      }
+    }
+  }
+
+  const operations = [...groupsByCustomer.values()].map(
+    ({ customerId, atmIds }) => ({
+      updateOne: {
+        filter: { _id: customerId, isActive: true, isDeleted: false },
+        update: {
+          $addToSet: { atmIds: { $each: atmIds } },
+          ...(updatedBy ? { $set: { updatedBy } } : {}),
+        },
+      },
+    }),
+  );
+  const result = await Customer.bulkWrite(operations, { session });
+  if (result.matchedCount !== operations.length) {
+    throw new ApiError(
+      404,
+      "One or more Customers are missing, inactive, or deleted",
+    );
+  }
+  return result;
+};
+
 export const softDeleteATMAndUnlinkCustomer = async ({
   atmId,
   updatedBy,

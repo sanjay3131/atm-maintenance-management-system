@@ -240,7 +240,7 @@ export const listATMLocationTasks = async ({
       .sort({ createdAt: -1, _id: -1 })
       .skip(skip)
       .limit(limit)
-      .populate("atmId", "atmId locationName address locationConfigured location bankId districtId regionId")
+      .populate("atmId", "atmId clientAtmId locationName address locationConfigured location bankId districtId regionId")
       .populate("atmId.bankId", "bankName")
       .populate("atmId.districtId", "districtName")
       .populate("atmId.regionId", "name")

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import { CalendarCheck, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -257,7 +258,7 @@ export default function AmcPage() {
                         to={`/admin/amc/${encodeURIComponent(amc._id)}`}
                         className="underline-offset-4 hover:underline focus-visible:underline"
                       >
-                        {atm?.atmId || "ATM unavailable"}
+                        {getATMDisplayId(atm) || "ATM unavailable"}
                         <span className="sr-only"> — inspect AMC details</span>
                       </Link>
                     </CardTitle>

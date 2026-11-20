@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import CreateJobForm from "@/features/jobs/components/CreateJobForm";
 import AssignJobDialog from "@/features/jobs/components/AssignJobDialog";
 import { useJobs } from "@/features/jobs/hooks/useJobs";
@@ -552,7 +553,7 @@ export default function JobsPage() {
                           )}
                         </td>
                         <td className="min-w-36 px-4 py-3">
-                          <div>{atm?.atmId || "ATM unavailable"}</div>
+                          <div>{getATMDisplayId(atm) || "ATM unavailable"}</div>
                           {atm?.locationName && (
                             <div className="text-xs text-muted-foreground">
                               {atm.locationName}

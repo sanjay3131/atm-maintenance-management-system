@@ -17,6 +17,9 @@ export interface CustomerListItem {
   customerEmail: string;
   customerPhone: string;
   bankName?: string;
+  bankId?: CustomerGeographyBank | string | null;
+  regionIds?: CustomerGeographyRegion[];
+  serviceDistrictIds?: CustomerGeographyDistrict[];
   isActive: boolean;
   isDeleted: boolean;
   createdAt: string;
@@ -27,6 +30,7 @@ export interface CustomerListItem {
 export interface CustomerAssignedATM {
   _id: string;
   atmId: string;
+  clientAtmId?: string | null;
   locationName?: string;
   address?: string;
   bankId?: { _id: string; bankName?: string } | string | null;
@@ -41,9 +45,40 @@ export interface CustomerDistrict {
   districtName: string;
 }
 
+export interface CustomerGeographyBank {
+  _id: string;
+  bankName: string;
+  bankCode?: string;
+  isActive?: boolean;
+}
+
+export interface CustomerGeographyRegion {
+  _id: string;
+  name: string;
+  bankId?: CustomerGeographyBank | string | null;
+  isActive?: boolean;
+  geographyStatus?: string;
+}
+
+export interface CustomerGeographyDistrict {
+  _id: string;
+  districtName: string;
+  bankId?: CustomerGeographyBank | string | null;
+  regionId?: CustomerGeographyRegion | string | null;
+  isActive?: boolean;
+  geographyStatus?: string;
+}
+
 export interface CustomerDetail extends CustomerListItem {
+  customerCode: string | number | null | undefined;
   atmIds: CustomerAssignedATM[];
   districtIds: CustomerDistrict[];
+  atmDistrictIds?: CustomerDistrict[];
+  bankId?: CustomerGeographyBank | string | null;
+  regionId?: CustomerGeographyRegion | string | null;
+  districtId?: CustomerGeographyDistrict | string | null;
+  regionIds?: CustomerGeographyRegion[];
+  serviceDistrictIds?: CustomerGeographyDistrict[];
 }
 
 export interface CustomerListParams {
@@ -74,12 +109,18 @@ export interface CustomerUpdateData {
   customerName?: string;
   customerPhone?: string;
   bankName?: string;
+  bankId?: string | null;
+  regionId?: string | null;
+  districtId?: string | null;
+  regionIds?: string[];
+  serviceDistrictIds?: string[];
   isActive?: boolean;
 }
 
 export interface CustomerComplaintATM {
   _id: string;
   atmId?: string;
+  clientAtmId?: string | null;
   locationName?: string;
 }
 
@@ -88,7 +129,13 @@ export interface CustomerComplaint {
   complaintNumber: string;
   title: string;
   priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-  status: "OPEN" | "ASSIGNED" | "IN_PROGRESS" | "RESOLVED" | "CLOSED" | "CANCELLED";
+  status:
+    | "OPEN"
+    | "ASSIGNED"
+    | "IN_PROGRESS"
+    | "RESOLVED"
+    | "CLOSED"
+    | "CANCELLED";
   atmId?: CustomerComplaintATM | string | null;
   createdAt: string;
   reportedAt?: string;
@@ -158,10 +205,9 @@ export const getCustomers = async (): Promise<Customer[]> => {
 export const getAdminCustomers = async (
   params: CustomerListParams,
 ): Promise<CustomerListResponse> => {
-  const response = await api.get<{ data: CustomerListResponse }>(
-    "/customers",
-    { params },
-  );
+  const response = await api.get<{ data: CustomerListResponse }>("/customers", {
+    params,
+  });
   return response.data.data;
 };
 
@@ -184,8 +230,8 @@ export const getCustomerComplaints = async (
 export const updateCustomer = async (
   id: string,
   data: CustomerUpdateData,
-): Promise<CustomerListItem> => {
-  const response = await api.put<{ data: CustomerListItem }>(
+): Promise<CustomerDetail> => {
+  const response = await api.put<{ data: CustomerDetail }>(
     `/customers/${id}`,
     data,
   );

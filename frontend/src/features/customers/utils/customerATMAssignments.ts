@@ -159,6 +159,7 @@ export const filterEligibleATMs = (
     if (
       search &&
       ![
+        atm.clientAtmId,
         atm.atmId,
         atm.locationName,
         atm.address,

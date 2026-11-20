@@ -127,6 +127,7 @@ const locationQueryKeys = (event: RealtimeEvent): QueryKey[] => [
 
 const requestWindowQueryKeys = (event: RealtimeEvent): QueryKey[] => [
   ["atm-location-requests"],
+  ["my-atm-location-requests"],
   ["atms"],
   ["atm", event.entityId],
 ];

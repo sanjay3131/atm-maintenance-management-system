@@ -1,3 +1,4 @@
+import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import type { AdminAMCRecord, AMCStatus } from "@/services/amc.service";
 
 export const ADMIN_AMC_STATUSES: AMCStatus[] = [
@@ -96,7 +97,13 @@ export const getAdminAMCVisitDate = ({
 
 export const getAdminAMCDownloadFilename = (
   amc: {
-    atmId?: { atmId?: string | null } | string | null;
+    atmId?:
+      | {
+          atmId?: string | null;
+          clientAtmId?: string | null;
+        }
+      | string
+      | null;
     visitDate?: string | null;
     completedAt?: string | null;
     month: number;
@@ -104,11 +111,11 @@ export const getAdminAMCDownloadFilename = (
   },
   type: "zip" | "pdf",
 ) => {
-  const atmId =
+  const atm =
     typeof amc.atmId === "object" && amc.atmId !== null
-      ? amc.atmId.atmId
+      ? amc.atmId
       : undefined;
-  const safeATMId = safeAMCFilePart(atmId, "ATM");
+  const safeATMId = safeAMCFilePart(getATMDisplayId(atm), "ATM");
   const visitDate = getAdminAMCVisitDate(amc);
   return type === "zip"
     ? `${safeATMId}_${visitDate}_AMC_Photos.zip`

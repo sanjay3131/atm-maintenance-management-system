@@ -1,11 +1,13 @@
 import api from "@/lib/axios";
 
 export interface CreateATMData {
+  clientAtmId: string;
   bankId: string;
   customerId: string;
   districtId: string;
   regionId: string | null;
   locationName: string;
+  city: string;
   address: string;
   installationType: "ONSITE" | "OFFSITE";
   location?: {
@@ -19,11 +21,13 @@ export interface CreateATMData {
 export interface CreatedATM {
   _id: string;
   atmId: string;
+  clientAtmId?: string | null;
   customer: string;
   bankId: string;
   districtId: string;
   regionId: string | null;
   locationName: string;
+  city: string;
   address: string;
   installationType: "ONSITE" | "OFFSITE";
   status: string;

@@ -3,12 +3,15 @@ import assert from "node:assert/strict";
 import mongoose from "mongoose";
 import ATM from "../src/modules/atms/atm.model.js";
 import { getAllATMs } from "../src/modules/atms/atm.controller.js";
+import { listATMsQuerySchema } from "../src/modules/atms/atm.validation.js";
 import Customer from "../src/modules/customers/customer.model.js";
 import { getAllCustomers } from "../src/modules/customers/customer.controller.js";
+import District from "../src/modules/districts/district.models.js";
 import Employee from "../src/modules/employees/employee.model.js";
 import { viewAllEmployees } from "../src/modules/employees/employee.controller.js";
 import Job from "../src/modules/jobs/jobs.model.js";
 import { getAllJobs } from "../src/modules/jobs/jobs.controller.js";
+import Region from "../src/modules/region/region.model.js";
 
 const districtId = "64b000000000000000000001";
 const regionId = "64b000000000000000000002";
@@ -34,6 +37,9 @@ function invoke(handler, req) {
 
 function queryChain(value, capture = {}) {
   const chain = {
+    select() {
+      return this;
+    },
     populate() {
       return this;
     },
@@ -55,6 +61,28 @@ function queryChain(value, capture = {}) {
   return chain;
 }
 
+function stubGeography({
+  regionBankId = bankId,
+  districtBankId = bankId,
+  districtRegionId = regionId,
+} = {}) {
+  const originalRegionFindById = Region.findById;
+  const originalDistrictFindById = District.findById;
+  Region.findById = () =>
+    queryChain({
+      bankId: new mongoose.Types.ObjectId(regionBankId),
+    });
+  District.findById = () =>
+    queryChain({
+      bankId: new mongoose.Types.ObjectId(districtBankId),
+      regionId: new mongoose.Types.ObjectId(districtRegionId),
+    });
+  return () => {
+    Region.findById = originalRegionFindById;
+    District.findById = originalDistrictFindById;
+  };
+}
+
 function hasNestedFacet(stages, insideFacet = false) {
   return stages.some((stage) => {
     if (stage.$facet) {
@@ -68,17 +96,15 @@ function hasNestedFacet(stages, insideFacet = false) {
 }
 
 test("scoped ATM list returns an empty paginated result and complete-scope summary", async () => {
-  const originalFind = ATM.find;
   const originalAggregate = ATM.aggregate;
+  const originalPopulate = ATM.populate;
+  const restoreGeography = stubGeography();
   const captured = {};
-  ATM.find = (query) => {
-    captured.find = query;
-    return queryChain([], captured);
-  };
   ATM.aggregate = async (pipeline) => {
     captured.pipeline = pipeline;
     return [
       {
+        atms: [],
         total: [],
         statusCounts: [],
         linkedCustomers: [],
@@ -86,6 +112,7 @@ test("scoped ATM list returns an empty paginated result and complete-scope summa
       },
     ];
   };
+  ATM.populate = async (atms) => atms;
 
   try {
     const { body } = await invoke(getAllATMs, {
@@ -106,14 +133,250 @@ test("scoped ATM list returns an empty paginated result and complete-scope summa
       linkedCustomers: 0,
       linkedEmployees: 0,
     });
-    assert.equal(captured.find.districtId.toString(), districtId);
-    assert.equal(captured.find.regionId.toString(), regionId);
-    assert.equal(captured.find.bankId.toString(), bankId);
-    assert.equal(captured.skip, 5);
-    assert.equal(captured.limit, 5);
+    const [match, facet] = captured.pipeline;
+    assert.equal(match.$match.districtId.toString(), districtId);
+    assert.equal(match.$match.regionId.toString(), regionId);
+    assert.equal(match.$match.bankId.toString(), bankId);
+    assert.equal(facet.$facet.atms[1].$skip, 5);
+    assert.equal(facet.$facet.atms[2].$limit, 5);
+  } finally {
+    ATM.aggregate = originalAggregate;
+    ATM.populate = originalPopulate;
+    restoreGeography();
+  }
+});
+
+test("ATM list combines geography, assignment, search, operational status, and pagination filters", async () => {
+  const originalAggregate = ATM.aggregate;
+  const originalPopulate = ATM.populate;
+  const restoreGeography = stubGeography();
+  let pipeline;
+  ATM.aggregate = async (value) => {
+    pipeline = value;
+    return [
+      {
+        atms: [],
+        total: [],
+        statusCounts: [],
+        linkedCustomers: [],
+        linkedEmployees: [],
+      },
+    ];
+  };
+  ATM.populate = async (atms) => atms;
+
+  try {
+    await invoke(getAllATMs, {
+      query: {
+        bankId,
+        regionId,
+        districtId,
+        assignmentStatus: "assigned",
+        employeeId: "64b000000000000000000005",
+        search: "ATM(1)+",
+        status: "ACTIVE",
+        page: "2",
+        limit: "5",
+      },
+    });
+
+    const match = pipeline.find((stage) => stage.$match)?.$match;
+    assert.equal(match.bankId.toString(), bankId);
+    assert.equal(match.regionId.toString(), regionId);
+    assert.equal(match.districtId.toString(), districtId);
+    assert.equal(
+      match.assignedEmployeeId.toString(),
+      "64b000000000000000000005",
+    );
+    assert.equal(match.status, "ACTIVE");
+    assert.equal(match.$or[0].clientAtmId.$regex, "ATM\\(1\\)\\+");
+    assert.ok(
+      pipeline.some(
+        (stage) =>
+          stage.$lookup?.from === Employee.collection.name &&
+          stage.$lookup.as === "_validAssignedEmployees",
+      ),
+    );
+    const employeeLookup = pipeline.find(
+      (stage) => stage.$lookup?.as === "_validAssignedEmployees",
+    ).$lookup;
+    assert.deepEqual(employeeLookup.pipeline, [{ $project: { _id: 1 } }]);
+    assert.ok(
+      pipeline.some(
+        (stage) =>
+          stage.$match?.["_validAssignedEmployees.0"]?.$exists === true,
+      ),
+    );
+    const atmFacet = pipeline.find((stage) => stage.$facet).$facet.atms;
+    assert.equal(atmFacet[1].$skip, 5);
+    assert.equal(atmFacet[2].$limit, 5);
+  } finally {
+    ATM.aggregate = originalAggregate;
+    ATM.populate = originalPopulate;
+    restoreGeography();
+  }
+});
+
+test("scoped ATM rows preserve ATMTable defaults after aggregation", async () => {
+  const originalAggregate = ATM.aggregate;
+  const originalPopulate = ATM.populate;
+  let populatedATMs;
+  ATM.aggregate = async () => [
+    {
+      atms: [{ _id: atmId, atmId: "ATM-1" }],
+      total: [{ count: 1 }],
+      statusCounts: [],
+      linkedCustomers: [],
+      linkedEmployees: [],
+    },
+  ];
+  ATM.populate = async (atms) => {
+    populatedATMs = atms;
+    return atms;
+  };
+
+  try {
+    const { body } = await invoke(getAllATMs, { query: { bankId } });
+    assert.deepEqual(populatedATMs[0].assignedEmployeeId, []);
+    assert.equal(populatedATMs[0].status, "ACTIVE");
+    assert.deepEqual(body.data.atms[0].assignedEmployeeId, []);
+    assert.equal(body.data.atms[0].status, "ACTIVE");
+  } finally {
+    ATM.aggregate = originalAggregate;
+    ATM.populate = originalPopulate;
+  }
+});
+
+test("ATM list rejects invalid bank, region, and district hierarchies", async () => {
+  const originalAggregate = ATM.aggregate;
+  const restoreGeography = stubGeography({
+    regionBankId: "64b000000000000000000006",
+    districtBankId: "64b000000000000000000006",
+  });
+  ATM.aggregate = async () => {
+    throw new Error("Aggregation should not run for invalid geography");
+  };
+
+  try {
+    await assert.rejects(
+      invoke(getAllATMs, { query: { bankId, regionId } }),
+      (error) =>
+        error.statusCode === 400 &&
+        error.message === "Selected region does not belong to the selected bank",
+    );
+
+    stubGeography({
+      regionBankId: bankId,
+      districtRegionId: "64b000000000000000000006",
+    });
+    await assert.rejects(
+      invoke(getAllATMs, { query: { bankId, regionId, districtId } }),
+      (error) =>
+        error.statusCode === 400 &&
+        error.message === "Selected district does not belong to the selected region",
+    );
+  } finally {
+    ATM.aggregate = originalAggregate;
+    restoreGeography();
+  }
+});
+
+test("ATM list validates assignment filters and supports bank-only scope", async () => {
+  assert.equal(
+    listATMsQuerySchema.safeParse({ bankId, assignmentStatus: "all" }).success,
+    true,
+  );
+  assert.equal(
+    listATMsQuerySchema.safeParse({ assignmentStatus: "pending" }).success,
+    false,
+  );
+  assert.equal(
+    listATMsQuerySchema.safeParse({ employeeId: "not-an-object-id" }).success,
+    false,
+  );
+  assert.equal(
+    listATMsQuerySchema.safeParse({ limit: "101" }).success,
+    false,
+  );
+
+  const originalAggregate = ATM.aggregate;
+  const originalPopulate = ATM.populate;
+  let pipeline;
+  ATM.aggregate = async (value) => {
+    pipeline = value;
+    return [
+      {
+        atms: [],
+        total: [],
+        statusCounts: [],
+        linkedCustomers: [],
+        linkedEmployees: [],
+      },
+    ];
+  };
+  ATM.populate = async (atms) => atms;
+
+  try {
+    await invoke(getAllATMs, { query: { bankId } });
+    const match = pipeline.find((stage) => stage.$match)?.$match;
+    assert.equal(match.bankId.toString(), bankId);
+    assert.equal(match.regionId, undefined);
+    assert.equal(match.districtId, undefined);
+  } finally {
+    ATM.aggregate = originalAggregate;
+    ATM.populate = originalPopulate;
+  }
+});
+
+test("unassigned ATM filter excludes any resolvable employee assignment", async () => {
+  const originalAggregate = ATM.aggregate;
+  const originalPopulate = ATM.populate;
+  let pipeline;
+  ATM.aggregate = async (value) => {
+    pipeline = value;
+    return [
+      {
+        atms: [],
+        total: [],
+        statusCounts: [],
+        linkedCustomers: [],
+        linkedEmployees: [],
+      },
+    ];
+  };
+  ATM.populate = async (atms) => atms;
+
+  try {
+    await invoke(getAllATMs, {
+      query: { assignmentStatus: "unassigned" },
+    });
+
+    assert.ok(
+      pipeline.some(
+        (stage) =>
+          stage.$match?.["_validAssignedEmployees.0"]?.$exists === false,
+      ),
+    );
+  } finally {
+    ATM.aggregate = originalAggregate;
+    ATM.populate = originalPopulate;
+  }
+});
+
+test("unfiltered ATM list retains its array response contract", async () => {
+  const originalFind = ATM.find;
+  const atms = [{ _id: atmId, atmId: "ATM-1" }];
+  ATM.find = () => queryChain(atms);
+
+  try {
+    const { status, body } = await invoke(getAllATMs, {
+      query: {},
+    });
+    assert.equal(status, 200);
+    assert.deepEqual(body.data, atms);
+    assert.equal(body.message, "ATMs fetched successfully");
   } finally {
     ATM.find = originalFind;
-    ATM.aggregate = originalAggregate;
   }
 });
 

@@ -272,7 +272,7 @@ export const viewEmployeeById = asyncHandler(async (req, res) => {
   await employee.populate([
     { path: "districtIds", select: "districtName" },
     { path: "regionIds", select: "name" },
-    { path: "assignedAtmIds", select: "atmId" },
+    { path: "assignedAtmIds", select: "atmId clientAtmId" },
     { path: "supervisorId", select: "firstName lastName email userType" },
   ]);
   const employeeDetails = employee.toObject();
@@ -302,7 +302,9 @@ export const viewEmployeeById = asyncHandler(async (req, res) => {
             region?.name ? { name: region.name } : null,
           ),
           assignedAtms: (employee.assignedAtmIds ?? []).map((atm) =>
-            atm?.atmId ? { atmId: atm.atmId } : null,
+            atm?.atmId
+              ? { atmId: atm.atmId, clientAtmId: atm.clientAtmId ?? null }
+              : null,
           ),
         },
         "Employee retrieved successfully",
@@ -327,7 +329,7 @@ export const getMyEmployeeProfile = asyncHandler(async (req, res) => {
     })
     .populate({
       path: "assignedAtmIds",
-      select: "atmId locationName status districtId regionId",
+      select: "atmId clientAtmId locationName status districtId regionId",
       populate: [
         {
           path: "districtId",
@@ -389,6 +391,7 @@ export const getMyEmployeeProfile = asyncHandler(async (req, res) => {
       .filter((atm) => atm?.atmId)
       .map((atm) => ({
         atmId: atm.atmId,
+        clientAtmId: atm.clientAtmId ?? null,
         locationName: atm.locationName,
         status: atm.status,
         district: districtSummary(atm.districtId),
