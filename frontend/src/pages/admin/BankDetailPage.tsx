@@ -52,6 +52,10 @@ import type {
   ATMEmployee,
   ATMStatus,
 } from "@/features/atms/types/atm.types";
+import { useRegionsByBank } from "@/features/users/hooks/useRegionsByBank";
+import { useDistrictsByBank } from "@/features/users/hooks/useDistricts";
+import type { Region } from "@/features/users/services/region.service";
+import type { District } from "@/features/users/types/district.types";
 
 const ALL = "ALL";
 
@@ -98,6 +102,18 @@ interface DistrictGroup {
   name: string;
   atms: ATM[];
   regions: Map<string, { id: string; name: string; atms: ATM[] }>;
+}
+
+interface GeographyDistrictGroup {
+  id: string;
+  name: string;
+  atms: ATM[];
+}
+
+interface GeographyRegionGroup {
+  id: string;
+  name: string;
+  districts: Map<string, GeographyDistrictGroup>;
 }
 
 function getErrorMessage(error: unknown) {
@@ -327,6 +343,102 @@ function groupByDistrict(atms: ATM[]) {
   return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function getMasterDistrictRegionId(district: District) {
+  return typeof district.regionId === "string"
+    ? district.regionId
+    : district.regionId?._id;
+}
+
+function groupByRegion(
+  regions: Region[],
+  districts: District[],
+  atms: ATM[],
+) {
+  const groups = new Map<string, GeographyRegionGroup>();
+  const fallbackRegionId = "unassigned-region";
+  const fallbackDistrictId = "unassigned-district";
+
+  for (const region of regions) {
+    if (!groups.has(region._id)) {
+      groups.set(region._id, {
+        id: region._id,
+        name: region.name,
+        districts: new Map(),
+      });
+    }
+  }
+
+  for (const district of districts) {
+    const regionId = getMasterDistrictRegionId(district);
+    if (!regionId) continue;
+    let region = groups.get(regionId);
+    if (!region) {
+      region = {
+        id: regionId,
+        name:
+          typeof district.regionId === "object"
+            ? district.regionId.name
+            : "Region unavailable",
+        districts: new Map(),
+      };
+      groups.set(regionId, region);
+    }
+    if (!region.districts.has(district._id)) {
+      region.districts.set(district._id, {
+        id: district._id,
+        name: district.districtName,
+        atms: [],
+      });
+    }
+  }
+
+  for (const atm of atms) {
+    const atmRegionId = getRegionId(atm);
+    const atmDistrictId = getDistrictId(atm);
+    let regionId = atmRegionId;
+    let districtId = atmDistrictId;
+
+    if (districtId) {
+      const masterDistrict = districts.find(
+        (district) => district._id === districtId,
+      );
+      if (masterDistrict) {
+        const masterRegionId = getMasterDistrictRegionId(masterDistrict);
+        if (masterRegionId) regionId = masterRegionId;
+      }
+    }
+
+    if (!regionId || !groups.has(regionId)) {
+      regionId = fallbackRegionId;
+      if (!groups.has(regionId)) {
+        groups.set(regionId, {
+          id: regionId,
+          name: "Unassigned / Invalid region",
+          districts: new Map(),
+        });
+      }
+    }
+
+    const region = groups.get(regionId);
+    if (!region) continue;
+
+    if (!districtId) districtId = fallbackDistrictId;
+    if (!region.districts.has(districtId)) {
+      region.districts.set(districtId, {
+        id: districtId,
+        name:
+          districtId === fallbackDistrictId
+            ? "District unavailable"
+            : getDistrictName(atm),
+        atms: [],
+      });
+    }
+    region.districts.get(districtId)?.atms.push(atm);
+  }
+
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function BankDetailSkeleton() {
   return (
     <div className="space-y-6 p-6" role="status">
@@ -463,6 +575,16 @@ export default function BankDetailPage() {
     isFetching: bankFetching,
   } = useBank(bankId);
   const {
+    data: regions = [],
+    isLoading: regionsLoading,
+    isError: regionsError,
+  } = useRegionsByBank(bankId, true);
+  const {
+    data: districts = [],
+    isLoading: districtsLoading,
+    isError: districtsError,
+  } = useDistrictsByBank(bankId);
+  const {
     data: allATMs = [],
     isLoading: atmsLoading,
     isError: atmsError,
@@ -492,6 +614,10 @@ export default function BankDetailPage() {
     [allATMs, bankId],
   );
   const districtGroups = useMemo(() => groupByDistrict(bankATMs), [bankATMs]);
+  const regionGroups = useMemo(
+    () => groupByRegion(regions, districts, bankATMs),
+    [regions, districts, bankATMs],
+  );
   const customerGroups = useMemo(() => {
     const customersById = new Map(
       customers.map((customer) => [customer._id, customer]),
@@ -820,6 +946,44 @@ export default function BankDetailPage() {
                   <span>Contact information not provided</span>
                 )}
               </div>
+              <div className="mt-3 space-y-2 text-sm">
+                <div className="flex flex-wrap items-start gap-2">
+                  <span className="font-medium text-muted-foreground">Regions:</span>
+                  {regionsLoading ? (
+                    <span className="text-muted-foreground">Loading...</span>
+                  ) : regionsError ? (
+                    <span className="text-destructive">Unavailable</span>
+                  ) : regions.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {regions.map((region) => (
+                        <Badge key={region._id} variant="outline">
+                          {region.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">None</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-start gap-2">
+                  <span className="font-medium text-muted-foreground">Districts:</span>
+                  {districtsLoading ? (
+                    <span className="text-muted-foreground">Loading...</span>
+                  ) : districtsError ? (
+                    <span className="text-destructive">Unavailable</span>
+                  ) : districts.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {districts.map((district) => (
+                        <Badge key={district._id} variant="outline">
+                          {district.districtName}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">None</span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
           <Button type="button" variant="outline" onClick={openEditDialog}>
@@ -1111,61 +1275,80 @@ export default function BankDetailPage() {
         )}
 
         {activeTab === "districts" &&
-          (atmsLoading ? (
+          (atmsLoading || regionsLoading || districtsLoading ? (
             <ATMTableSkeleton />
-          ) : atmsError ? null : districtGroups.length === 0 ? (
+          ) : atmsError || regionsError || districtsError ? (
+            <Card className="border-destructive/30 bg-destructive/5">
+              <CardContent className="p-5 text-sm text-destructive">
+                Failed to load bank geography or ATM records.
+              </CardContent>
+            </Card>
+          ) : regionGroups.length === 0 ? (
             <Card>
               <CardContent className="px-6 py-12 text-center text-sm text-muted-foreground">
-                No district-linked ATMs are associated with this bank.
+                No regions or districts are associated with this bank.
               </CardContent>
             </Card>
           ) : (
             <div className="space-y-4">
-              {districtGroups.map((district) => (
-                <Card key={district.id}>
-                  <CardContent className="p-0">
-                    <details>
-                      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-5 py-4 [&::-webkit-details-marker]:hidden">
-                        <span className="font-semibold">{district.name}</span>
-                        <Badge variant="secondary">
-                          {district.atms.length}{" "}
-                          {district.atms.length === 1 ? "ATM" : "ATMs"}
-                        </Badge>
-                      </summary>
-                      <div className="space-y-3 border-t bg-muted/10 p-4 sm:p-5">
-                        {[...district.regions.values()]
-                          .sort((a, b) => a.name.localeCompare(b.name))
-                          .map((region) => (
-                            <details
-                              key={region.id}
-                              className="rounded-lg border bg-background"
-                            >
-                              <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
-                                <span className="font-medium">
-                                  {region.name}
-                                </span>
-                                <Badge variant="outline">
-                                  {region.atms.length}{" "}
-                                  {region.atms.length === 1 ? "ATM" : "ATMs"}
-                                </Badge>
-                              </summary>
-                              <div className="border-t">
-                                <ATMRows
-                                  atms={[...region.atms].sort((a, b) =>
-                                    getATMDisplayId(a).localeCompare(
-                                      getATMDisplayId(b),
-                                    ),
-                                  )}
-                                  emptyMessage="No ATMs in this region."
-                                />
-                              </div>
-                            </details>
-                          ))}
-                      </div>
-                    </details>
-                  </CardContent>
-                </Card>
-              ))}
+              {regionGroups.map((region) => {
+                const regionDistricts = [...region.districts.values()].sort(
+                  (a, b) => a.name.localeCompare(b.name),
+                );
+                const regionATMCount = regionDistricts.reduce(
+                  (count, district) => count + district.atms.length,
+                  0,
+                );
+                return (
+                  <Card key={region.id}>
+                    <CardContent className="p-0">
+                      <details>
+                        <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-5 py-4 [&::-webkit-details-marker]:hidden">
+                          <span className="font-semibold">{region.name}</span>
+                          <Badge variant="secondary">
+                            {regionATMCount}{" "}
+                            {regionATMCount === 1 ? "ATM" : "ATMs"}
+                          </Badge>
+                        </summary>
+                        {regionDistricts.length === 0 ? (
+                          <div className="border-t px-5 py-8 text-center text-sm text-muted-foreground">
+                            No districts in this region.
+                          </div>
+                        ) : (
+                          <div className="space-y-3 border-t bg-muted/10 p-4 sm:p-5">
+                            {regionDistricts.map((district) => (
+                              <details
+                                key={district.id}
+                                className="rounded-lg border bg-background"
+                              >
+                                <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+                                  <span className="font-medium">
+                                    {district.name}
+                                  </span>
+                                  <Badge variant="outline">
+                                    {district.atms.length}{" "}
+                                    {district.atms.length === 1 ? "ATM" : "ATMs"}
+                                  </Badge>
+                                </summary>
+                                <div className="border-t">
+                                  <ATMRows
+                                    atms={[...district.atms].sort((a, b) =>
+                                      getATMDisplayId(a).localeCompare(
+                                        getATMDisplayId(b),
+                                      ),
+                                    )}
+                                    emptyMessage="No ATMs in this district."
+                                  />
+                                </div>
+                              </details>
+                            ))}
+                          </div>
+                        )}
+                      </details>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           ))}
 

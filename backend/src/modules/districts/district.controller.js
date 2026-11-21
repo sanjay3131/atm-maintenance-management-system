@@ -118,7 +118,9 @@ export const createDistrict = asyncHandler(async (req, res) => {
 export const getAllDistricts = asyncHandler(async (req, res) => {
   const query = {};
   const regionId = req.validatedParams?.regionId ?? req.query.regionId;
+  const bankId = req.validatedQuery?.bankId ?? req.query.bankId;
   const isActive = req.validatedQuery?.isActive ?? req.query.isActive;
+  if (bankId) query.bankId = bankId;
   if (regionId) query.regionId = regionId;
   if (isActive !== undefined) query.isActive = isActive === "true";
   const districts = await District.find(query)

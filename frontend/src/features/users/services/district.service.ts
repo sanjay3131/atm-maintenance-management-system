@@ -18,6 +18,16 @@ export const getDistricts = async (regionId?: string): Promise<District[]> => {
   return response.data.data;
 };
 
+export const getDistrictsByBank = async (
+  bankId: string,
+): Promise<District[]> => {
+  const response = await api.get<ApiResponse<District[]>>("/districts", {
+    params: { bankId },
+  });
+
+  return response.data.data;
+};
+
 export const getDistrictGeographicSummaries = async (): Promise<
   DistrictGeographicSummary[]
 > => {

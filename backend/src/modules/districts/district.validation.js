@@ -7,6 +7,7 @@ export const districtRegionParamsSchema = z.object({
   regionId: objectIdSchema,
 });
 export const districtListQuerySchema = z.object({
+  bankId: objectIdSchema.optional(),
   regionId: objectIdSchema.optional(),
   isActive: z.enum(["true", "false"]).optional(),
 });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { isAxiosError } from "axios";
 import { Landmark, Pencil, Plus, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -23,6 +23,8 @@ import BankFormDialog from "@/features/banks/components/BankFormDialog";
 import { useDeactivateBank, useUpdateBank } from "@/features/banks/hooks/useBankMutations";
 import { useBanks } from "@/features/banks/hooks/useBanks";
 import type { Bank } from "@/features/banks/types/bank.types";
+import { useAllRegions } from "@/features/users/hooks/useRegionsByBank";
+import { useDistricts } from "@/features/users/hooks/useDistricts";
 
 const ALL_BANKS = "ALL";
 
@@ -33,6 +35,35 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error
     ? error.message
     : "The bank request could not be completed.";
+}
+
+function getRelationshipId(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && "_id" in value) {
+    const id = (value as { _id?: unknown })._id;
+    return typeof id === "string" ? id : undefined;
+  }
+  return undefined;
+}
+
+function getRegionBankId(region: {
+  bankId: string | { _id: string };
+}) {
+  return getRelationshipId(region.bankId);
+}
+
+function getDistrictBankId(district: {
+  bankId?: string;
+  regionId: string | {
+    _id: string;
+    bankId: string | { _id: string };
+  };
+}) {
+  if (district.bankId) return getRelationshipId(district.bankId);
+  if (typeof district.regionId === "object") {
+    return getRelationshipId(district.regionId.bankId);
+  }
+  return undefined;
 }
 
 function BankTableSkeleton() {
@@ -72,6 +103,40 @@ export default function BanksPage() {
     refetch,
     isFetching,
   } = useBanks(params);
+  const {
+    data: regions = [],
+    isLoading: regionsLoading,
+    isError: regionsError,
+  } = useAllRegions(true);
+  const {
+    data: districts = [],
+    isLoading: districtsLoading,
+    isError: districtsError,
+  } = useDistricts(true);
+  const regionsByBank = useMemo(() => {
+    const grouped = new Map<string, string[]>();
+    for (const region of regions) {
+      const bankId = getRegionBankId(region);
+      if (!bankId) continue;
+      const names = grouped.get(bankId) ?? [];
+      if (!names.includes(region.name)) names.push(region.name);
+      grouped.set(bankId, names);
+    }
+    for (const names of grouped.values()) names.sort((a, b) => a.localeCompare(b));
+    return grouped;
+  }, [regions]);
+  const districtsByBank = useMemo(() => {
+    const grouped = new Map<string, string[]>();
+    for (const district of districts) {
+      const bankId = getDistrictBankId(district);
+      if (!bankId) continue;
+      const names = grouped.get(bankId) ?? [];
+      if (!names.includes(district.districtName)) names.push(district.districtName);
+      grouped.set(bankId, names);
+    }
+    for (const names of grouped.values()) names.sort((a, b) => a.localeCompare(b));
+    return grouped;
+  }, [districts]);
   const deactivateMutation = useDeactivateBank();
   const updateMutation = useUpdateBank();
 
@@ -211,11 +276,13 @@ export default function BanksPage() {
           ) : (
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-190 text-sm">
+                <table className="w-full min-w-240 text-sm">
                   <thead className="border-y bg-muted/40">
                     <tr>
                       <th className="px-4 py-3 text-left font-medium">Bank Name</th>
                       <th className="px-4 py-3 text-left font-medium">Bank Code</th>
+                      <th className="px-4 py-3 text-left font-medium">Regions</th>
+                      <th className="px-4 py-3 text-left font-medium">Districts</th>
                       <th className="px-4 py-3 text-left font-medium">Contact</th>
                       <th className="px-4 py-3 text-left font-medium">Status</th>
                       <th className="px-4 py-3 text-right font-medium">Actions</th>
@@ -229,6 +296,40 @@ export default function BanksPage() {
                         </td>
                         <td className="px-4 py-3 font-mono">
                           {bank.bankCode || "—"}
+                        </td>
+                        <td className="max-w-64 px-4 py-3 align-top">
+                          {regionsLoading ? (
+                            <span className="text-muted-foreground">Loading...</span>
+                          ) : regionsError ? (
+                            <span className="text-destructive">Unavailable</span>
+                          ) : (regionsByBank.get(bank._id) ?? []).length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {(regionsByBank.get(bank._id) ?? []).map((name) => (
+                                <Badge key={name} variant="outline" className="max-w-52 whitespace-normal">
+                                  {name}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">None</span>
+                          )}
+                        </td>
+                        <td className="max-w-64 px-4 py-3 align-top">
+                          {districtsLoading ? (
+                            <span className="text-muted-foreground">Loading...</span>
+                          ) : districtsError ? (
+                            <span className="text-destructive">Unavailable</span>
+                          ) : (districtsByBank.get(bank._id) ?? []).length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {(districtsByBank.get(bank._id) ?? []).map((name) => (
+                                <Badge key={name} variant="outline" className="max-w-52 whitespace-normal">
+                                  {name}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">None</span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           {bank.contactEmail || bank.contactPhone ? (

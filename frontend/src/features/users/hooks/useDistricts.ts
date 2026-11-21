@@ -1,5 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { getDistricts } from "../services/district.service";
+import {
+  getDistricts,
+  getDistrictsByBank,
+} from "../services/district.service";
 
 export const DISTRICTS_QUERY_KEY = ["districts"];
 
@@ -32,3 +35,11 @@ export const useDistricts = (
     staleTime: 1000 * 60 * 10,
   });
 };
+
+export const useDistrictsByBank = (bankId: string) =>
+  useQuery({
+    queryKey: [...DISTRICTS_QUERY_KEY, "bank", bankId],
+    queryFn: () => getDistrictsByBank(bankId),
+    enabled: Boolean(bankId),
+    staleTime: 1000 * 60 * 10,
+  });
