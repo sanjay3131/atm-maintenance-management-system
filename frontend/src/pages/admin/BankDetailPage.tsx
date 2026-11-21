@@ -62,7 +62,7 @@ const ALL = "ALL";
 type BankTab =
   | "overview"
   | "atms"
-  | "region/districts atms"
+  | "districts"
   | "customers"
   | "employees"
   | "jobs";
