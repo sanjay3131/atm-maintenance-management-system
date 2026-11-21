@@ -10,7 +10,7 @@ Admin and Super Admin APIs:
 - `POST /api/v1/jobs/recurring/plans` creates a plan with `atmId` and
   `maintenanceType` (`DAILY_CLEANING` or `WEEKLY_MOPPING`). Weekly plans also
   require `dayOfWeek` (`0` = Sunday through `6` = Saturday). `startDate` is
-  optional.
+  optional..
 - `GET /api/v1/jobs/recurring/plans` lists plans.
 - `PATCH /api/v1/jobs/recurring/plans/:planId` updates a weekly plan's day,
   start date, or active state. Deactivate a plan with `{ "isActive": false }`.
