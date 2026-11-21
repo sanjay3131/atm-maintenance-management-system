@@ -11,6 +11,12 @@ const api = axios.create({
 let isRefreshing = false;
 
 let refreshSubscribers: Array<(token: string) => void> = [];
+const authCleanupHandledErrors = new WeakSet<object>();
+
+export const wasAuthCleanupHandled = (error: unknown) =>
+  typeof error === "object" &&
+  error !== null &&
+  authCleanupHandledErrors.has(error);
 
 const subscribeToRefresh = (callback: (token: string) => void) => {
   refreshSubscribers.push(callback);
@@ -21,7 +27,8 @@ const notifyRefreshSubscribers = (token: string) => {
   refreshSubscribers = [];
 };
 
-const clearAuthAndRedirect = () => {
+const clearAuthAndRedirect = (error: AxiosError) => {
+  authCleanupHandledErrors.add(error);
   localStorage.removeItem("accessToken");
 
   if (window.location.pathname !== "/login") {
@@ -87,7 +94,13 @@ api.interceptors.response.use(
       return api(originalRequest);
     } catch (refreshError) {
       refreshSubscribers = [];
-      clearAuthAndRedirect();
+      if (
+        axios.isAxiosError(refreshError) &&
+        (refreshError.response?.status === 401 ||
+          refreshError.response?.status === 403)
+      ) {
+        clearAuthAndRedirect(refreshError);
+      }
 
       return Promise.reject(refreshError);
     } finally {

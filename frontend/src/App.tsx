@@ -66,6 +66,8 @@ import {
   CustomerJobsPage,
   CustomerReportsPage,
 } from "@/pages/customer/CustomerPortalPages";
+import { getRoleHomePath } from "@/pages/auth/LoginPage";
+import { useAuth } from "@/features/auth/auth-context";
 
 export default function App() {
   return (
@@ -236,9 +238,25 @@ export default function App() {
           </Route>
         </Route>
 
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/" element={<HomeRedirect />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>
+  );
+}
+
+function HomeRedirect() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return (
+    <Navigate to={getRoleHomePath(user.userType) ?? "/login"} replace />
   );
 }

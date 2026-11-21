@@ -86,31 +86,31 @@ app.use(
   }),
 );
 
-// 3. Rate Limiting — Prevent API abuse
-// const limiter = rateLimit({
-//   windowMs: 15 * 60 * 1000,
-//   max: 100,
-//   standardHeaders: true,
-//   legacyHeaders: false,
-//   message: {
-//     success: false,
-//     message: "Too many requests from this IP. Please try again later.",
-//   },
-//   skip: (req) => req.path === "/health",
-// });
-// app.use("/api/", limiter);
+3; //Rate Limiting — Prevent API abuse
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many requests from this IP. Please try again later.",
+  },
+  skip: (req) => req.path === "/health",
+});
+app.use("/api/", limiter);
 
-// Stricter rate limit for auth endpoints
-// const authLimiter = rateLimit({
-//   windowMs: 15 * 60 * 1000,
-//   max: 10,
-//   message: {
-//     success: false,
-//     message: "Too many login attempts. Please try again after 15 minutes.",
-//   },
-// });
-// app.use("/api/v1/auth/login", authLimiter);
-// app.use("/api/v1/auth/forgot-password", authLimiter);
+//Stricter rate limit for auth endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: {
+    success: false,
+    message: "Too many login attempts. Please try again after 15 minutes.",
+  },
+});
+app.use("/api/v1/auth/login", authLimiter);
+app.use("/api/v1/auth/forgot-password", authLimiter);
 
 // ============================================
 // BODY PARSING

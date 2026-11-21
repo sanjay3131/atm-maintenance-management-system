@@ -1,16 +1,71 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/features/auth/auth-context";
 import WebThreads from "../../../@/components/WebThreads";
 
+export function getRoleHomePath(userType: string): string | null {
+  if (userType === "admin" || userType === "superAdmin") {
+    return "/admin";
+  }
+
+  if (userType === "supervisor") {
+    return "/supervisor";
+  }
+
+  if (userType === "employee") {
+    return "/employee";
+  }
+
+  if (userType === "customer") {
+    return "/customer";
+  }
+
+  return null;
+}
+
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const {
+    login,
+    user,
+    isLoading: isAuthLoading,
+    initializationError,
+    retryAuthentication,
+  } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isRetryingSession, setIsRetryingSession] = useState(false);
   const [error, setError] = useState("");
+
+  const isTemporaryInitializationError =
+    initializationError ===
+      "The authentication service is temporarily unavailable. Please retry." ||
+    initializationError ===
+      "Unable to verify your session. Check your connection and retry.";
+  const showSessionRecovery =
+    isTemporaryInitializationError || isRetryingSession;
+
+  if (isAuthLoading && !isRetryingSession) {
+    return <div>Loading...</div>;
+  }
+
+  const homePath = user ? getRoleHomePath(user.userType) : null;
+  if (homePath) {
+    return <Navigate to={homePath} replace />;
+  }
+
+  const handleRetryAuthentication = async () => {
+    if (isRetryingSession) return;
+
+    setIsRetryingSession(true);
+    try {
+      await retryAuthentication();
+    } finally {
+      setIsRetryingSession(false);
+    }
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -20,18 +75,10 @@ export default function LoginPage() {
 
     try {
       const loggedInUser = await login({ email, password });
+      const loggedInHomePath = getRoleHomePath(loggedInUser.userType);
 
-      if (
-        loggedInUser.userType === "admin" ||
-        loggedInUser.userType === "superAdmin"
-      ) {
-        navigate("/admin");
-      } else if (loggedInUser.userType === "supervisor") {
-        navigate("/supervisor");
-      } else if (loggedInUser.userType === "employee") {
-        navigate("/employee");
-      } else if (loggedInUser.userType === "customer") {
-        navigate("/customer");
+      if (loggedInHomePath) {
+        navigate(loggedInHomePath);
       } else {
         setError("Unknown user role.");
       }
@@ -107,6 +154,28 @@ export default function LoginPage() {
             <h2 className="text-2xl font-bold text-white">Welcome Back</h2>
             <p className="mt-2 text-sm text-slate-300">Login to your account</p>
           </div>
+
+          {showSessionRecovery && (
+            <div
+              role="alert"
+              aria-live="polite"
+              className="rounded-md border border-amber-400/40 bg-amber-500/10 p-3 text-sm text-amber-200"
+            >
+              <p>
+                {isRetryingSession
+                  ? "Checking your saved session..."
+                  : initializationError}
+              </p>
+              <button
+                type="button"
+                onClick={handleRetryAuthentication}
+                disabled={isRetryingSession || isAuthLoading}
+                className="mt-3 min-h-10 rounded-md border border-amber-300/40 px-3 font-medium text-amber-100 hover:bg-amber-400/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isRetryingSession ? "Retrying..." : "Retry"}
+              </button>
+            </div>
+          )}
 
           {error && (
             <div className="rounded-md border border-red-400/40 bg-red-500/10 p-3 text-sm text-red-300">
