@@ -50,7 +50,7 @@ is not a hard wall-clock guarantee.
 
 Only one export may run at a time per backend process; this limit is not
 shared across multiple backend instances. Export files use unique temporary
-directories and are removed after delivery or failure. On a later export run,
+directories and are removed after delivery or failure. On a later export run,.
 cleanup checks only application-prefixed directories older than seven days
 whose recorded process is no longer running. PDF exports bundle the SIL Open
 Font License Noto Sans Tamil font for Tamil names.
