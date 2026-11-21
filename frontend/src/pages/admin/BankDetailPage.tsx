@@ -62,7 +62,7 @@ const ALL = "ALL";
 type BankTab =
   | "overview"
   | "atms"
-  | "districts"
+  | "region/districts atms"
   | "customers"
   | "employees"
   | "jobs";
@@ -118,7 +118,9 @@ interface GeographyRegionGroup {
 
 function getErrorMessage(error: unknown) {
   if (isAxiosError<{ message?: string }>(error)) {
-    return error.response?.data?.message || "The request could not be completed.";
+    return (
+      error.response?.data?.message || "The request could not be completed."
+    );
   }
   if (error && typeof error === "object") {
     const apiError = error as {
@@ -159,9 +161,7 @@ function isBankNotFoundError(error: unknown) {
   return typeof error === "string" && /\b404\b|bank not found/i.test(error);
 }
 
-function getRelationshipId(
-  value: { _id: string } | string | null | undefined,
-) {
+function getRelationshipId(value: { _id: string } | string | null | undefined) {
   return typeof value === "string" ? value : value?._id;
 }
 
@@ -221,9 +221,11 @@ function getAssignedEmployeeIds(atm: ATM) {
 }
 
 function getEmployeeName(employee: Employee) {
-  return [employee.userId?.firstName, employee.userId?.lastName]
-    .filter(Boolean)
-    .join(" ") || "Name unavailable";
+  return (
+    [employee.userId?.firstName, employee.userId?.lastName]
+      .filter(Boolean)
+      .join(" ") || "Name unavailable"
+  );
 }
 
 function formatEmployeeStatus(status: string) {
@@ -349,11 +351,7 @@ function getMasterDistrictRegionId(district: District) {
     : district.regionId?._id;
 }
 
-function groupByRegion(
-  regions: Region[],
-  districts: District[],
-  atms: ATM[],
-) {
+function groupByRegion(regions: Region[], districts: District[], atms: ATM[]) {
   const groups = new Map<string, GeographyRegionGroup>();
   const fallbackRegionId = "unassigned-region";
   const fallbackDistrictId = "unassigned-district";
@@ -456,10 +454,7 @@ function ATMTableSkeleton() {
     <Card>
       <CardContent className="space-y-3 p-4" role="status">
         {Array.from({ length: 5 }, (_, index) => (
-          <div
-            key={index}
-            className="h-12 animate-pulse rounded bg-muted/50"
-          />
+          <div key={index} className="h-12 animate-pulse rounded bg-muted/50" />
         ))}
         <p className="sr-only">Loading ATMs...</p>
       </CardContent>
@@ -554,12 +549,15 @@ export default function BankDetailPage() {
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState(ALL);
   const [jobSearch, setJobSearch] = useState("");
   const [debouncedJobSearch, setDebouncedJobSearch] = useState("");
-  const [jobStatusFilter, setJobStatusFilter] =
-    useState<JobStatus | typeof ALL>(ALL);
-  const [jobWorkTypeFilter, setJobWorkTypeFilter] =
-    useState<JobWorkType | typeof ALL>(ALL);
-  const [jobPriorityFilter, setJobPriorityFilter] =
-    useState<JobPriority | typeof ALL>(ALL);
+  const [jobStatusFilter, setJobStatusFilter] = useState<
+    JobStatus | typeof ALL
+  >(ALL);
+  const [jobWorkTypeFilter, setJobWorkTypeFilter] = useState<
+    JobWorkType | typeof ALL
+  >(ALL);
+  const [jobPriorityFilter, setJobPriorityFilter] = useState<
+    JobPriority | typeof ALL
+  >(ALL);
   const [jobDistrictFilter, setJobDistrictFilter] = useState(ALL);
   const [jobRegionFilter, setJobRegionFilter] = useState(ALL);
   const [jobPage, setJobPage] = useState(1);
@@ -712,7 +710,10 @@ export default function BankDetailPage() {
     }
 
     return [...groups.values()].sort((a, b) =>
-      (a.employee ? getEmployeeName(a.employee) : "Unresolved employee").localeCompare(
+      (a.employee
+        ? getEmployeeName(a.employee)
+        : "Unresolved employee"
+      ).localeCompare(
         b.employee ? getEmployeeName(b.employee) : "Unresolved employee",
       ),
     );
@@ -785,21 +786,15 @@ export default function BankDetailPage() {
     return bankATMs.filter((atm) => {
       const matchesSearch =
         !normalizedSearch ||
-        [
-          atm.clientAtmId,
-          atm.atmId,
-          atm.locationName,
-          atm.address,
-        ].some((value) => value?.toLowerCase().includes(normalizedSearch));
-      const matchesStatus =
-        statusFilter === ALL || atm.status === statusFilter;
+        [atm.clientAtmId, atm.atmId, atm.locationName, atm.address].some(
+          (value) => value?.toLowerCase().includes(normalizedSearch),
+        );
+      const matchesStatus = statusFilter === ALL || atm.status === statusFilter;
       const matchesDistrict =
         districtFilter === ALL || getDistrictId(atm) === districtFilter;
       const matchesRegion =
         regionFilter === ALL || getRegionId(atm) === regionFilter;
-      return (
-        matchesSearch && matchesStatus && matchesDistrict && matchesRegion
-      );
+      return matchesSearch && matchesStatus && matchesDistrict && matchesRegion;
     });
   }, [bankATMs, districtFilter, regionFilter, search, statusFilter]);
   const selectedJobDistrictATMs = useMemo(
@@ -902,7 +897,9 @@ export default function BankDetailPage() {
   const openEditDialog = () => setEditDialogOpen(true);
   const closeEditDialog = (open: boolean) => setEditDialogOpen(open);
   const activeATMs = bankATMs.filter((atm) => atm.status === "ACTIVE").length;
-  const inactiveATMs = bankATMs.filter((atm) => atm.status === "INACTIVE").length;
+  const inactiveATMs = bankATMs.filter(
+    (atm) => atm.status === "INACTIVE",
+  ).length;
   const otherStatusATMs = bankATMs.length - activeATMs - inactiveATMs;
 
   return (
@@ -948,7 +945,9 @@ export default function BankDetailPage() {
               </div>
               <div className="mt-3 space-y-2 text-sm">
                 <div className="flex flex-wrap items-start gap-2">
-                  <span className="font-medium text-muted-foreground">Regions:</span>
+                  <span className="font-medium text-muted-foreground">
+                    Regions:
+                  </span>
                   {regionsLoading ? (
                     <span className="text-muted-foreground">Loading...</span>
                   ) : regionsError ? (
@@ -966,7 +965,9 @@ export default function BankDetailPage() {
                   )}
                 </div>
                 <div className="flex flex-wrap items-start gap-2">
-                  <span className="font-medium text-muted-foreground">Districts:</span>
+                  <span className="font-medium text-muted-foreground">
+                    Districts:
+                  </span>
                   {districtsLoading ? (
                     <span className="text-muted-foreground">Loading...</span>
                   ) : districtsError ? (
@@ -1017,7 +1018,11 @@ export default function BankDetailPage() {
         </Card>
       ) : null}
 
-      <div className="flex flex-wrap gap-2 border-b" role="tablist" aria-label="Bank workspace">
+      <div
+        className="flex flex-wrap gap-2 border-b"
+        role="tablist"
+        aria-label="Bank workspace"
+      >
         {(
           [
             ["overview", "Overview"],
@@ -1327,7 +1332,9 @@ export default function BankDetailPage() {
                                   </span>
                                   <Badge variant="outline">
                                     {district.atms.length}{" "}
-                                    {district.atms.length === 1 ? "ATM" : "ATMs"}
+                                    {district.atms.length === 1
+                                      ? "ATM"
+                                      : "ATMs"}
                                   </Badge>
                                 </summary>
                                 <div className="border-t">
@@ -1394,7 +1401,10 @@ export default function BankDetailPage() {
               <>
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   {[
-                    ["Total Customers", customerGroups.filter(({ customer }) => customer).length],
+                    [
+                      "Total Customers",
+                      customerGroups.filter(({ customer }) => customer).length,
+                    ],
                     ["Active Customers", activeCustomers],
                     ["Inactive Customers", inactiveCustomers],
                     ["Bank ATMs linked to Customers", totalLinkedCustomerATMs],
@@ -1480,16 +1490,18 @@ export default function BankDetailPage() {
                           setCustomerSearch("");
                           setCustomerStatusFilter(ALL);
                         }}
-                        disabled={!customerSearch && customerStatusFilter === ALL}
+                        disabled={
+                          !customerSearch && customerStatusFilter === ALL
+                        }
                       >
                         Clear filters
                       </Button>
                       <span className="ml-auto self-center text-sm text-muted-foreground">
-                        Showing{" "}
-                        {filteredResolvedCustomerCount}{" "}
-                        of{" "}
-                        {customerGroups.filter(({ customer }) => customer)
-                          .length}{" "}
+                        Showing {filteredResolvedCustomerCount} of{" "}
+                        {
+                          customerGroups.filter(({ customer }) => customer)
+                            .length
+                        }{" "}
                         customers
                       </span>
                     </div>
@@ -1527,7 +1539,10 @@ export default function BankDetailPage() {
                         </thead>
                         <tbody>
                           {filteredCustomerGroups.map((group) => (
-                            <tr key={group.id} className="border-b last:border-0">
+                            <tr
+                              key={group.id}
+                              className="border-b last:border-0"
+                            >
                               <td className="px-4 py-3 font-medium">
                                 {group.customer?.customerName ??
                                   "Unresolved customer"}
@@ -1684,7 +1699,10 @@ export default function BankDetailPage() {
               <>
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   {[
-                    ["Total Employees", employeeGroups.filter(({ employee }) => employee).length],
+                    [
+                      "Total Employees",
+                      employeeGroups.filter(({ employee }) => employee).length,
+                    ],
                     ["Active Employees", activeEmployees],
                     ["Inactive Employees", inactiveEmployees],
                     ["Total Assigned ATMs", totalAssignedEmployeeATMs],
@@ -1788,16 +1806,17 @@ export default function BankDetailPage() {
                           setEmployeeStatusFilter(ALL);
                         }}
                         disabled={
-                          !employeeSearch &&
-                          employeeStatusFilter === ALL
+                          !employeeSearch && employeeStatusFilter === ALL
                         }
                       >
                         Clear filters
                       </Button>
                       <span className="ml-auto self-center text-sm text-muted-foreground">
                         Showing {filteredResolvedEmployeeCount} of{" "}
-                        {employeeGroups.filter(({ employee }) => employee)
-                          .length}{" "}
+                        {
+                          employeeGroups.filter(({ employee }) => employee)
+                            .length
+                        }{" "}
                         employees
                       </span>
                     </div>
@@ -1845,7 +1864,10 @@ export default function BankDetailPage() {
                               accountStatus !== employee?.status;
 
                             return (
-                              <tr key={group.id} className="border-b last:border-0">
+                              <tr
+                                key={group.id}
+                                className="border-b last:border-0"
+                              >
                                 <td className="px-4 py-3 font-medium">
                                   {employee
                                     ? getEmployeeName(employee)
@@ -2011,9 +2033,7 @@ export default function BankDetailPage() {
                     onClick={() => void refetchJobs()}
                     disabled={jobsFetching}
                   >
-                    <RefreshCw
-                      className={jobsFetching ? "animate-spin" : ""}
-                    />
+                    <RefreshCw className={jobsFetching ? "animate-spin" : ""} />
                     {jobsFetching ? "Retrying..." : "Retry"}
                   </Button>
                 </CardContent>
@@ -2125,10 +2145,7 @@ export default function BankDetailPage() {
                           setJobPage(1);
                         }}
                       >
-                        <SelectTrigger
-                          id="bank-job-status"
-                          className="w-full"
-                        >
+                        <SelectTrigger id="bank-job-status" className="w-full">
                           <SelectValue placeholder="All statuses" />
                         </SelectTrigger>
                         <SelectContent>
@@ -2355,7 +2372,10 @@ export default function BankDetailPage() {
                             );
                             const populatedATM = getJobATM(job);
                             return (
-                              <tr key={job._id} className="border-b last:border-0">
+                              <tr
+                                key={job._id}
+                                className="border-b last:border-0"
+                              >
                                 <td className="whitespace-nowrap px-4 py-3 font-medium">
                                   {job.jobNumber || job.jobId}
                                 </td>
@@ -2387,7 +2407,9 @@ export default function BankDetailPage() {
                                 </td>
                                 <td className="px-4 py-3">
                                   <Badge
-                                    variant={getJobPriorityVariant(job.priority)}
+                                    variant={getJobPriorityVariant(
+                                      job.priority,
+                                    )}
                                   >
                                     {formatJobLabel(job.priority)}
                                   </Badge>
@@ -2425,8 +2447,7 @@ export default function BankDetailPage() {
                                 className="px-4 py-12 text-center text-sm text-muted-foreground"
                               >
                                 {jobPage > 1 &&
-                                jobPage >
-                                  (jobsPagination?.totalPages ?? 0) ? (
+                                jobPage > (jobsPagination?.totalPages ?? 0) ? (
                                   <div className="space-y-3">
                                     <p>
                                       This page is no longer available. Return
@@ -2628,9 +2649,7 @@ export default function BankDetailPage() {
               {selectedEmployee?.employee?.department ?? "Unavailable"}
             </p>
             <p>
-              <span className="text-muted-foreground">
-                Employment status:{" "}
-              </span>
+              <span className="text-muted-foreground">Employment status: </span>
               {selectedEmployee?.employee
                 ? formatEmployeeStatus(selectedEmployee.employee.status)
                 : "Unavailable"}
@@ -2648,9 +2667,7 @@ export default function BankDetailPage() {
                 </p>
               )}
             <p>
-              <span className="text-muted-foreground">
-                ATMs at this bank:{" "}
-              </span>
+              <span className="text-muted-foreground">ATMs at this bank: </span>
               {selectedEmployee?.atms.length ?? 0}
             </p>
           </div>
