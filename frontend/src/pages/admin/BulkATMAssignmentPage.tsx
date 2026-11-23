@@ -183,19 +183,44 @@ export default function BulkATMAssignmentPage() {
     true,
   );
   const banksQuery = useBanks({ isActive: true });
+  const banks = banksQuery.data ?? [];
+  const bankFilterId =
+    filters.bankId === ALL_FILTER ||
+    banks.some((bank) => bank._id === filters.bankId)
+      ? filters.bankId
+      : ALL_FILTER;
   const regionsQuery = useRegionsByBank(
-    filters.bankId === ALL_FILTER ? "" : filters.bankId,
+    bankFilterId === ALL_FILTER ? "" : bankFilterId,
   );
+  const regions = regionsQuery.data ?? [];
+  const regionFilterId =
+    filters.regionId === ALL_FILTER ||
+    regions.some((region) => region._id === filters.regionId)
+      ? filters.regionId
+      : ALL_FILTER;
   const districtsQuery = useDistricts(
-    filters.regionId !== ALL_FILTER,
-    filters.regionId !== ALL_FILTER ? filters.regionId : undefined,
+    regionFilterId !== ALL_FILTER,
+    regionFilterId !== ALL_FILTER ? regionFilterId : undefined,
+  );
+  const districts = districtsQuery.data ?? [];
+  const districtFilterId =
+    filters.districtId === ALL_FILTER ||
+    districts.some((district) => district._id === filters.districtId)
+      ? filters.districtId
+      : ALL_FILTER;
+  const selectedBank = banks.find((bank) => bank._id === bankFilterId);
+  const selectedRegion = regions.find(
+    (region) => region._id === regionFilterId,
+  );
+  const selectedDistrict = districts.find(
+    (district) => district._id === districtFilterId,
   );
   const atmQueryParams = useMemo(
     () => ({
-      ...(filters.bankId !== ALL_FILTER ? { bankId: filters.bankId } : {}),
-      ...(filters.regionId !== ALL_FILTER ? { regionId: filters.regionId } : {}),
-      ...(filters.districtId !== ALL_FILTER
-        ? { districtId: filters.districtId }
+      ...(bankFilterId !== ALL_FILTER ? { bankId: bankFilterId } : {}),
+      ...(regionFilterId !== ALL_FILTER ? { regionId: regionFilterId } : {}),
+      ...(districtFilterId !== ALL_FILTER
+        ? { districtId: districtFilterId }
         : {}),
       assignmentStatus: filters.assignmentStatus,
       ...(filters.onlyTargetEmployee && selectedEmployee
@@ -206,7 +231,15 @@ export default function BulkATMAssignmentPage() {
       page,
       limit: PAGE_SIZE,
     }),
-    [debouncedSearch, filters, page, selectedEmployee],
+    [
+      bankFilterId,
+      debouncedSearch,
+      districtFilterId,
+      filters,
+      page,
+      regionFilterId,
+      selectedEmployee,
+    ],
   );
   const atmsQuery = useScopedATMs(atmQueryParams);
   const assignmentMutation = useAssignEmployeeATMs();
@@ -504,7 +537,7 @@ export default function BulkATMAssignmentPage() {
             <div>
               <label className="mb-1.5 block text-sm font-medium">Bank</label>
               <Select
-                value={filters.bankId}
+                value={bankFilterId}
                 onValueChange={(value) =>
                   updateFilters({
                     bankId: value ?? ALL_FILTER,
@@ -515,13 +548,19 @@ export default function BulkATMAssignmentPage() {
                 disabled={banksQuery.isLoading || bankError}
               >
                 <SelectTrigger className="h-9 w-full">
-                  <SelectValue placeholder="All banks" />
+                  <SelectValue>
+                    {bankFilterId === ALL_FILTER
+                      ? "All banks"
+                      : selectedBank
+                        ? `${selectedBank.bankName} (${selectedBank.bankCode})`
+                        : "All banks"}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL_FILTER}>All banks</SelectItem>
-                  {(banksQuery.data ?? []).map((bank) => (
+                  {banks.map((bank) => (
                     <SelectItem key={bank._id} value={bank._id}>
-                      {bank.bankName}
+                      {bank.bankName} ({bank.bankCode})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -542,7 +581,7 @@ export default function BulkATMAssignmentPage() {
             <div>
               <label className="mb-1.5 block text-sm font-medium">Region</label>
               <Select
-                value={filters.regionId}
+                value={regionFilterId}
                 onValueChange={(value) =>
                   updateFilters({
                     regionId: value ?? ALL_FILTER,
@@ -550,17 +589,21 @@ export default function BulkATMAssignmentPage() {
                   })
                 }
                 disabled={
-                  filters.bankId === ALL_FILTER ||
+                  bankFilterId === ALL_FILTER ||
                   regionsQuery.isLoading ||
                   regionError
                 }
               >
                 <SelectTrigger className="h-9 w-full">
-                  <SelectValue placeholder="All regions" />
+                  <SelectValue>
+                    {regionFilterId === ALL_FILTER
+                      ? "All regions"
+                      : selectedRegion?.name ?? "All regions"}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL_FILTER}>All regions</SelectItem>
-                  {(regionsQuery.data ?? []).map((region) => (
+                  {regions.map((region) => (
                     <SelectItem key={region._id} value={region._id}>
                       {region.name}
                     </SelectItem>
@@ -585,22 +628,26 @@ export default function BulkATMAssignmentPage() {
                 District
               </label>
               <Select
-                value={filters.districtId}
+                value={districtFilterId}
                 onValueChange={(value) =>
                   updateFilters({ districtId: value ?? ALL_FILTER })
                 }
                 disabled={
-                  filters.regionId === ALL_FILTER ||
+                  regionFilterId === ALL_FILTER ||
                   districtsQuery.isLoading ||
                   districtError
                 }
               >
                 <SelectTrigger className="h-9 w-full">
-                  <SelectValue placeholder="All districts" />
+                  <SelectValue>
+                    {districtFilterId === ALL_FILTER
+                      ? "All districts"
+                      : selectedDistrict?.districtName ?? "All districts"}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL_FILTER}>All districts</SelectItem>
-                  {(districtsQuery.data ?? []).map((district) => (
+                  {districts.map((district) => (
                     <SelectItem key={district._id} value={district._id}>
                       {district.districtName}
                     </SelectItem>

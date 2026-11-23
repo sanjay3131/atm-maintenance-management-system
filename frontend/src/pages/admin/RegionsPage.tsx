@@ -58,7 +58,13 @@ function getRegionForEdit(region: RegionSummary): Region {
     code: region.code ?? undefined,
     description: region.description,
     isActive: region.isActive,
-    bankId: region.bank?.id ?? "",
+    bankId: region.bank
+      ? {
+          _id: region.bank.id,
+          bankName: region.bank.name,
+          bankCode: region.bank.code ?? "",
+        }
+      : "",
   };
 }
 
@@ -148,16 +154,7 @@ export default function RegionsPage() {
             Manage regions across banks and review their geographic coverage.
           </p>
         </div>
-        <Button
-          type="button"
-          onClick={openCreate}
-          disabled={!selectedBank?.isActive}
-          title={
-            selectedBank?.isActive
-              ? "Add a region to this bank"
-              : "Select an active bank to add a region"
-          }
-        >
+        <Button type="button" onClick={openCreate}>
           <Plus />
           Add Region
         </Button>
@@ -215,9 +212,15 @@ export default function RegionsPage() {
               disabled={banksLoading || banksError}
             >
               <SelectTrigger id="region-bank" className="w-full">
-                <SelectValue
-                  placeholder={banksLoading ? "Loading banks..." : "All banks"}
-                />
+                <SelectValue>
+                  {bankId === ALL
+                    ? "All banks"
+                    : selectedBank
+                      ? `${selectedBank.bankName} (${selectedBank.bankCode})${selectedBank.isActive ? "" : " — inactive"}`
+                      : banksLoading
+                        ? "Loading banks..."
+                        : "All banks"}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>All banks</SelectItem>
@@ -304,7 +307,7 @@ export default function RegionsPage() {
               <p className="mt-2 max-w-md text-sm text-muted-foreground">
                 {hasFilters
                   ? "Try changing the search term or filters."
-                  : "Select an active bank to add its first region."}
+                  : "Add a region to begin tracking regional coverage."}
               </p>
               {hasFilters && (
                 <Button
@@ -506,9 +509,7 @@ export default function RegionsPage() {
             ? typeof selectedRegion.bankId === "string"
               ? selectedRegion.bankId
               : selectedRegion.bankId._id
-            : bankId === ALL
-              ? ""
-              : bankId
+            : ""
         }
         region={selectedRegion}
         onOpenChange={closeFormDialog}

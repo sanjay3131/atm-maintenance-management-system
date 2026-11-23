@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const regionFormSchema = z.object({
+  bankId: z.string().optional(),
   name: z
     .string()
     .trim()

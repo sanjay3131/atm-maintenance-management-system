@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { isAxiosError } from "axios";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -10,6 +10,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useBanks } from "@/features/banks/hooks/useBanks";
+import type { Bank } from "@/features/banks/types/bank.types";
 import {
   useCreateRegion,
   useUpdateRegion,
@@ -20,11 +29,23 @@ import {
   type RegionFormSchemaValues,
 } from "../types/region.schema";
 
-function getErrorMessage(error: unknown) {
+function getErrorMessage(
+  error: unknown,
+  fallback = "Unable to save the region.",
+) {
   if (isAxiosError<{ message?: string }>(error)) {
-    return error.response?.data?.message || "Unable to save the region.";
+    return error.response?.data?.message || fallback;
   }
-  return error instanceof Error ? error.message : "Unable to save the region.";
+  return error instanceof Error ? error.message : fallback;
+}
+
+function getBankId(bank: Region["bankId"] | undefined, fallback = "") {
+  if (typeof bank === "string") return bank || fallback;
+  return bank?._id ?? fallback;
+}
+
+function formatBankLabel(bank: Pick<Bank, "_id" | "bankName" | "bankCode">) {
+  return `${bank.bankName} (${bank.bankCode || "No code"})`;
 }
 
 export default function RegionFormDialog({
@@ -40,17 +61,29 @@ export default function RegionFormDialog({
   onOpenChange: (open: boolean) => void;
   onSaved?: (region: Region) => void;
 }) {
-  const createMutation = useCreateRegion(bankId);
-  const updateMutation = useUpdateRegion(bankId);
+  const banksQuery = useBanks();
+  const banks = banksQuery.data ?? [];
+  const existingBankId = getBankId(region?.bankId, bankId);
+  const populatedExistingBank =
+    region && typeof region.bankId === "object" ? region.bankId : undefined;
+  const existingBank =
+    banks.find((bank) => bank._id === existingBankId) ?? populatedExistingBank;
+  const createMutation = useCreateRegion();
+  const updateMutation = useUpdateRegion(existingBankId);
   const isPending = createMutation.isPending || updateMutation.isPending;
   const {
     register,
     handleSubmit,
     reset,
+    control,
+    setValue,
+    setError,
+    clearErrors,
     formState: { errors },
   } = useForm<RegionFormSchemaValues>({
     resolver: zodResolver(regionFormSchema),
     defaultValues: {
+      bankId: "",
       name: "",
       code: "",
       description: "",
@@ -61,28 +94,47 @@ export default function RegionFormDialog({
   useEffect(() => {
     if (!open) return;
     reset({
+      bankId: region ? existingBankId : bankId,
       name: region?.name ?? "",
       code: region?.code ?? "",
       description: region?.description ?? "",
       isActive: region?.isActive ?? true,
     });
-  }, [open, region, reset]);
+  }, [bankId, existingBankId, open, region, reset]);
+  const selectedBankId = useWatch({ control, name: "bankId" }) ?? "";
+  const selectedBank = banks.find(
+    (bank) => bank._id === selectedBankId && bank.isActive,
+  );
 
   const onSubmit = async (values: RegionFormSchemaValues) => {
+    const { bankId: submittedBankId, ...formValues } = values;
     const data = {
-      name: values.name.trim(),
-      code: values.code.trim(),
-      description: values.description.trim(),
-      isActive: values.isActive,
+      name: formValues.name.trim(),
+      code: formValues.code.trim(),
+      description: formValues.description.trim(),
+      isActive: formValues.isActive,
     };
 
     try {
-      const savedRegion = region
-        ? await updateMutation.mutateAsync({
-            regionId: region._id,
-            data,
-          })
-        : await createMutation.mutateAsync({ bankId, ...data });
+      let savedRegion: Region;
+      if (region) {
+        savedRegion = await updateMutation.mutateAsync({
+          regionId: region._id,
+          data,
+        });
+      } else {
+        if (!selectedBank || selectedBank._id !== submittedBankId) {
+          setError("bankId", {
+            type: "validate",
+            message: "Select an active bank.",
+          });
+          return;
+        }
+        savedRegion = await createMutation.mutateAsync({
+          bankId: selectedBank._id,
+          ...data,
+        });
+      }
       toast.success(
         region
           ? "Region updated successfully."
@@ -115,10 +167,105 @@ export default function RegionFormDialog({
           <DialogDescription>
             {region
               ? "Update this region's information."
-              : "Add a region to this bank."}
+              : "Choose an active bank for this region."}
           </DialogDescription>
         </div>
         <form onSubmit={handleSubmit(onSubmit)} className="mt-5 space-y-4">
+          <div>
+            <label
+              htmlFor="region-bank"
+              className="mb-2 block text-sm font-medium"
+            >
+              Bank{region ? "" : " *"}
+            </label>
+            {region ? (
+              <div
+                id="region-bank"
+                className="min-h-9 rounded-lg border border-input bg-muted/40 px-3 py-2 text-sm"
+              >
+                {existingBank
+                  ? `${formatBankLabel(existingBank)}${"isActive" in existingBank && !existingBank.isActive ? " — inactive" : ""}`
+                  : existingBankId
+                    ? "Bank details unavailable"
+                    : "Unmapped"}
+              </div>
+            ) : (
+              <>
+                <Select
+                  value={selectedBankId || null}
+                  onValueChange={(value) => {
+                    setValue("bankId", value ?? "", {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    });
+                    clearErrors("bankId");
+                  }}
+                  disabled={banksQuery.isLoading || banksQuery.isError}
+                >
+                  <SelectTrigger
+                    id="region-bank"
+                    className="w-full"
+                    aria-invalid={Boolean(errors.bankId)}
+                  >
+                    <SelectValue
+                      placeholder={
+                        banksQuery.isLoading
+                          ? "Loading banks..."
+                          : "Select an active bank"
+                      }
+                    >
+                      {selectedBank
+                        ? formatBankLabel(selectedBank)
+                        : "Select an active bank"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {banks.map((bank) => (
+                      <SelectItem
+                        key={bank._id}
+                        value={bank._id}
+                        disabled={!bank.isActive}
+                      >
+                        {formatBankLabel(bank)}
+                        {!bank.isActive ? " — inactive" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.bankId && (
+                  <p className="mt-1 text-sm text-destructive" role="alert">
+                    {errors.bankId.message}
+                  </p>
+                )}
+                {!banksQuery.isError &&
+                  !banksQuery.isLoading &&
+                  !banks.some((bank) => bank.isActive) && (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      No active banks are available.
+                    </p>
+                  )}
+                {banksQuery.isError && (
+                  <div className="mt-2 flex items-center justify-between gap-3">
+                    <p className="text-sm text-destructive">
+                      {getErrorMessage(
+                        banksQuery.error,
+                        "Available banks could not be loaded.",
+                      )}
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void banksQuery.refetch()}
+                      disabled={banksQuery.isFetching}
+                    >
+                      {banksQuery.isFetching ? "Retrying..." : "Retry"}
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
           {fields.map(({ name, label, required }) => (
             <div key={name}>
               <label
@@ -172,7 +319,13 @@ export default function RegionFormDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isPending}>
+            <Button
+              type="submit"
+              disabled={
+                isPending ||
+                (!region && (banksQuery.isLoading || banksQuery.isError))
+              }
+            >
               {isPending
                 ? "Saving..."
                 : region
