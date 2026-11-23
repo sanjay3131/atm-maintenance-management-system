@@ -48,7 +48,7 @@ Database queries are capped by the remaining deadline. The deadline is
 cooperative: synchronous CPU work cannot be interrupted mid-operation, so it
 is not a hard wall-clock guarantee.
 
-Only one export may run at a time per backend process; this limit is not
+Only one export may run at a time per backend process; this limit is not.
 shared across multiple backend instances. Export files use unique temporary
 directories and are removed after delivery or failure. On a later export run,.
 cleanup checks only application-prefixed directories older than seven days
