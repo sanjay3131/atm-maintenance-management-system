@@ -8,7 +8,7 @@ export function buildATMGeographicQuery({
   regionId,
   bankId,
 } = {}) {
-  const query = { isDeleted: false };
+  const query = { isDeleted: { $ne: true } };
   const scope = { districtId, regionId, bankId };
 
   for (const [field, value] of Object.entries(scope)) {

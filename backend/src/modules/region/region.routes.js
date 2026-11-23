@@ -5,6 +5,7 @@ import {
   getAllRegions,
   getAllRegionsByDistrict,
   getRegionById,
+  getRegionSummaries,
   getRegionsByBank,
   getRegionsByDistrict,
   updateRegion,
@@ -15,6 +16,7 @@ import {
   regionDistrictParamsSchema,
   regionIdParamsSchema,
   regionListQuerySchema,
+  regionSummaryQuerySchema,
   updateRegionSchema,
 } from "./region.validate.js";
 import { verifyAccessToken } from "../../middlewares/auth.middleware.js";
@@ -26,6 +28,11 @@ router.use(verifyAccessToken, authorizeRoles("admin", "superAdmin"));
 
 router.post("/", validateRequest(createRegionSchema), createRegion);
 router.get("/", validateRequest(regionListQuerySchema, "query"), getAllRegions);
+router.get(
+  "/summary",
+  validateRequest(regionSummaryQuerySchema, "query"),
+  getRegionSummaries,
+);
 router.get("/:id", validateRequest(regionIdParamsSchema, "params"), getRegionById);
 router.get(
   "/bank/:bankId",

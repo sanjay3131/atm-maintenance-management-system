@@ -10,6 +10,31 @@ export interface Region {
   bankId: string | Pick<Bank, "_id" | "bankName" | "bankCode">;
 }
 
+export interface RegionSummary {
+  regionId: string;
+  name: string;
+  code?: string | null;
+  description?: string;
+  isActive: boolean;
+  bank: {
+    id: string;
+    name: string;
+    code?: string | null;
+  } | null;
+  counts: {
+    districts: number;
+    atms: number;
+    employees: number;
+    customers: number;
+  };
+}
+
+export interface RegionSummaryParams {
+  search?: string;
+  status?: "active" | "inactive";
+  bankId?: string;
+}
+
 export interface RegionFormValues {
   name: string;
   code: string;
@@ -22,6 +47,16 @@ export interface CreateRegionData extends RegionFormValues {
 }
 
 export type UpdateRegionData = Partial<RegionFormValues>;
+
+export const getRegionSummaries = async (
+  params: RegionSummaryParams = {},
+): Promise<RegionSummary[]> => {
+  const response = await api.get<{ data: RegionSummary[] }>(
+    "/regions/summary",
+    { params },
+  );
+  return response.data.data;
+};
 
 export const getRegionsByBank = async (
   bankId: string,

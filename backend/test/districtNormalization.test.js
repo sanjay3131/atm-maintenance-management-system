@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import District from "../src/modules/districts/district.models.js";
+import { TAMIL_NADU_DISTRICTS } from "../../shared/tamilNaduDistricts.js";
 import {
   createDistrictSchema,
   updateDistrictSchema,
@@ -68,6 +69,26 @@ test("District write validation rejects client-controlled Bank and normalized ke
     state: "Tamil Nadu",
   };
   assert.equal(createDistrictSchema.safeParse(valid).success, true);
+  assert.equal(TAMIL_NADU_DISTRICTS.length, 38);
+  for (const districtName of TAMIL_NADU_DISTRICTS) {
+    assert.equal(
+      createDistrictSchema.safeParse({ ...valid, districtName }).success,
+      true,
+    );
+  }
+  assert.equal(
+    createDistrictSchema.safeParse({
+      ...valid,
+      districtName: "Not a Tamil Nadu district",
+    }).success,
+    false,
+  );
+  assert.equal(
+    updateDistrictSchema.safeParse({
+      districtName: "Legacy district name",
+    }).success,
+    true,
+  );
   for (const field of ["bankId", "districtNameNormalized", "pinCodeNormalized"]) {
     assert.equal(
       createDistrictSchema.safeParse({ ...valid, [field]: "client-value" }).success,

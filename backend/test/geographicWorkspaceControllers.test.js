@@ -7,6 +7,7 @@ import { listATMsQuerySchema } from "../src/modules/atms/atm.validation.js";
 import Customer from "../src/modules/customers/customer.model.js";
 import { getAllCustomers } from "../src/modules/customers/customer.controller.js";
 import District from "../src/modules/districts/district.models.js";
+import { getAllDistricts } from "../src/modules/districts/district.controller.js";
 import Employee from "../src/modules/employees/employee.model.js";
 import { viewAllEmployees } from "../src/modules/employees/employee.controller.js";
 import Job from "../src/modules/jobs/jobs.model.js";
@@ -181,6 +182,7 @@ test("ATM list combines geography, assignment, search, operational status, and p
     });
 
     const match = pipeline.find((stage) => stage.$match)?.$match;
+    assert.deepEqual(match.isDeleted, { $ne: true });
     assert.equal(match.bankId.toString(), bankId);
     assert.equal(match.regionId.toString(), regionId);
     assert.equal(match.districtId.toString(), districtId);
@@ -210,6 +212,47 @@ test("ATM list combines geography, assignment, search, operational status, and p
     const atmFacet = pipeline.find((stage) => stage.$facet).$facet.atms;
     assert.equal(atmFacet[1].$skip, 5);
     assert.equal(atmFacet[2].$limit, 5);
+  } finally {
+    ATM.aggregate = originalAggregate;
+    ATM.populate = originalPopulate;
+    restoreGeography();
+  }
+});
+
+test("region-scoped ATM list includes legacy and inactive records but excludes deleted records", async () => {
+  const originalAggregate = ATM.aggregate;
+  const originalPopulate = ATM.populate;
+  const restoreGeography = stubGeography();
+  let pipeline;
+  ATM.aggregate = async (value) => {
+    pipeline = value;
+    return [
+      {
+        atms: [{ _id: atmId, atmId: "ATM-INACTIVE", status: "INACTIVE" }],
+        total: [{ count: 1 }],
+        statusCounts: [{ _id: "INACTIVE", count: 1 }],
+        linkedCustomers: [],
+        linkedEmployees: [],
+      },
+    ];
+  };
+  ATM.populate = async (atms) => atms;
+
+  try {
+    const { body } = await invoke(getAllATMs, { query: { regionId } });
+    const match = pipeline.find((stage) => stage.$match)?.$match;
+    assert.deepEqual(match.isDeleted, { $ne: true });
+    assert.equal(match.regionId.toString(), regionId);
+    assert.equal(match.status, undefined);
+    assert.equal(body.data.atms[0].status, "INACTIVE");
+
+    const linkedCustomerLookup = pipeline.find((stage) => stage.$facet)
+      .$facet.linkedCustomers.find(
+        (stage) => stage.$lookup?.from === Customer.collection.name,
+      ).$lookup;
+    assert.deepEqual(linkedCustomerLookup.pipeline[0].$match.isDeleted, {
+      $ne: true,
+    });
   } finally {
     ATM.aggregate = originalAggregate;
     ATM.populate = originalPopulate;
@@ -380,7 +423,7 @@ test("unfiltered ATM list retains its array response contract", async () => {
   }
 });
 
-test("scoped customer aggregation counts each Customer and filters geographic ATM assignments", async () => {
+test("region-scoped customers include legacy and inactive records, exclude deleted records, and retain geography", async () => {
   const originalAggregate = Customer.aggregate;
   let pipeline;
   Customer.aggregate = async (value) => {
@@ -398,16 +441,25 @@ test("scoped customer aggregation counts each Customer and filters geographic AT
   try {
     const { body } = await invoke(getAllCustomers, {
       user: { userType: "admin" },
-      query: { districtId, page: "1", limit: "10" },
+      query: { districtId, regionId, page: "1", limit: "10" },
     });
     assert.deepEqual(body.data.customers, [
-      { _id: "customer-1", linkedATMCount: 2 },
+      {
+        _id: "customer-1",
+        linkedATMCount: 2,
+        regionIds: [],
+        serviceDistrictIds: [],
+      },
     ]);
     assert.equal(body.data.pagination.total, 1);
     assert.deepEqual(body.data.summary, { total: 2, active: 1, inactive: 1 });
     assert.equal(pipeline.filter((stage) => stage.$facet).length, 1);
     assert.equal(hasNestedFacet(pipeline), false);
-    assert.ok(pipeline.some((stage) => stage.$match?.isDeleted === false));
+    const customerMatch = pipeline.find(
+      (stage) => stage.$match?.isDeleted !== undefined,
+    ).$match;
+    assert.deepEqual(customerMatch.isDeleted, { $ne: true });
+    assert.equal(customerMatch.isActive, undefined);
     assert.ok(
       pipeline.some(
         (stage) =>
@@ -416,6 +468,12 @@ test("scoped customer aggregation counts each Customer and filters geographic AT
       ),
       "linked ATMs must be looked up from each Customer",
     );
+    const linkedATMMatch = pipeline.find(
+      (stage) => stage.$lookup?.from === ATM.collection.name,
+    ).$lookup.pipeline[0].$match;
+    assert.deepEqual(linkedATMMatch.isDeleted, { $ne: true });
+    assert.equal(linkedATMMatch.regionId.toString(), regionId);
+    assert.equal(linkedATMMatch.districtId.toString(), districtId);
     assert.ok(pipeline.some((stage) => stage.$addFields?.linkedATMCount));
     assert.ok(
       pipeline.some((stage) => stage.$match?.linkedATMCount?.$gt === 0),
@@ -426,7 +484,7 @@ test("scoped customer aggregation counts each Customer and filters geographic AT
   }
 });
 
-test("scoped employee aggregation deduplicates ATM assignments and drops unresolved employee references", async () => {
+test("region-scoped employees retain inactive assignments and use the non-deleted geographic ATM scope", async () => {
   const originalAggregate = ATM.aggregate;
   let pipeline;
   ATM.aggregate = async (value) => {
@@ -434,8 +492,17 @@ test("scoped employee aggregation deduplicates ATM assignments and drops unresol
     return [
       {
         total: [{ count: 2 }],
-        statusCounts: [{ _id: "active", count: 2 }],
-        matchingEmployees: [{ _id: "employee-1", linkedATMCount: 2 }],
+        statusCounts: [
+          { _id: "active", count: 1 },
+          { _id: "inactive", count: 1 },
+        ],
+        matchingEmployees: [
+          {
+            _id: "employee-1",
+            linkedATMCount: 2,
+            status: "inactive",
+          },
+        ],
         matchingTotal: [{ count: 1 }],
       },
     ];
@@ -443,18 +510,24 @@ test("scoped employee aggregation deduplicates ATM assignments and drops unresol
 
   try {
     const { body } = await invoke(viewAllEmployees, {
-      query: { districtId, page: "1", limit: "10" },
+      query: { districtId, regionId, page: "1", limit: "10" },
     });
-    assert.deepEqual(body.data.employees, [
-      { _id: "employee-1", linkedATMCount: 2 },
-    ]);
+    assert.deepEqual(body.data.employees, [{
+      _id: "employee-1",
+      linkedATMCount: 2,
+      status: "inactive",
+    }]);
     assert.equal(body.data.pagination.total, 1);
     assert.deepEqual(body.data.summary, {
       total: 2,
-      statusCounts: { active: 2 },
+      statusCounts: { active: 1, inactive: 1 },
     });
     assert.equal(pipeline.filter((stage) => stage.$facet).length, 1);
     assert.equal(hasNestedFacet(pipeline), false);
+    const atmMatch = pipeline.find((stage) => stage.$match)?.$match;
+    assert.deepEqual(atmMatch.isDeleted, { $ne: true });
+    assert.equal(atmMatch.regionId.toString(), regionId);
+    assert.equal(atmMatch.districtId.toString(), districtId);
     assert.ok(pipeline.some((stage) => stage.$unwind === "$assignedEmployeeId"));
     assert.ok(
       pipeline.some(
@@ -468,6 +541,33 @@ test("scoped employee aggregation deduplicates ATM assignments and drops unresol
     );
   } finally {
     ATM.aggregate = originalAggregate;
+  }
+});
+
+test("region-filtered district listing preserves inactive districts without a deletion filter", async () => {
+  const originalFind = District.find;
+  const inactiveDistrict = {
+    _id: "district-1",
+    regionId,
+    isActive: false,
+  };
+  let districtQuery;
+  District.find = (query) => {
+    districtQuery = query;
+    return queryChain([inactiveDistrict]);
+  };
+
+  try {
+    const { body } = await invoke(getAllDistricts, {
+      query: { regionId },
+    });
+
+    assert.deepEqual(districtQuery, { regionId });
+    assert.equal(districtQuery.isDeleted, undefined);
+    assert.equal(districtQuery.isActive, undefined);
+    assert.deepEqual(body.data, [inactiveDistrict]);
+  } finally {
+    District.find = originalFind;
   }
 });
 

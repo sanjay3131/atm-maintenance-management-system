@@ -479,8 +479,9 @@ export const getAllATMs = asyncHandler(async (req, res) => {
       );
     }
 
+    const hasGeographicScope = Boolean(regionId || districtId);
     const query = {
-      isDeleted: false,
+      isDeleted: hasGeographicScope ? { $ne: true } : false,
       ...(bankId ? { bankId: objectId(bankId) } : {}),
       ...(regionId ? { regionId: objectId(regionId) } : {}),
       ...(districtId ? { districtId: objectId(districtId) } : {}),
@@ -579,7 +580,9 @@ export const getAllATMs = asyncHandler(async (req, res) => {
                   {
                     $match: {
                       $expr: { $eq: ["$_id", "$$customerId"] },
-                      isDeleted: false,
+                      isDeleted: hasGeographicScope
+                        ? { $ne: true }
+                        : false,
                     },
                   },
                 ],

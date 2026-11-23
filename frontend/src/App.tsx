@@ -113,6 +113,10 @@ export default function App() {
             <Route path="/admin/banks" element={<BanksPage />} />
             <Route path="/admin/banks/:bankId" element={<BankDetailPage />} />
             <Route path="/admin/regions" element={<RegionsPage />} />
+            <Route
+              path="/admin/regions/:regionId"
+              element={<RegionDetailPage />}
+            />
             <Route path="/admin/districts" element={<DistrictsPage />} />
             <Route
               path="/admin/districts/:districtId"

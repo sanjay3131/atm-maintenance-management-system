@@ -10,6 +10,11 @@ export const regionDistrictParamsSchema = z.object({
 export const regionListQuerySchema = z.object({
   includeInactive: z.enum(["true", "false"]).optional(),
 });
+export const regionSummaryQuerySchema = z.object({
+  search: z.string().trim().max(200).optional(),
+  status: z.enum(["active", "inactive"]).optional(),
+  bankId: objectIdSchema.optional(),
+});
 
 export const createRegionSchema = z.object({
   bankId: objectIdSchema,

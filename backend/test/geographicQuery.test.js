@@ -11,11 +11,11 @@ const districtId = "64b000000000000000000001";
 const regionId = "64b000000000000000000002";
 const bankId = "64b000000000000000000003";
 
-test("builds an intersecting, non-deleted ATM scope from supplied IDs", () => {
+test("builds an intersecting ATM scope that excludes only explicitly deleted records", () => {
   const query = buildATMGeographicQuery({ districtId, regionId, bankId });
 
   assert.deepEqual(query, {
-    isDeleted: false,
+    isDeleted: { $ne: true },
     districtId: new mongoose.Types.ObjectId(districtId),
     regionId: new mongoose.Types.ObjectId(regionId),
     bankId: new mongoose.Types.ObjectId(bankId),

@@ -644,7 +644,7 @@ export const getAllCustomers = asyncHandler(async (req, res) => {
     const [result] = await Customer.aggregate([
       {
         $match: {
-          isDeleted: false,
+          isDeleted: hasGeographicScope ? { $ne: true } : false,
           ...(customerBankNames
             ? { bankName: { $in: customerBankNames } }
             : {}),

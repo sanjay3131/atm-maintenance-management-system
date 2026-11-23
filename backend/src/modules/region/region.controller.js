@@ -1,8 +1,13 @@
+import mongoose from "mongoose";
 import asyncHandler from "../../utils/asyncHandler.js";
 import ApiError from "../../utils/ApiError.js";
 import ApiResponse from "../../utils/ApiResponse.js";
+import { escapeRegex } from "../../utils/geographicQuery.js";
+import ATM from "../atms/atm.model.js";
 import Bank from "../banks/bank.model.js";
+import Customer from "../customers/customer.model.js";
 import District from "../districts/district.models.js";
+import Employee from "../employees/employee.model.js";
 import Region from "./region.model.js";
 
 const isDuplicateKey = (error) => error?.code === 11000;
@@ -77,6 +82,165 @@ export const getRegionsByBank = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, regions, "Regions retrieved successfully"));
+});
+
+export const getRegionSummaries = asyncHandler(async (req, res) => {
+  const filters = req.validatedQuery ?? req.query;
+  const match = {};
+
+  if (filters.status) match.isActive = filters.status === "active";
+  if (filters.bankId) {
+    match.bankId = new mongoose.Types.ObjectId(filters.bankId);
+  }
+  if (filters.search) {
+    const search = escapeRegex(filters.search);
+    match.$or = [
+      { name: { $regex: search, $options: "i" } },
+      { code: { $regex: search, $options: "i" } },
+    ];
+  }
+
+  const regions = await Region.aggregate([
+    { $match: match },
+    { $sort: { name: 1, _id: 1 } },
+    {
+      $lookup: {
+        from: District.collection.name,
+        let: { regionId: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$regionId", "$$regionId"] },
+              isDeleted: { $ne: true },
+            },
+          },
+          { $count: "count" },
+        ],
+        as: "districtSummary",
+      },
+    },
+    {
+      $lookup: {
+        from: ATM.collection.name,
+        let: { regionId: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$regionId", "$$regionId"] },
+              isDeleted: { $ne: true },
+            },
+          },
+          {
+            $facet: {
+              atms: [{ $count: "count" }],
+              employees: [
+                { $unwind: "$assignedEmployeeId" },
+                { $match: { assignedEmployeeId: { $ne: null } } },
+                { $group: { _id: "$assignedEmployeeId" } },
+                {
+                  $lookup: {
+                    from: Employee.collection.name,
+                    localField: "_id",
+                    foreignField: "_id",
+                    pipeline: [
+                      { $match: { isDeleted: { $ne: true } } },
+                      { $project: { _id: 1 } },
+                    ],
+                    as: "employee",
+                  },
+                },
+                { $match: { "employee.0": { $exists: true } } },
+                { $count: "count" },
+              ],
+              customers: [
+                { $match: { customer: { $ne: null } } },
+                { $group: { _id: "$customer" } },
+                {
+                  $lookup: {
+                    from: Customer.collection.name,
+                    localField: "_id",
+                    foreignField: "_id",
+                    pipeline: [
+                      { $match: { isDeleted: { $ne: true } } },
+                      { $project: { _id: 1 } },
+                    ],
+                    as: "customer",
+                  },
+                },
+                { $match: { "customer.0": { $exists: true } } },
+                { $count: "count" },
+              ],
+            },
+          },
+          {
+            $project: {
+              atms: {
+                $ifNull: [{ $arrayElemAt: ["$atms.count", 0] }, 0],
+              },
+              employees: {
+                $ifNull: [{ $arrayElemAt: ["$employees.count", 0] }, 0],
+              },
+              customers: {
+                $ifNull: [{ $arrayElemAt: ["$customers.count", 0] }, 0],
+              },
+            },
+          },
+        ],
+        as: "atmSummary",
+      },
+    },
+    {
+      $lookup: {
+        from: Bank.collection.name,
+        localField: "bankId",
+        foreignField: "_id",
+        pipeline: [{ $project: { _id: 1, bankName: 1, bankCode: 1 } }],
+        as: "parentBank",
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        regionId: "$_id",
+        name: 1,
+        code: 1,
+        description: 1,
+        isActive: 1,
+        bank: {
+          $let: {
+            vars: { bank: { $arrayElemAt: ["$parentBank", 0] } },
+            in: {
+              $cond: [
+                { $ifNull: ["$$bank", false] },
+                {
+                  id: "$$bank._id",
+                  name: "$$bank.bankName",
+                  code: { $ifNull: ["$$bank.bankCode", null] },
+                },
+                null,
+              ],
+            },
+          },
+        },
+        counts: {
+          districts: {
+            $ifNull: [{ $arrayElemAt: ["$districtSummary.count", 0] }, 0],
+          },
+          atms: { $ifNull: [{ $arrayElemAt: ["$atmSummary.atms", 0] }, 0] },
+          employees: {
+            $ifNull: [{ $arrayElemAt: ["$atmSummary.employees", 0] }, 0],
+          },
+          customers: {
+            $ifNull: [{ $arrayElemAt: ["$atmSummary.customers", 0] }, 0],
+          },
+        },
+      },
+    },
+  ]);
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, regions, "Region summaries retrieved successfully"));
 });
 
 export const getRegionById = asyncHandler(async (req, res) => {

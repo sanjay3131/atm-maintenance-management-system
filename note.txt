@@ -1,0 +1,12 @@
+amc in employee side need to change as audit .
+
+reccuring management  need a dashboard , with all atms and filter options ,
+and a checkbox and text area for admin. 
+
+
+
+
+customer portal need reccuring management data only after admin confrim that 
+
+in reccuring management active employee will be resposible for reccuring management 
+jobs and also there will be outsourced emp  need who did that, freq of cleaing , daily done green , 3 days once yellow, more than 3 days red and notification for admin/sadmins

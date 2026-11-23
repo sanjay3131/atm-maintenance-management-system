@@ -6,6 +6,7 @@ import {
   type UpdateRegionData,
 } from "../services/region.service";
 import { DISTRICT_GEOGRAPHIC_SUMMARIES_QUERY_KEY } from "./useDistrictGeographicSummaries";
+import { REGION_SUMMARIES_QUERY_KEY } from "./useRegionSummaries";
 
 export const useCreateRegion = (bankId: string) => {
   const queryClient = useQueryClient();
@@ -15,6 +16,7 @@ export const useCreateRegion = (bankId: string) => {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["regions", "bank", bankId] }),
+        queryClient.invalidateQueries({ queryKey: REGION_SUMMARIES_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: ["bank"] }),
         queryClient.invalidateQueries({
           queryKey: DISTRICT_GEOGRAPHIC_SUMMARIES_QUERY_KEY,
@@ -41,6 +43,7 @@ export const useUpdateRegion = (bankId: string) => {
           queryKey: ["region", variables.regionId],
         }),
         queryClient.invalidateQueries({ queryKey: ["regions", "bank", bankId] }),
+        queryClient.invalidateQueries({ queryKey: REGION_SUMMARIES_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: ["bank"] }),
         queryClient.invalidateQueries({
           queryKey: DISTRICT_GEOGRAPHIC_SUMMARIES_QUERY_KEY,

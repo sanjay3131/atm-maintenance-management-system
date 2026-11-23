@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TAMIL_NADU_DISTRICTS } from "../../../../shared/tamilNaduDistricts.js";
 
 const objectIdSchema = z.string().regex(/^[a-fA-F0-9]{24}$/, "Invalid ID");
 
@@ -14,7 +15,7 @@ export const districtListQuerySchema = z.object({
 
 export const createDistrictSchema = z.object({
   regionId: objectIdSchema,
-  districtName: z.string().trim().min(2).max(100),
+  districtName: z.enum(TAMIL_NADU_DISTRICTS),
   pinCode: z.string().trim().min(3).max(10),
   state: z.string().trim().min(2).max(100),
   isActive: z.boolean().optional(),
