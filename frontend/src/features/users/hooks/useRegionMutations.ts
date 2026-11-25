@@ -20,6 +20,9 @@ export const useCreateRegion = () => {
         }),
         queryClient.invalidateQueries({ queryKey: REGION_SUMMARIES_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: ["bank"] }),
+        queryClient.invalidateQueries({ queryKey: ["districts"] }),
+        queryClient.invalidateQueries({ queryKey: ["atms"] }),
+        queryClient.invalidateQueries({ queryKey: ["atms", "scoped"] }),
         queryClient.invalidateQueries({
           queryKey: DISTRICT_GEOGRAPHIC_SUMMARIES_QUERY_KEY,
         }),
@@ -47,6 +50,9 @@ export const useUpdateRegion = (bankId: string) => {
         queryClient.invalidateQueries({ queryKey: ["regions", "bank", bankId] }),
         queryClient.invalidateQueries({ queryKey: REGION_SUMMARIES_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: ["bank"] }),
+        queryClient.invalidateQueries({ queryKey: ["districts"] }),
+        queryClient.invalidateQueries({ queryKey: ["atms"] }),
+        queryClient.invalidateQueries({ queryKey: ["atms", "scoped"] }),
         queryClient.invalidateQueries({
           queryKey: DISTRICT_GEOGRAPHIC_SUMMARIES_QUERY_KEY,
         }),

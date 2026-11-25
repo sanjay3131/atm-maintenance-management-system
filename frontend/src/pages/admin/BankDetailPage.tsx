@@ -8,9 +8,11 @@ import {
   Eye,
   MapPin,
   Pencil,
+  Plus,
   RefreshCw,
 } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +31,10 @@ import {
 } from "@/components/ui/select";
 import BankFormDialog from "@/features/banks/components/BankFormDialog";
 import { useBank } from "@/features/banks/hooks/useBank";
+import {
+  useDeactivateBank,
+  useUpdateBank,
+} from "@/features/banks/hooks/useBankMutations";
 import { useCustomers } from "@/features/customers/hooks/useCustomers";
 import type { Customer } from "@/features/customers/services/customer.service";
 import { useEmployees } from "@/features/employees/hooks/useEmployees";
@@ -46,6 +52,7 @@ import {
   formatJobWorkType,
 } from "@/features/jobs/utils/jobWorkType.utils";
 import { useATMs } from "@/features/atms/hooks/useATMs";
+import { useScopedATMs } from "@/features/atms/hooks/useScopedATMs";
 import { getATMDisplayId } from "@/features/atms/atmDisplay.utils";
 import type {
   ATM,
@@ -54,6 +61,8 @@ import type {
 } from "@/features/atms/types/atm.types";
 import { useRegionsByBank } from "@/features/users/hooks/useRegionsByBank";
 import { useDistrictsByBank } from "@/features/users/hooks/useDistricts";
+import RegionFormDialog from "@/features/users/components/RegionFormDialog";
+import DistrictFormDialog from "@/features/users/components/DistrictFormDialog";
 import type { Region } from "@/features/users/services/region.service";
 import type { District } from "@/features/users/types/district.types";
 
@@ -538,11 +547,17 @@ export default function BankDetailPage() {
   const { bankId = "" } = useParams<{ bankId: string }>();
   const [activeTab, setActiveTab] = useState<BankTab>("overview");
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
+  const [regionDialogOpen, setRegionDialogOpen] = useState(false);
+  const [districtDialogOpen, setDistrictDialogOpen] = useState(false);
+  const [districtInitialRegionId, setDistrictInitialRegionId] = useState("");
   const [selectedCustomer, setSelectedCustomer] =
     useState<BankCustomerGroup | null>(null);
   const [selectedEmployee, setSelectedEmployee] =
     useState<BankEmployeeGroup | null>(null);
   const [search, setSearch] = useState("");
+  const [debouncedAtmSearch, setDebouncedAtmSearch] = useState("");
+  const [atmPage, setAtmPage] = useState(1);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerStatusFilter, setCustomerStatusFilter] = useState(ALL);
   const [employeeSearch, setEmployeeSearch] = useState("");
@@ -564,6 +579,7 @@ export default function BankDetailPage() {
   const [statusFilter, setStatusFilter] = useState(ALL);
   const [districtFilter, setDistrictFilter] = useState(ALL);
   const [regionFilter, setRegionFilter] = useState(ALL);
+  const ATM_PAGE_SIZE = 10;
   const {
     data: bank,
     isLoading: bankLoading,
@@ -590,6 +606,52 @@ export default function BankDetailPage() {
     refetch: refetchATMs,
     isFetching: atmsFetching,
   } = useATMs();
+  const scopedAtmsQuery = useScopedATMs(
+    {
+      bankId,
+      assignmentStatus: "all",
+      ...(debouncedAtmSearch ? { search: debouncedAtmSearch } : {}),
+      ...(statusFilter !== ALL ? { status: statusFilter as ATMStatus } : {}),
+      ...(districtFilter !== ALL ? { districtId: districtFilter } : {}),
+      ...(regionFilter !== ALL ? { regionId: regionFilter } : {}),
+      page: atmPage,
+      limit: ATM_PAGE_SIZE,
+    },
+    Boolean(bankId) && activeTab === "atms",
+  );
+  const scopedAtms = scopedAtmsQuery.data?.atms ?? [];
+  const scopedAtmPagination = scopedAtmsQuery.data?.pagination;
+  const scopedAtmsLoading = scopedAtmsQuery.isLoading;
+  const scopedAtmsError = scopedAtmsQuery.isError;
+  const scopedAtmsLoadError = scopedAtmsQuery.error;
+  const refetchScopedAtms = scopedAtmsQuery.refetch;
+  const scopedAtmsFetching = scopedAtmsQuery.isFetching;
+  const atmFilterDistrictOptions = useMemo(
+    () =>
+      [...districts]
+        .sort((a, b) => a.districtName.localeCompare(b.districtName))
+        .map((district) => ({
+          id: district._id,
+          name: district.districtName,
+          regionId:
+            typeof district.regionId === "string"
+              ? district.regionId
+              : district.regionId?._id ?? "",
+        })),
+    [districts],
+  );
+  const atmFilterRegionOptions = useMemo(() => {
+    if (districtFilter === ALL) return [];
+    const selectedDistrict = atmFilterDistrictOptions.find(
+      (district) => district.id === districtFilter,
+    );
+    if (!selectedDistrict?.regionId) return [];
+    const region = regions.find((item) => item._id === selectedDistrict.regionId);
+    if (!region) {
+      return [{ id: selectedDistrict.regionId, name: "Selected region" }];
+    }
+    return [{ id: region._id, name: region.name }];
+  }, [atmFilterDistrictOptions, districtFilter, regions]);
   const {
     data: customers = [],
     isLoading: customersLoading,
@@ -606,6 +668,8 @@ export default function BankDetailPage() {
     refetch: refetchEmployees,
     isFetching: employeesFetching,
   } = useEmployees(activeTab === "employees");
+  const updateBankMutation = useUpdateBank();
+  const deactivateBankMutation = useDeactivateBank();
 
   const bankATMs = useMemo(
     () => allATMs.filter((atm) => getBankId(atm) === bankId),
@@ -766,37 +830,6 @@ export default function BankDetailPage() {
   const totalAssignedEmployeeATMs = bankATMs.filter(
     (atm) => (atm.assignedEmployeeId ?? []).length > 0,
   ).length;
-  const selectedDistrictATMs = useMemo(
-    () =>
-      districtFilter === ALL
-        ? []
-        : bankATMs.filter((atm) => getDistrictId(atm) === districtFilter),
-    [bankATMs, districtFilter],
-  );
-  const regionOptions = useMemo(() => {
-    const regions = new Map<string, string>();
-    for (const atm of selectedDistrictATMs) {
-      const id = getRegionId(atm);
-      if (id) regions.set(id, getRegionName(atm));
-    }
-    return [...regions.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [selectedDistrictATMs]);
-  const filteredATMs = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-    return bankATMs.filter((atm) => {
-      const matchesSearch =
-        !normalizedSearch ||
-        [atm.clientAtmId, atm.atmId, atm.locationName, atm.address].some(
-          (value) => value?.toLowerCase().includes(normalizedSearch),
-        );
-      const matchesStatus = statusFilter === ALL || atm.status === statusFilter;
-      const matchesDistrict =
-        districtFilter === ALL || getDistrictId(atm) === districtFilter;
-      const matchesRegion =
-        regionFilter === ALL || getRegionId(atm) === regionFilter;
-      return matchesSearch && matchesStatus && matchesDistrict && matchesRegion;
-    });
-  }, [bankATMs, districtFilter, regionFilter, search, statusFilter]);
   const selectedJobDistrictATMs = useMemo(
     () =>
       jobDistrictFilter === ALL
@@ -819,6 +852,18 @@ export default function BankDetailPage() {
     }, 300);
     return () => window.clearTimeout(timeout);
   }, [jobSearch]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedAtmSearch(search.trim());
+      setAtmPage(1);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [search]);
+
+  useEffect(() => {
+    setAtmPage(1);
+  }, [statusFilter, districtFilter, regionFilter]);
 
   const {
     data: jobsData,
@@ -896,6 +941,35 @@ export default function BankDetailPage() {
 
   const openEditDialog = () => setEditDialogOpen(true);
   const closeEditDialog = (open: boolean) => setEditDialogOpen(open);
+  const activateBank = async () => {
+    try {
+      await updateBankMutation.mutateAsync({
+        id: bankId,
+        data: { isActive: true },
+      });
+      toast.success("Bank activated successfully.");
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    }
+  };
+  const deactivateBank = async () => {
+    try {
+      await deactivateBankMutation.mutateAsync(bankId);
+      toast.success("Bank deactivated successfully.");
+      setDeactivateDialogOpen(false);
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    }
+  };
+  const openRegionDialog = () => {
+    if (!bank.isActive) return;
+    setRegionDialogOpen(true);
+  };
+  const openDistrictDialog = (regionId = "") => {
+    if (!bank.isActive) return;
+    setDistrictInitialRegionId(regionId);
+    setDistrictDialogOpen(true);
+  };
   const activeATMs = bankATMs.filter((atm) => atm.status === "ACTIVE").length;
   const inactiveATMs = bankATMs.filter(
     (atm) => atm.status === "INACTIVE",
@@ -955,9 +1029,16 @@ export default function BankDetailPage() {
                   ) : regions.length > 0 ? (
                     <div className="flex flex-wrap gap-1">
                       {regions.map((region) => (
-                        <Badge key={region._id} variant="outline">
-                          {region.name}
-                        </Badge>
+                        <Link
+                          key={region._id}
+                          to={`/admin/regions/${region._id}`}
+                          className="hover:opacity-80"
+                        >
+                          <Badge variant="outline">
+                            {region.name}
+                            {!region.isActive ? " · Inactive" : ""}
+                          </Badge>
+                        </Link>
                       ))}
                     </div>
                   ) : (
@@ -975,9 +1056,16 @@ export default function BankDetailPage() {
                   ) : districts.length > 0 ? (
                     <div className="flex flex-wrap gap-1">
                       {districts.map((district) => (
-                        <Badge key={district._id} variant="outline">
-                          {district.districtName}
-                        </Badge>
+                        <Link
+                          key={district._id}
+                          to={`/admin/districts/${district._id}`}
+                          className="hover:opacity-80"
+                        >
+                          <Badge variant="outline">
+                            {district.districtName}
+                            {!district.isActive ? " · Inactive" : ""}
+                          </Badge>
+                        </Link>
                       ))}
                     </div>
                   ) : (
@@ -987,10 +1075,31 @@ export default function BankDetailPage() {
               </div>
             </div>
           </div>
-          <Button type="button" variant="outline" onClick={openEditDialog}>
-            <Pencil />
-            Edit Bank
-          </Button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="outline" onClick={openEditDialog}>
+              <Pencil />
+              Edit Bank
+            </Button>
+            {bank.isActive ? (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => setDeactivateDialogOpen(true)}
+                disabled={deactivateBankMutation.isPending}
+              >
+                Deactivate
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void activateBank()}
+                disabled={updateBankMutation.isPending}
+              >
+                {updateBankMutation.isPending ? "Activating..." : "Activate"}
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -1052,6 +1161,29 @@ export default function BankDetailPage() {
         ))}
       </div>
 
+      {activeTab === "districts" && (
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={openRegionDialog}
+            disabled={!bank.isActive}
+          >
+            <Plus />
+            Add Region
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => openDistrictDialog()}
+            disabled={!bank.isActive}
+          >
+            <Plus />
+            Add District
+          </Button>
+        </div>
+      )}
+
       <section
         id={`bank-panel-${activeTab}`}
         role="tabpanel"
@@ -1073,10 +1205,38 @@ export default function BankDetailPage() {
             <>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {[
+                  [
+                    "Total Regions",
+                    regionsLoading ? "—" : regionsError ? "Unavailable" : regions.length,
+                  ],
+                  [
+                    "Active Regions",
+                    regionsLoading
+                      ? "—"
+                      : regionsError
+                        ? "Unavailable"
+                        : regions.filter((region) => region.isActive).length,
+                  ],
+                  [
+                    "Total Districts",
+                    districtsLoading
+                      ? "—"
+                      : districtsError
+                        ? "Unavailable"
+                        : districts.length,
+                  ],
+                  [
+                    "Active Districts",
+                    districtsLoading
+                      ? "—"
+                      : districtsError
+                        ? "Unavailable"
+                        : districts.filter((district) => district.isActive).length,
+                  ],
                   ["Total ATMs", bankATMs.length],
                   ["Active ATMs", activeATMs],
                   ["Inactive ATMs", inactiveATMs],
-                  ["Other statuses", otherStatusATMs],
+                  ["Other ATM statuses", otherStatusATMs],
                 ].map(([label, count]) => (
                   <Card key={label}>
                     <CardContent className="p-5">
@@ -1193,7 +1353,7 @@ export default function BankDetailPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={ALL}>All districts</SelectItem>
-                      {districtGroups.map((district) => (
+                      {atmFilterDistrictOptions.map((district) => (
                         <SelectItem key={district.id} value={district.id}>
                           {district.name}
                         </SelectItem>
@@ -1221,9 +1381,9 @@ export default function BankDetailPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={ALL}>All regions</SelectItem>
-                      {regionOptions.map(([id, name]) => (
-                        <SelectItem key={id} value={id}>
-                          {name}
+                      {atmFilterRegionOptions.map((region) => (
+                        <SelectItem key={region.id} value={region.id}>
+                          {region.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1249,21 +1409,43 @@ export default function BankDetailPage() {
                     Clear filters
                   </Button>
                   <span className="ml-auto self-center text-sm text-muted-foreground">
-                    Showing {filteredATMs.length} of {bankATMs.length} ATMs
+                    Showing {scopedAtms.length} of {scopedAtmPagination?.total ?? 0} ATMs
                   </span>
                 </div>
               </CardContent>
             </Card>
-            {atmsLoading ? (
+            {scopedAtmsLoading ? (
               <ATMTableSkeleton />
-            ) : atmsError ? null : (
+            ) : scopedAtmsError ? (
+              <Card className="border-destructive/30 bg-destructive/5">
+                <CardContent className="flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-medium text-destructive">
+                      Failed to load bank ATMs.
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {getErrorMessage(scopedAtmsLoadError)}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void refetchScopedAtms()}
+                    disabled={scopedAtmsFetching}
+                  >
+                    <RefreshCw className={scopedAtmsFetching ? "animate-spin" : ""} />
+                    {scopedAtmsFetching ? "Retrying..." : "Retry"}
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
               <Card>
                 <CardHeader>
                   <CardTitle>Bank ATMs</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
                   <ATMRows
-                    atms={filteredATMs}
+                    atms={scopedAtms}
                     emptyMessage={
                       search.trim() ||
                       statusFilter !== ALL ||
@@ -1273,6 +1455,47 @@ export default function BankDetailPage() {
                         : "No ATMs are associated with this bank."
                     }
                   />
+                  {scopedAtmPagination && scopedAtmPagination.totalPages > 1 && (
+                    <div className="flex items-center justify-between gap-4 border-t px-4 py-4">
+                      <p className="text-sm text-muted-foreground">
+                        {scopedAtmPagination.total} matching ATMs
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setAtmPage((current) => Math.max(1, current - 1))
+                          }
+                          disabled={atmPage <= 1 || scopedAtmsFetching}
+                        >
+                          <ChevronLeft />
+                          Previous
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setAtmPage((current) =>
+                              Math.min(
+                                scopedAtmPagination.totalPages,
+                                current + 1,
+                              ),
+                            )
+                          }
+                          disabled={
+                            atmPage >= scopedAtmPagination.totalPages ||
+                            scopedAtmsFetching
+                          }
+                        >
+                          Next
+                          <ChevronRight />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -1309,11 +1532,40 @@ export default function BankDetailPage() {
                     <CardContent className="p-0">
                       <details>
                         <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-5 py-4 [&::-webkit-details-marker]:hidden">
-                          <span className="font-semibold">{region.name}</span>
-                          <Badge variant="secondary">
-                            {regionATMCount}{" "}
-                            {regionATMCount === 1 ? "ATM" : "ATMs"}
-                          </Badge>
+                          <span className="flex min-w-0 flex-wrap items-center gap-2">
+                            <Link
+                              to={`/admin/regions/${region.id}`}
+                              className="font-semibold text-primary underline-offset-4 hover:underline"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {region.name}
+                            </Link>
+                            <Badge
+                              variant={regions.find((item) => item._id === region.id)?.isActive ? "secondary" : "outline"}
+                            >
+                              {regions.find((item) => item._id === region.id)?.isActive ? "Active" : "Inactive"}
+                            </Badge>
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary">
+                              {regionATMCount}{" "}
+                              {regionATMCount === 1 ? "ATM" : "ATMs"}
+                            </Badge>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                openDistrictDialog(region.id);
+                              }}
+                              disabled={!bank.isActive}
+                            >
+                              <Plus />
+                              Add District
+                            </Button>
+                          </div>
                         </summary>
                         {regionDistricts.length === 0 ? (
                           <div className="border-t px-5 py-8 text-center text-sm text-muted-foreground">
@@ -1327,8 +1579,29 @@ export default function BankDetailPage() {
                                 className="rounded-lg border bg-background"
                               >
                                 <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
-                                  <span className="font-medium">
-                                    {district.name}
+                                  <span className="flex min-w-0 flex-wrap items-center gap-2">
+                                    <Link
+                                      to={`/admin/districts/${district.id}`}
+                                      className="font-medium text-primary underline-offset-4 hover:underline"
+                                      onClick={(event) => event.stopPropagation()}
+                                    >
+                                      {district.name}
+                                    </Link>
+                                    <Badge
+                                      variant={
+                                        districts.find(
+                                          (item) => item._id === district.id,
+                                        )?.isActive
+                                          ? "secondary"
+                                          : "outline"
+                                      }
+                                    >
+                                      {districts.find(
+                                        (item) => item._id === district.id,
+                                      )?.isActive
+                                        ? "Active"
+                                        : "Inactive"}
+                                    </Badge>
                                   </span>
                                   <Badge variant="outline">
                                     {district.atms.length}{" "}
@@ -2719,6 +2992,64 @@ export default function BankDetailPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={deactivateDialogOpen}
+        onOpenChange={(open) => {
+          if (!deactivateBankMutation.isPending) {
+            setDeactivateDialogOpen(open);
+          }
+        }}
+      >
+        <DialogContent>
+          <div className="space-y-2">
+            <DialogTitle>Deactivate this bank?</DialogTitle>
+            <DialogDescription>
+              Existing active Regions, active Districts or non-deleted ATMs linked
+              to this bank may prevent deactivation. The bank will be soft
+              deactivated and will not be permanently deleted.
+            </DialogDescription>
+          </div>
+          <p className="mt-4 text-sm font-medium">
+            {bank.bankName} ({bank.bankCode})
+          </p>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deactivateBankMutation.isPending}
+              onClick={() => setDeactivateDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deactivateBankMutation.isPending}
+              onClick={() => void deactivateBank()}
+            >
+              {deactivateBankMutation.isPending
+                ? "Deactivating..."
+                : "Deactivate"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <RegionFormDialog
+        open={regionDialogOpen}
+        bankId={bankId}
+        region={null}
+        onOpenChange={setRegionDialogOpen}
+      />
+
+      <DistrictFormDialog
+        open={districtDialogOpen}
+        district={null}
+        onOpenChange={setDistrictDialogOpen}
+        initialBankId={bankId}
+        initialRegionId={districtInitialRegionId}
+      />
 
       <BankFormDialog
         open={editDialogOpen}

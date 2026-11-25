@@ -39,6 +39,12 @@ function invoke(handler, req) {
   });
 }
 
+async function createSocketServerForTest() {
+  const server = createServer();
+  await new Promise((resolve) => server.listen(0, resolve));
+  return initSocketServer(server);
+}
+
 async function withOverrides(overrides, callback) {
   const originals = overrides.map(([target, key]) => [target, key, target[key]]);
   for (const [target, key, value] of overrides) target[key] = value;
@@ -76,6 +82,10 @@ function createTransactionMocks({
   duplicatePin = false,
   destinationBankId = bankId,
   mismatchedATMRegionId,
+  failRegionFence = false,
+  atms,
+  jobs = [],
+  amcs = [],
 } = {}) {
   const state = {
     district: {
@@ -96,6 +106,7 @@ function createTransactionMocks({
         name: "Source",
         isActive: true,
         geographyStatus: "MAPPED",
+        geographyFence: 0,
       },
       [destinationRegionId]: {
         _id: destinationRegionId,
@@ -103,31 +114,42 @@ function createTransactionMocks({
         name: "Destination",
         isActive: true,
         geographyStatus: "MAPPED",
+        geographyFence: 0,
       },
     },
-    atms: [
-      {
-        _id: "64b000000000000000000006",
-        atmId: "ATM-001",
-        districtId,
-        regionId: sourceRegionId,
-        bankId,
-        geographyStatus: "MAPPED",
-        isDeleted: false,
-      },
-      {
-        _id: "64b000000000000000000007",
-        atmId: "ATM-002",
-        districtId,
-        regionId: mismatchedATMRegionId ?? sourceRegionId,
-        bankId,
-        geographyStatus: "MAPPED",
-        isDeleted: false,
-      },
-    ],
+    atms:
+      atms ??
+      [
+        {
+          _id: "64b000000000000000000006",
+          atmId: "ATM-001",
+          districtId,
+          regionId: sourceRegionId,
+          bankId,
+          geographyStatus: "MAPPED",
+          isDeleted: false,
+        },
+        {
+          _id: "64b000000000000000000007",
+          atmId: "ATM-002",
+          districtId,
+          regionId: mismatchedATMRegionId ?? sourceRegionId,
+          bankId,
+          geographyStatus: "MAPPED",
+          isDeleted: false,
+        },
+      ],
     audits: [],
   };
   const sessions = [];
+  const fenceOrder = [];
+  const atmFilters = [];
+  const blockerFilters = { jobs: [], amcs: [] };
+  const matchesATMFilter = (atm, filter) =>
+    String(atm.districtId) === String(filter.districtId) &&
+    atm.isDeleted !== true &&
+    (!filter._id ||
+      filter._id.$in.some((id) => String(id) === String(atm._id)));
   const transactionSession = {
     async withTransaction(operation) {
       const before = structuredClone(state);
@@ -147,11 +169,36 @@ function createTransactionMocks({
       async () => transactionSession,
     ],
     [
+      Bank,
+      "updateOne",
+      async (filter, _update, options) => {
+        sessions.push(options.session);
+        fenceOrder.push(`bank:${filter._id}`);
+        return { matchedCount: filter._id === bankId ? 1 : 0 };
+      },
+    ],
+    [
+      Region,
+      "updateOne",
+      async (filter, update, options) => {
+        sessions.push(options.session);
+        if (update.$inc?.geographyFence) {
+          fenceOrder.push(`region:${filter._id}`);
+          if (failRegionFence) return { matchedCount: 0 };
+          state.regions[String(filter._id)].geographyFence +=
+            update.$inc.geographyFence;
+          return { matchedCount: 1 };
+        }
+        return { matchedCount: 0 };
+      },
+    ],
+    [
       District,
       "updateOne",
       async (filter, update, options) => {
         sessions.push(options.session);
         if (update.$inc?.geographyFence) {
+          fenceOrder.push(`district:${filter._id}`);
           state.district.geographyFence += update.$inc.geographyFence;
           return { matchedCount: 1 };
         }
@@ -206,37 +253,53 @@ function createTransactionMocks({
     [
       ATM,
       "find",
-      (filter) =>
-        makeQuery(
+      (filter) => {
+        atmFilters.push(filter);
+        return makeQuery(
           () =>
             state.atms
-              .filter(
-                (atm) =>
-                  String(atm.districtId) === String(filter.districtId) &&
-                  atm.isDeleted === filter.isDeleted,
-              )
+              .filter((atm) => matchesATMFilter(atm, filter))
               .map((atm) => ({ ...atm })),
           sessions,
-        ),
+        );
+      },
     ],
     [
       ATM,
       "updateMany",
       async (filter, update, options) => {
         sessions.push(options.session);
-        const affected = state.atms.filter(
-          (atm) =>
-            String(atm.districtId) === String(filter.districtId) &&
-            atm.isDeleted === filter.isDeleted,
-        );
+        state.atmUpdate = {
+          filter,
+          update,
+          options: {
+            runValidators: options.runValidators,
+            timestamps: options.timestamps,
+          },
+        };
+        const affected = state.atms.filter((atm) => matchesATMFilter(atm, filter));
         const updated = incompleteATMUpdate ? affected.slice(0, 1) : affected;
         for (const atm of updated) Object.assign(atm, update.$set);
         if (failATMUpdate) throw new Error("Injected ATM update failure");
         return { matchedCount: atmMatchedCount ?? affected.length };
       },
     ],
-    [Job, "find", () => makeQuery(() => [], sessions)],
-    [AMC, "find", () => makeQuery(() => [], sessions)],
+    [
+      Job,
+      "find",
+      (filter) => {
+        blockerFilters.jobs.push(filter);
+        return makeQuery(() => jobs, sessions);
+      },
+    ],
+    [
+      AMC,
+      "find",
+      (filter) => {
+        blockerFilters.amcs.push(filter);
+        return makeQuery(() => amcs, sessions);
+      },
+    ],
     [
       RecurringMaintenancePlan,
       "find",
@@ -255,7 +318,15 @@ function createTransactionMocks({
     [User, "find", () => makeQuery(() => [], sessions)],
   ];
 
-  return { state, sessions, transactionSession, overrides };
+  return {
+    state,
+    sessions,
+    transactionSession,
+    overrides,
+    fenceOrder,
+    atmFilters,
+    blockerFilters,
+  };
 }
 
 function createDistrictRecipientMocks() {
@@ -416,7 +487,7 @@ const request = {
 };
 
 test("district transfer atomically updates the parent, ATMs, and audit", async () => {
-  const { state, sessions, transactionSession, overrides } =
+  const { state, sessions, transactionSession, overrides, fenceOrder } =
     createTransactionMocks();
 
   await withOverrides(overrides, async () => {
@@ -424,14 +495,15 @@ test("district transfer atomically updates the parent, ATMs, and audit", async (
 
     assert.equal(response.status, 200);
     assert.equal(response.body.data._id, "audit-001");
-    assert.equal(response.body.data.affectedATMCount, state.atms.length);
+    assert.equal(response.body.data.affectedATMCount, 2);
     assert.equal(state.district.regionId, destinationRegionId);
     assert.ok(
-      state.atms.every(
-        (atm) =>
-          atm.regionId === destinationRegionId &&
-          atm.bankId === bankId,
-      ),
+      state.atms
+        .filter((atm) => atm.isDeleted !== true)
+        .every(
+          (atm) =>
+            atm.regionId === destinationRegionId && atm.bankId === bankId,
+        ),
     );
     assert.equal(state.audits.length, 1);
     assert.equal(state.audits[0].fromRegionId, sourceRegionId);
@@ -440,12 +512,166 @@ test("district transfer atomically updates the parent, ATMs, and audit", async (
       sessions.length > 0 && sessions.every((session) => session === transactionSession),
       "all transactional reads and writes must use the fence transaction session",
     );
+    assert.deepEqual(fenceOrder, [
+      `bank:${bankId}`,
+      `region:${sourceRegionId}`,
+      `region:${destinationRegionId}`,
+      `district:${districtId}`,
+    ]);
   });
+});
+
+test("district transfer synchronizes legacy, inactive, and removed ATMs but excludes deleted ATMs", async () => {
+  const atms = [
+    {
+      _id: "64b000000000000000000006",
+      atmId: "ATM-ACTIVE",
+      districtId,
+      regionId: sourceRegionId,
+      bankId,
+      geographyStatus: "MAPPED",
+      status: "ACTIVE",
+      isDeleted: false,
+      updatedBy: "original-user",
+      locationName: "Active location",
+    },
+    {
+      _id: "64b000000000000000000007",
+      atmId: "ATM-LEGACY",
+      districtId,
+      regionId: sourceRegionId,
+      bankId,
+      geographyStatus: "MAPPED",
+      status: "INACTIVE",
+      updatedBy: "legacy-user",
+      locationName: "Legacy location",
+    },
+    {
+      _id: "64b000000000000000000008",
+      atmId: "ATM-REMOVED",
+      districtId,
+      regionId: sourceRegionId,
+      bankId,
+      geographyStatus: "MAPPED",
+      status: "REMOVED",
+      isDeleted: false,
+      updatedBy: "removed-user",
+      locationName: "Removed location",
+    },
+    {
+      _id: "64b000000000000000000009",
+      atmId: "ATM-DELETED",
+      districtId,
+      regionId: sourceRegionId,
+      bankId,
+      geographyStatus: "MAPPED",
+      status: "ACTIVE",
+      isDeleted: true,
+      updatedBy: "deleted-user",
+      locationName: "Deleted location",
+    },
+  ];
+  const originals = structuredClone(atms);
+  const { state, overrides, atmFilters } = createTransactionMocks({ atms });
+
+  await withOverrides(overrides, async () => {
+    const response = await invoke(transferDistrict, request);
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.data.affectedATMCount, 3);
+  });
+
+  const selectedIds = originals
+    .filter((atm) => atm.isDeleted !== true)
+    .map((atm) => atm._id)
+    .sort();
+  assert.ok(atmFilters.some((filter) => filter.isDeleted?.$ne === true));
+  const exactIdFilters = atmFilters.filter((filter) => filter._id);
+  assert.equal(exactIdFilters.length, 1);
+  assert.deepEqual(
+    exactIdFilters[0]._id.$in.map(String).sort(),
+    selectedIds,
+  );
+  assert.equal(state.atmUpdate.options.timestamps, false);
+  assert.deepEqual(state.atmUpdate.update, {
+    $set: { regionId: destinationRegionId },
+  });
+  assert.ok(
+    state.atms
+      .filter((atm) => atm.isDeleted !== true)
+      .every((atm) => atm.regionId === destinationRegionId),
+  );
+  assert.equal(
+    state.atms.find((atm) => atm.status === "ACTIVE").locationName,
+    "Active location",
+  );
+  for (const original of originals.filter((atm) => atm.isDeleted !== true)) {
+    const updated = state.atms.find((atm) => atm._id === original._id);
+    assert.equal(updated.bankId, original.bankId);
+    assert.equal(updated.districtId, original.districtId);
+    assert.equal(updated.geographyStatus, original.geographyStatus);
+    assert.equal(updated.status, original.status);
+    assert.equal(updated.updatedBy, original.updatedBy);
+    assert.equal(updated.locationName, original.locationName);
+  }
+  assert.equal(
+    state.atms.find((atm) => atm.isDeleted === true).regionId,
+    sourceRegionId,
+  );
+});
+
+test("district transfer rejects malformed ATM deletion flags without updating any records", async () => {
+  const { state, overrides } = createTransactionMocks({
+    atms: [
+      {
+        _id: "64b000000000000000000006",
+        atmId: "ATM-MALFORMED",
+        districtId,
+        regionId: sourceRegionId,
+        bankId,
+        geographyStatus: "MAPPED",
+        isDeleted: null,
+      },
+    ],
+  });
+
+  await withOverrides(overrides, async () => {
+    await assert.rejects(
+      invoke(transferDistrict, request),
+      /ATM ATM-MALFORMED has an invalid deletion flag/,
+    );
+  });
+
+  assert.equal(state.district.regionId, sourceRegionId);
+  assert.equal(state.atms[0].regionId, sourceRegionId);
+  assert.equal(state.audits.length, 0);
+});
+
+test("district transfer detects legacy non-deleted Jobs and AMCs as blockers", async () => {
+  for (const [label, records] of [
+    ["Job", { jobs: [{ _id: "job-legacy" }] }],
+    ["AMC", { amcs: [{ _id: "amc-legacy" }] }],
+  ]) {
+    const { state, overrides, blockerFilters } =
+      createTransactionMocks(records);
+    await withOverrides(overrides, async () => {
+      await assert.rejects(
+        invoke(transferDistrict, request),
+        /District transfer is blocked by unresolved maintenance records/,
+        `${label} without isDeleted should block the transfer`,
+      );
+    });
+    const filters = label === "Job" ? blockerFilters.jobs : blockerFilters.amcs;
+    assert.equal(filters[0].isDeleted.$ne, true);
+    assert.equal(state.district.regionId, sourceRegionId);
+    assert.ok(state.atms.every((atm) => atm.regionId === sourceRegionId));
+    assert.equal(state.audits.length, 0);
+  }
 });
 
 test("district transfer publishes its event after the transaction commits", async () => {
   const { state, overrides } = createTransactionMocks();
-  const io = initSocketServer(createServer());
+  const io = await createSocketServerForTest();
   const emittedEvents = [];
   io.to = (room) => ({
     emit: (event, payload) => {
@@ -502,7 +728,7 @@ test("district transfer publishes its event after the transaction commits", asyn
 
 test("district transfer rolls back the parent, ATM updates, and audit on update failure", async () => {
   const { state, overrides } = createTransactionMocks({ failATMUpdate: true });
-  const io = initSocketServer(createServer());
+  const io = await createSocketServerForTest();
   const emittedEvents = [];
   io.to = (room) => ({
     emit: (event, payload) => emittedEvents.push({ room, event, payload }),
@@ -528,12 +754,29 @@ test("district transfer rolls back the parent, ATM updates, and audit on update 
   }
 });
 
+test("district transfer rolls back when acquiring a Region fence fails", async () => {
+  const { state, overrides } = createTransactionMocks({
+    failRegionFence: true,
+  });
+
+  await withOverrides(overrides, async () => {
+    await assert.rejects(
+      invoke(transferDistrict, request),
+      /District has no valid source region/,
+    );
+  });
+
+  assert.equal(state.district.regionId, sourceRegionId);
+  assert.ok(state.atms.every((atm) => atm.regionId === sourceRegionId));
+  assert.equal(state.audits.length, 0);
+});
+
 test("district transfer rolls back when any affected ATM has the wrong source Region", async () => {
   const mismatchedRegionId = "64b000000000000000000008";
   const { state, overrides } = createTransactionMocks({
     mismatchedATMRegionId: mismatchedRegionId,
   });
-  const io = initSocketServer(createServer());
+  const io = await createSocketServerForTest();
   const emittedEvents = [];
   io.to = (room) => ({
     emit: (event, payload) => emittedEvents.push({ room, event, payload }),
@@ -643,7 +886,7 @@ test("district transfer continues to reject cross-Bank destinations", async () =
 
 test("district transfer publishes no event when a Bank-wide duplicate blocks it", async () => {
   const { state, overrides } = createTransactionMocks({ duplicatePin: true });
-  const io = initSocketServer(createServer());
+  const io = await createSocketServerForTest();
   const emittedEvents = [];
   io.to = (room) => ({
     emit: (event, payload) => emittedEvents.push({ room, event, payload }),

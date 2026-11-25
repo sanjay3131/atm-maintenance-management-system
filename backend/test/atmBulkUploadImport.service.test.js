@@ -76,6 +76,8 @@ const createHarness = (
     transactionAttempts: 0,
     sequenceValue: 0,
     fenceWrites: 0,
+    bankFenceWrites: 0,
+    fenceOrder: [],
     insertedATMs: [],
     customerAtmIds: new Map([[CUSTOMER_ID, []]]),
     receipts: [...initialReceipts],
@@ -103,7 +105,7 @@ const createHarness = (
       _id: customerId,
       customerCode: "CUS-000001",
       bankName: "Example Bank",
-      districtIds: [districtId],
+      serviceDistrictIds: [districtId],
       isActive: true,
       isDeleted: false,
     },
@@ -220,6 +222,8 @@ const createHarness = (
   const takeSnapshot = () => ({
     sequenceValue: state.sequenceValue,
     fenceWrites: state.fenceWrites,
+    bankFenceWrites: state.bankFenceWrites,
+    fenceOrder: [...state.fenceOrder],
     insertedATMs: [...state.insertedATMs],
     customerAtmIds: new Map(
       [...state.customerAtmIds].map(([id, atmIds]) => [id, [...atmIds]]),
@@ -229,6 +233,8 @@ const createHarness = (
   const restoreSnapshot = (snapshot) => {
     state.sequenceValue = snapshot.sequenceValue;
     state.fenceWrites = snapshot.fenceWrites;
+    state.bankFenceWrites = snapshot.bankFenceWrites;
+    state.fenceOrder = snapshot.fenceOrder;
     state.insertedATMs = snapshot.insertedATMs;
     state.customerAtmIds = snapshot.customerAtmIds;
     state.receipts = snapshot.receipts;
@@ -274,9 +280,17 @@ const createHarness = (
   state.session = session;
   t.mock.method(mongoose, "startSession", async () => session);
 
+  t.mock.method(Bank, "updateOne", async (_filter, _update, options) => {
+    assert.strictEqual(options.session, state.session);
+    state.bankFenceWrites += 1;
+    state.fenceOrder.push("bank");
+    return { matchedCount: 1 };
+  });
+
   t.mock.method(District, "updateOne", async (_filter, _update, options) => {
     state.districtOptions.push(options);
     state.fenceWrites += 1;
+    state.fenceOrder.push("district");
     if (state.failStage === "fence") throw state.failure;
     return { matchedCount: 1 };
   });
@@ -417,6 +431,8 @@ test("imports every valid row atomically with the same transaction session", asy
   );
   assert.deepEqual(state.receipts[0].result, result);
   assert.equal(state.transactionAttempts, 1);
+  assert.equal(state.bankFenceWrites, 1);
+  assert.deepEqual(state.fenceOrder, ["bank", "district"]);
 });
 
 test("one invalid row blocks the entire import before transaction writes", async (t) => {
@@ -434,6 +450,7 @@ test("one invalid row blocks the entire import before transaction writes", async
   );
 
   assert.equal(state.fenceWrites, 0);
+  assert.equal(state.bankFenceWrites, 0);
   assert.equal(state.sequenceValue, 0);
   assert.equal(state.insertedATMs.length, 0);
   assert.equal(state.customerWriteOperations, null);
@@ -456,6 +473,7 @@ test("write-stage failures propagate and transaction state rolls back", async (t
 
       assert.equal(state.sequenceValue, 0);
       assert.equal(state.fenceWrites, 0);
+      assert.equal(state.bankFenceWrites, 0);
       assert.equal(state.insertedATMs.length, 0);
       assert.deepEqual(state.customerAtmIds.get(CUSTOMER_ID), []);
       assert.equal(state.receipts.length, 0);

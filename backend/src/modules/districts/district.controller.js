@@ -14,7 +14,10 @@ import { JOB_STATUS } from "../../utils/jobStatus.js";
 import Region from "../region/region.model.js";
 import District from "./district.models.js";
 import DistrictTransferAudit from "./districtTransferAudit.model.js";
-import { withDistrictGeographyFence } from "./districtGeography.service.js";
+import {
+  withDistrictGeographyFence,
+  withGeographyFence,
+} from "./districtGeography.service.js";
 import Bank from "../banks/bank.model.js";
 import { districtNormalizedValues } from "./districtNormalization.js";
 
@@ -48,19 +51,32 @@ const throwDistrictDuplicateError = (error) => {
   throw new ApiError(409, message);
 };
 
+const districtATMFilter = (districtId, atmIds) => ({
+  districtId,
+  isDeleted: { $ne: true },
+  ...(atmIds ? { _id: { $in: atmIds } } : {}),
+});
+
+const findLinkedNonDeletedATM = async (districtId, session) => {
+  let query = ATM.findOne(districtATMFilter(districtId)).select("_id");
+  if (session) query = query.session(session);
+  return query.lean();
+};
+
 const assertDistrictUniqueness = async ({
   bankId,
   districtNameNormalized,
   pinCodeNormalized,
   excludeId,
+  session,
 }) => {
-  const existingDistricts = await District.find({
+  let query = District.find({
     bankId,
     geographyStatus: "MAPPED",
     ...(excludeId ? { _id: { $ne: excludeId } } : {}),
-  })
-    .select("_id districtName pinCode")
-    .lean();
+  }).select("_id districtName pinCode");
+  if (session) query = query.session(session);
+  const existingDistricts = await query.lean();
   for (const existing of existingDistricts) {
     let existingValues;
     try {
@@ -82,37 +98,75 @@ const assertDistrictUniqueness = async ({
 
 export const createDistrict = asyncHandler(async (req, res) => {
   const { regionId, districtName, pinCode, state, isActive = true } = req.body;
-  const region = await Region.findById(regionId).populate("bankId", "isActive");
-  if (!region) throw new ApiError(404, "Region not found");
-  if (
-    region.geographyStatus !== "MAPPED" ||
-    !region.isActive ||
-    !region.bankId?.isActive
-  ) {
-    throw new ApiError(400, "Cannot add a district to inactive geography");
-  }
-  const bankId = region.bankId._id ?? region.bankId;
   const normalizedValues = districtNormalizedValues({ districtName, pinCode });
-  await assertDistrictUniqueness({ bankId, ...normalizedValues });
-
+  const regionSnapshot = await Region.findById(regionId)
+    .select("bankId")
+    .lean();
+  if (!regionSnapshot) throw new ApiError(404, "Region not found");
+  if (!regionSnapshot.bankId) {
+    throw new ApiError(400, "Cannot add a district to unmapped geography");
+  }
+  let district;
   try {
-    const district = await District.create({
-      bankId,
-      regionId,
-      geographyStatus: "MAPPED",
-      districtName,
-      pinCode,
-      ...normalizedValues,
-      state,
-      isActive,
-      createdBy: req.user._id,
-    });
-    return res
-      .status(201)
-      .json(new ApiResponse(201, district, "District created successfully"));
+    district = await withGeographyFence(
+      { bankIds: [regionSnapshot.bankId], regionIds: [regionId] },
+      async (session) => {
+        const region = await Region.findById(regionId).session(session);
+        if (!region) throw new ApiError(404, "Region not found");
+        if (String(region.bankId) !== String(regionSnapshot.bankId)) {
+          throw new ApiError(
+            409,
+            "Region Bank changed during District creation; retry the operation",
+          );
+        }
+        const bank = await Bank.findById(region.bankId)
+          .select("_id isActive")
+          .session(session);
+        if (!bank) throw new ApiError(404, "Bank not found");
+        if (region.geographyStatus !== "MAPPED" || !region.isActive || !bank.isActive) {
+          throw new ApiError(400, "Cannot add a district to inactive geography");
+        }
+        const bankId = region.bankId;
+        await assertDistrictUniqueness({
+          bankId,
+          ...normalizedValues,
+          session,
+        });
+
+        const [createdDistrict] = await District.create(
+          [
+            {
+              bankId,
+              regionId,
+              geographyStatus: "MAPPED",
+              districtName,
+              pinCode,
+              ...normalizedValues,
+              state,
+              isActive,
+              createdBy: req.user._id,
+            },
+          ],
+          { session },
+        );
+        return createdDistrict;
+      },
+    );
   } catch (error) {
+    if (
+      error.message ===
+      `Geography fence bank ${regionSnapshot.bankId} not found`
+    ) {
+      throw new ApiError(404, "Bank not found");
+    }
+    if (error.message === `Geography fence region ${regionId} not found`) {
+      throw new ApiError(404, "Region not found");
+    }
     throwDistrictDuplicateError(error);
   }
+  return res
+    .status(201)
+    .json(new ApiResponse(201, district, "District created successfully"));
 });
 
 export const getAllDistricts = asyncHandler(async (req, res) => {
@@ -287,8 +341,8 @@ export const updateDistrict = asyncHandler(async (req, res) => {
     excludeId: district._id,
   });
   let updatedDistrict;
-  try {
-    updatedDistrict = await District.findByIdAndUpdate(
+  const persistUpdate = (session) =>
+    District.findByIdAndUpdate(
       district._id,
       {
         $set: {
@@ -297,9 +351,86 @@ export const updateDistrict = asyncHandler(async (req, res) => {
           updatedBy: req.user._id,
         },
       },
-      { new: true, runValidators: true },
+      {
+        new: true,
+        runValidators: true,
+        ...(session ? { session } : {}),
+      },
     );
+  try {
+    if (req.body.isActive !== undefined) {
+      updatedDistrict = await withGeographyFence(
+        {
+          bankIds:
+            req.body.isActive === true ? [district.bankId] : [],
+          regionIds: [district.regionId],
+          districtIds: [district._id],
+        },
+        async (session) => {
+          const currentDistrict = await District.findById(district._id)
+            .session(session)
+            .lean();
+          if (!currentDistrict) throw new ApiError(404, "District not found");
+          if (
+            req.body.isActive === true &&
+            String(currentDistrict.bankId) !== String(district.bankId)
+          ) {
+            throw new ApiError(
+              409,
+              "District Bank changed during activation; retry the operation",
+            );
+          }
+          if (String(currentDistrict.regionId) !== String(district.regionId)) {
+            throw new ApiError(
+              409,
+              "District Region changed during update; retry the operation",
+            );
+          }
+          if (req.body.isActive === false) {
+            const linkedATM = await findLinkedNonDeletedATM(
+              currentDistrict._id,
+              session,
+            );
+            if (linkedATM) {
+              throw new ApiError(
+                409,
+                "Cannot deactivate a District while non-deleted ATMs are linked",
+              );
+            }
+          } else {
+            const currentRegion = await Region.findById(currentDistrict.regionId)
+              .select("isActive geographyStatus")
+              .session(session);
+            const currentBank = await Bank.findById(currentDistrict.bankId)
+              .select("isActive")
+              .session(session);
+            if (
+              !currentRegion?.isActive ||
+              currentRegion.geographyStatus !== "MAPPED" ||
+              !currentBank?.isActive
+            ) {
+              throw new ApiError(
+                400,
+                "Cannot activate a district under inactive geography",
+              );
+            }
+          }
+          return persistUpdate(session);
+        },
+      );
+    } else {
+      updatedDistrict = await persistUpdate();
+    }
   } catch (error) {
+    if (
+      req.body.isActive === true &&
+      error.message === `Geography fence bank ${district.bankId} not found`
+    ) {
+      throw new ApiError(
+        409,
+        "District Bank reference is invalid and requires reconciliation",
+      );
+    }
     throwDistrictDuplicateError(error);
   }
   if (!updatedDistrict) throw new ApiError(404, "District not found");
@@ -309,11 +440,40 @@ export const updateDistrict = asyncHandler(async (req, res) => {
 });
 
 export const deactivateDistrict = asyncHandler(async (req, res) => {
-  const district = await District.findByIdAndUpdate(
-    req.params.id,
-    { $set: { isActive: false, updatedBy: req.user._id } },
-    { new: true, runValidators: true },
-  );
+  let district;
+  try {
+    district = await withDistrictGeographyFence(
+      [req.params.id],
+      async (session) => {
+        const currentDistrict = await District.findById(req.params.id).session(
+          session,
+        );
+        if (!currentDistrict) throw new ApiError(404, "District not found");
+
+        const linkedATM = await findLinkedNonDeletedATM(
+          currentDistrict._id,
+          session,
+        );
+        if (linkedATM) {
+          throw new ApiError(
+            409,
+            "Cannot deactivate a District while non-deleted ATMs are linked",
+          );
+        }
+
+        return District.findByIdAndUpdate(
+          currentDistrict._id,
+          { $set: { isActive: false, updatedBy: req.user._id } },
+          { new: true, runValidators: true, session },
+        );
+      },
+    );
+  } catch (error) {
+    if (error.message === `Geography fence district ${req.params.id} not found`) {
+      throw new ApiError(404, "District not found");
+    }
+    throw error;
+  }
   if (!district) throw new ApiError(404, "District not found");
   return res
     .status(200)
@@ -324,11 +484,32 @@ export const transferDistrict = asyncHandler(async (req, res) => {
   const { id: districtId } = req.params;
   const { regionId: destinationRegionId, reason } = req.body;
 
-  const transfer = await withDistrictGeographyFence(
-    [districtId],
-    async (session) => {
+  const districtSnapshot = await District.findById(districtId)
+    .select("regionId bankId")
+    .lean();
+  if (!districtSnapshot) throw new ApiError(404, "District not found");
+
+  let transfer;
+  try {
+    transfer = await withGeographyFence({
+      bankIds: [districtSnapshot.bankId],
+      regionIds: [districtSnapshot.regionId, destinationRegionId],
+      districtIds: [districtId],
+    }, async (session) => {
       const district = await District.findById(districtId).session(session);
       if (!district) throw new ApiError(404, "District not found");
+      if (String(district.regionId) !== String(districtSnapshot.regionId)) {
+        throw new ApiError(
+          409,
+          "District source Region changed during transfer; retry the operation",
+        );
+      }
+      if (String(district.bankId) !== String(districtSnapshot.bankId)) {
+        throw new ApiError(
+          409,
+          "District Bank changed during transfer; retry the operation",
+        );
+      }
       const sourceRegion = await Region.findById(district.regionId)
         .select("bankId isActive name geographyStatus")
         .session(session);
@@ -402,10 +583,22 @@ export const transferDistrict = asyncHandler(async (req, res) => {
         throw new ApiError(409, "District PIN code already exists in this bank");
       }
 
-      const atms = await ATM.find({ districtId, isDeleted: false })
-        .select("_id atmId clientAtmId bankId regionId geographyStatus")
+      const atms = await ATM.find(districtATMFilter(districtId))
+        .select(
+          "_id atmId clientAtmId bankId districtId regionId geographyStatus status updatedBy isDeleted",
+        )
         .session(session)
         .lean();
+      const malformedDeletionFlagATM = atms.find(
+        (atm) =>
+          Object.hasOwn(atm, "isDeleted") && atm.isDeleted !== false,
+      );
+      if (malformedDeletionFlagATM) {
+        throw new ApiError(
+          409,
+          `ATM ${malformedDeletionFlagATM.clientAtmId?.trim() || malformedDeletionFlagATM.atmId} has an invalid deletion flag and must be reconciled before transfer`,
+        );
+      }
       const inconsistentATM = atms.find(
         (atm) =>
           String(atm.bankId) !== String(sourceRegion.bankId) ||
@@ -427,7 +620,7 @@ export const transferDistrict = asyncHandler(async (req, res) => {
       if (atmIds.length > 0) {
         blockers.jobs = await Job.find({
           atmId: { $in: atmIds },
-          isDeleted: false,
+          isDeleted: { $ne: true },
           status: { $nin: [JOB_STATUS.CLOSED, JOB_STATUS.CANCELLED] },
         })
           .select("_id jobId atmId status")
@@ -435,7 +628,7 @@ export const transferDistrict = asyncHandler(async (req, res) => {
           .lean();
         blockers.amcs = await AMC.find({
           atmId: { $in: atmIds },
-          isDeleted: false,
+          isDeleted: { $ne: true },
           status: {
             $in: [AMC_STATUS.PENDING, AMC_STATUS.IN_PROGRESS, AMC_STATUS.OVERDUE],
           },
@@ -493,18 +686,17 @@ export const transferDistrict = asyncHandler(async (req, res) => {
         );
       }
 
+      const selectedATMIds = atms.map((atm) => atm._id);
       const atmUpdate = await ATM.updateMany(
-        { districtId, isDeleted: false },
+        districtATMFilter(districtId, selectedATMIds),
         {
           $set: {
             regionId: destinationRegion._id,
-            geographyStatus: "MAPPED",
-            updatedBy: req.user._id,
           },
         },
-        { session, runValidators: true },
+        { session, runValidators: true, timestamps: false },
       );
-      if (atmUpdate.matchedCount !== atms.length) {
+      if (atmUpdate.matchedCount !== selectedATMIds.length) {
         throw new ApiError(
           409,
           "The affected ATM set changed during transfer; no changes were committed",
@@ -525,20 +717,41 @@ export const transferDistrict = asyncHandler(async (req, res) => {
         );
       }
 
-      const updatedATMs = await ATM.find({ districtId, isDeleted: false })
-        .select("_id regionId bankId")
+      const updatedATMs = await ATM.find(
+        districtATMFilter(districtId, selectedATMIds),
+      )
+        .select(
+          "_id regionId bankId districtId geographyStatus status updatedBy isDeleted",
+        )
         .session(session)
         .lean();
-      if (updatedATMs.length !== atms.length) {
+      const originalATMsById = new Map(
+        atms.map((atm) => [String(atm._id), atm]),
+      );
+      const updatedATMIds = new Set(updatedATMs.map((atm) => String(atm._id)));
+      if (
+        updatedATMs.length !== selectedATMIds.length ||
+        updatedATMIds.size !== selectedATMIds.length ||
+        selectedATMIds.some((id) => !updatedATMIds.has(String(id)))
+      ) {
         throw new ApiError(
           409,
-          "Affected ATM count verification failed; no changes were committed",
+          "Affected ATM IDs changed during transfer; no changes were committed",
         );
       }
       const inconsistentUpdatedATM = updatedATMs.find(
-        (atm) =>
-          String(atm.regionId) !== String(destinationRegion._id) ||
-          String(atm.bankId) !== String(destinationRegion.bankId),
+        (atm) => {
+          const original = originalATMsById.get(String(atm._id));
+          return (
+            (Object.hasOwn(atm, "isDeleted") && atm.isDeleted !== false) ||
+            String(atm.regionId) !== String(destinationRegion._id) ||
+            String(atm.bankId) !== String(original?.bankId) ||
+            String(atm.districtId) !== String(original?.districtId) ||
+            atm.geographyStatus !== original?.geographyStatus ||
+            atm.status !== original?.status ||
+            String(atm.updatedBy) !== String(original?.updatedBy)
+          );
+        },
       );
       if (inconsistentUpdatedATM) {
         throw new ApiError(
@@ -556,7 +769,7 @@ export const transferDistrict = asyncHandler(async (req, res) => {
             toRegionId: destinationRegion._id,
             toRegionName: destinationRegion.name,
             reason,
-            affectedATMCount: atms.length,
+            affectedATMCount: selectedATMIds.length,
             performedBy: req.user._id,
           },
         ],
@@ -567,10 +780,33 @@ export const transferDistrict = asyncHandler(async (req, res) => {
         districtId: String(districtId),
         fromRegionId: String(sourceRegion._id),
         toRegionId: String(destinationRegion._id),
-        affectedATMCount: atms.length,
+        affectedATMCount: selectedATMIds.length,
       };
-    },
-  );
+    });
+  } catch (error) {
+    if (
+      districtSnapshot.bankId &&
+      error.message === `Geography fence bank ${districtSnapshot.bankId} not found`
+    ) {
+      throw new ApiError(
+        409,
+        "District Bank reference is invalid and requires reconciliation",
+      );
+    }
+    if (
+      districtSnapshot.regionId &&
+      error.message ===
+        `Geography fence region ${districtSnapshot.regionId} not found`
+    ) {
+      throw new ApiError(409, "District has no valid source region");
+    }
+    if (
+      error.message === `Geography fence region ${destinationRegionId} not found`
+    ) {
+      throw new ApiError(404, "Destination region not found");
+    }
+    throw error;
+  }
 
   await publishDomainEventSafely({
     event: "domain:district:transferred",

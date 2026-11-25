@@ -20,9 +20,15 @@ export const useCreateDistrict = () => {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: DISTRICTS_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: ["district"] }),
+        queryClient.invalidateQueries({ queryKey: ["regions"] }),
+        queryClient.invalidateQueries({ queryKey: ["region"] }),
+        queryClient.invalidateQueries({ queryKey: ["bank"] }),
         queryClient.invalidateQueries({
           queryKey: DISTRICT_GEOGRAPHIC_SUMMARIES_QUERY_KEY,
         }),
+        queryClient.invalidateQueries({ queryKey: ["atms"] }),
+        queryClient.invalidateQueries({ queryKey: ["atms", "scoped"] }),
       ]);
     },
   });
@@ -42,6 +48,12 @@ export const useUpdateDistrict = () => {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: DISTRICTS_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: ["district"] }),
+        queryClient.invalidateQueries({ queryKey: ["regions"] }),
+        queryClient.invalidateQueries({ queryKey: ["region"] }),
+        queryClient.invalidateQueries({ queryKey: ["bank"] }),
+        queryClient.invalidateQueries({ queryKey: ["atms"] }),
+        queryClient.invalidateQueries({ queryKey: ["atms", "scoped"] }),
         queryClient.invalidateQueries({
           queryKey: DISTRICT_GEOGRAPHIC_SUMMARIES_QUERY_KEY,
         }),
@@ -68,6 +80,13 @@ export const useTransferDistrict = () => {
         queryClient.invalidateQueries({ queryKey: ["district", districtId] }),
         queryClient.invalidateQueries({ queryKey: ["district-transfers", districtId] }),
         queryClient.invalidateQueries({ queryKey: ["atms"] }),
+        queryClient.invalidateQueries({ queryKey: ["atms", "scoped"] }),
+        queryClient.invalidateQueries({ queryKey: ["regions"] }),
+        queryClient.invalidateQueries({ queryKey: ["region"] }),
+        queryClient.invalidateQueries({ queryKey: ["bank"] }),
+        queryClient.invalidateQueries({
+          queryKey: DISTRICT_GEOGRAPHIC_SUMMARIES_QUERY_KEY,
+        }),
         queryClient.invalidateQueries({ queryKey: ["district-atms"] }),
         queryClient.invalidateQueries({ queryKey: ["region-atms"] }),
         queryClient.invalidateQueries({ queryKey: ["jobs"] }),

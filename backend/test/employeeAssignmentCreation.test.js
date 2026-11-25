@@ -135,6 +135,10 @@ async function withCreationMocks(callback, { withEmployee = true } = {}) {
     },
     async endSession() {},
   }));
+  override(Bank, "updateOne", async (_filter, _update, options) => {
+    assert.strictEqual(options.session, state.transactionSession);
+    return { matchedCount: 1 };
+  });
   override(ATMIdSequence, "findOneAndUpdate", async (_filter, update, options) => {
     assert.strictEqual(options.session, state.transactionSession);
     state.atmSequenceValue += update.$inc.value;

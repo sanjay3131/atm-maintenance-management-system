@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import ApiError from "../../utils/ApiError.js";
 import Customer from "../customers/customer.model.js";
 import { addATMGroupsToCustomersInTransaction } from "../customers/customerAssignment.service.js";
-import { withDistrictGeographyFence } from "../districts/districtGeography.service.js";
+import { withGeographyFence } from "../districts/districtGeography.service.js";
 import ATM from "./atm.model.js";
 import ATMBulkUploadImport from "./atmBulkUploadImport.model.js";
 import { parseAtmBulkUpload, resolveAtmBulkUploadRows } from "./atmBulkUpload.service.js";
@@ -63,15 +63,30 @@ const assertRowsAreValid = (rows) => {
   }
 };
 
-const getResolvedDistrictIds = (rows) => {
-  if (rows.some((row) => !row.resolved?.districtId)) {
-    throw new ApiError(400, "One or more ATM upload rows have unresolved Districts");
+const getResolvedGeographyIds = (rows) => {
+  if (
+    rows.some(
+      (row) =>
+        !row.resolved?.bankId ||
+        !row.resolved?.regionId ||
+        !row.resolved?.districtId,
+    )
+  ) {
+    throw new ApiError(400, "One or more ATM upload rows have unresolved geography");
   }
-  return [
-    ...new Set(
-      rows.map((row) => String(row.resolved.districtId).toLowerCase()),
-    ),
-  ].sort();
+  return {
+    bankIds: [
+      ...new Set(rows.map((row) => String(row.resolved.bankId).toLowerCase())),
+    ].sort(),
+    regionIds: [
+      ...new Set(rows.map((row) => String(row.resolved.regionId).toLowerCase())),
+    ].sort(),
+    districtIds: [
+      ...new Set(
+        rows.map((row) => String(row.resolved.districtId).toLowerCase()),
+      ),
+    ].sort(),
+  };
 };
 
 const sameIds = (left, right) =>
@@ -130,19 +145,32 @@ export const importAtmBulkUpload = async ({
     return toStoredResult(receiptAfterPreflight, identity.workbookHash);
   }
   assertRowsAreValid(preliminaryRows);
-  const fencedDistrictIds = getResolvedDistrictIds(preliminaryRows);
+  const fencedGeographyIds = getResolvedGeographyIds(preliminaryRows);
 
   try {
-    return await withDistrictGeographyFence(
-      fencedDistrictIds,
+    return await withGeographyFence(
+      {
+        bankIds: fencedGeographyIds.bankIds,
+        districtIds: fencedGeographyIds.districtIds,
+      },
       async (session) => {
         const rows = await resolveAtmBulkUploadRows(parsedRows, { session });
         assertRowsAreValid(rows);
-        const resolvedDistrictIds = getResolvedDistrictIds(rows);
-        if (!sameIds(fencedDistrictIds, resolvedDistrictIds)) {
+        const resolvedGeographyIds = getResolvedGeographyIds(rows);
+        if (
+          !sameIds(fencedGeographyIds.bankIds, resolvedGeographyIds.bankIds) ||
+          !sameIds(
+            fencedGeographyIds.regionIds,
+            resolvedGeographyIds.regionIds,
+          ) ||
+          !sameIds(
+            fencedGeographyIds.districtIds,
+            resolvedGeographyIds.districtIds,
+          )
+        ) {
           throw new ApiError(
             409,
-            "ATM District assignments changed while the workbook was being imported",
+            "ATM geography assignments changed while the workbook was being imported",
           );
         }
 

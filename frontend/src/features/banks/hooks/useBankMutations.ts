@@ -13,7 +13,10 @@ export const useCreateBank = () => {
   return useMutation({
     mutationFn: (data: CreateBankData) => createBank(data),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: BANKS_QUERY_KEY });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: BANKS_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: ["bank"] }),
+      ]);
     },
   });
 };
@@ -28,6 +31,11 @@ export const useUpdateBank = () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: BANKS_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: ["bank", bank._id] }),
+        queryClient.invalidateQueries({ queryKey: ["regions"] }),
+        queryClient.invalidateQueries({ queryKey: ["districts"] }),
+        queryClient.invalidateQueries({ queryKey: ["atms", "scoped"] }),
+        queryClient.invalidateQueries({ queryKey: ["atms"] }),
+        queryClient.invalidateQueries({ queryKey: ["district-geographic-summaries"] }),
       ]);
     },
   });
@@ -42,6 +50,13 @@ export const useDeactivateBank = () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: BANKS_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: ["bank", bank._id] }),
+        queryClient.invalidateQueries({ queryKey: ["regions"] }),
+        queryClient.invalidateQueries({ queryKey: ["districts"] }),
+        queryClient.invalidateQueries({ queryKey: ["atms", "scoped"] }),
+        queryClient.invalidateQueries({ queryKey: ["atms"] }),
+        queryClient.invalidateQueries({ queryKey: ["district-geographic-summaries"] }),
+        queryClient.invalidateQueries({ queryKey: ["jobs"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       ]);
     },
   });

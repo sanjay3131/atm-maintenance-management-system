@@ -2,6 +2,42 @@ import asyncHandler from "../../utils/asyncHandler.js";
 import ApiResponse from "../../utils/ApiResponse.js";
 import ApiError from "../../utils/ApiError.js";
 import Bank from "./bank.model.js";
+import ATM from "../atms/atm.model.js";
+import District from "../districts/district.models.js";
+import Region from "../region/region.model.js";
+import { withGeographyFence } from "../districts/districtGeography.service.js";
+
+const findLinkedRecord = async (Model, filter, session) =>
+  Model.findOne(filter).select("_id").session(session).lean();
+
+const assertBankCanBeDeactivated = async (bankId, session) => {
+  if (await findLinkedRecord(Region, { bankId, isActive: true }, session)) {
+    throw new ApiError(
+      409,
+      "Cannot deactivate the Bank while active Regions are linked",
+    );
+  }
+  if (await findLinkedRecord(District, { bankId, isActive: true }, session)) {
+    throw new ApiError(
+      409,
+      "Cannot deactivate the Bank while active Districts are linked",
+    );
+  }
+  if (
+    await findLinkedRecord(ATM, { bankId, isDeleted: { $ne: true } }, session)
+  ) {
+    throw new ApiError(
+      409,
+      "Cannot deactivate the Bank while non-deleted ATMs are linked",
+    );
+  }
+};
+
+const translateMissingBankFence = (error, bankId) => {
+  if (error.message === `Geography fence bank ${bankId} not found`) {
+    throw new ApiError(404, "Bank not found");
+  }
+};
 
 // ============================================
 // 1. CREATE BANK
@@ -86,21 +122,38 @@ export const updateBank = asyncHandler(async (req, res) => {
   const { bankName, bankCode, contactEmail, contactPhone, address, isActive } =
     req.body;
 
-  const bank = await Bank.findById(id);
-  if (!bank) {
-    throw new ApiError(404, "Bank not found");
+  const update = async (session) => {
+    let query = Bank.findById(id);
+    if (session) query = query.session(session);
+    const bank = await query;
+    if (!bank) throw new ApiError(404, "Bank not found");
+
+    if (isActive === false) await assertBankCanBeDeactivated(id, session);
+    if (bankName !== undefined) bank.bankName = bankName.trim();
+    if (bankCode !== undefined) bank.bankCode = bankCode.trim().toUpperCase();
+    if (contactEmail !== undefined)
+      bank.contactEmail = contactEmail.trim().toLowerCase();
+    if (contactPhone !== undefined) bank.contactPhone = contactPhone.trim();
+    if (address !== undefined) bank.address = address.trim();
+    if (isActive !== undefined) bank.isActive = isActive;
+
+    bank.updatedBy = req.user._id;
+    if (session) await bank.save({ session });
+    else await bank.save();
+    return bank;
+  };
+
+  let bank;
+  if (isActive === false) {
+    try {
+      bank = await withGeographyFence({ bankIds: [id] }, update);
+    } catch (error) {
+      translateMissingBankFence(error, id);
+      throw error;
+    }
+  } else {
+    bank = await update();
   }
-
-  if (bankName !== undefined) bank.bankName = bankName.trim();
-  if (bankCode !== undefined) bank.bankCode = bankCode.trim().toUpperCase();
-  if (contactEmail !== undefined)
-    bank.contactEmail = contactEmail.trim().toLowerCase();
-  if (contactPhone !== undefined) bank.contactPhone = contactPhone.trim();
-  if (address !== undefined) bank.address = address.trim();
-  if (isActive !== undefined) bank.isActive = isActive;
-
-  bank.updatedBy = req.user._id;
-  await bank.save();
 
   return res
     .status(200)
@@ -113,25 +166,22 @@ export const updateBank = asyncHandler(async (req, res) => {
 export const deleteBank = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const bank = await Bank.findById(id);
-  if (!bank) {
-    throw new ApiError(404, "Bank not found");
+  let bank;
+  try {
+    bank = await withGeographyFence({ bankIds: [id] }, async (session) => {
+      const currentBank = await Bank.findById(id).session(session);
+      if (!currentBank) throw new ApiError(404, "Bank not found");
+
+      await assertBankCanBeDeactivated(id, session);
+      currentBank.isActive = false;
+      currentBank.updatedBy = req.user._id;
+      await currentBank.save({ session });
+      return currentBank;
+    });
+  } catch (error) {
+    translateMissingBankFence(error, id);
+    throw error;
   }
-
-  // Check if any ATM is using this bank
-  const ATM = (await import("../atms/atm.model.js")).default;
-  const linkedATMs = await ATM.countDocuments({ bankId: id, isDeleted: false });
-
-  if (linkedATMs > 0) {
-    throw new ApiError(
-      400,
-      `Cannot delete bank. ${linkedATMs} ATM(s) are linked to this bank.`,
-    );
-  }
-
-  bank.isActive = false;
-  bank.updatedBy = req.user._id;
-  await bank.save();
 
   return res
     .status(200)

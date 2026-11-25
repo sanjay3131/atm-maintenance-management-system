@@ -13,7 +13,7 @@ import { setATMAMCResponsibleEmployee } from "../amc/amcResponsibility.service.j
 import Job from "../jobs/jobs.model.js";
 import { JOB_STATUS } from "../../utils/jobStatus.js";
 import RecurringMaintenancePlan from "../jobs/recurringMaintenancePlan.model.js";
-import { withDistrictGeographyFence } from "../districts/districtGeography.service.js";
+import { withGeographyFence } from "../districts/districtGeography.service.js";
 import {
   assignATMCustomerInTransaction,
   softDeleteATMAndUnlinkCustomer,
@@ -72,6 +72,19 @@ const isClientAtmIdDuplicate = (error) =>
 const throwClientAtmIdDuplicateError = (error) => {
   if (!isClientAtmIdDuplicate(error)) throw error;
   throw new ApiError(409, "Client ATM ID already exists");
+};
+
+const translateATMGeographyFenceError = (error) => {
+  const message = typeof error?.message === "string" ? error.message : "";
+  const bankFence = message.match(/^Geography fence bank (.+) not found$/);
+  if (bankFence) throw new ApiError(404, "Selected bank was not found");
+  const districtFence = message.match(
+    /^Geography fence district (.+) not found$/,
+  );
+  if (districtFence) {
+    throw new ApiError(404, "Destination district was not found");
+  }
+  throwClientAtmIdDuplicateError(error);
 };
 
 const notifyLocationRequestAdmins = (request, action, actorId) =>
@@ -381,28 +394,31 @@ export const createATM = asyncHandler(async (req, res) => {
     assignedEmployeeId: [],
     createdBy: req.user._id,
   };
-  const atm = await withDistrictGeographyFence([districtId], async (session) => {
-    await validateActiveATMGeography(bankId, districtId, regionId, session);
-    const [atmId] = await reserveATMIds(1, { session });
-    const [createdATM] = await ATM.create([{ ...atmData, atmId }], { session });
-    await assignATMCustomerInTransaction({
-      atm: createdATM,
-      atmId: createdATM._id,
-      customerId: resolvedCustomerId,
-      updatedBy: req.user._id,
-      session,
-    });
-
-    if (assignedEmployeeIds.length > 0) {
-      return replaceATMEmployeeAssignmentsInTransaction({
+  const atm = await withGeographyFence(
+    { bankIds: [bankId], districtIds: [districtId] },
+    async (session) => {
+      await validateActiveATMGeography(bankId, districtId, regionId, session);
+      const [atmId] = await reserveATMIds(1, { session });
+      const [createdATM] = await ATM.create([{ ...atmData, atmId }], { session });
+      await assignATMCustomerInTransaction({
+        atm: createdATM,
         atmId: createdATM._id,
-        employeeIds: assignedEmployeeIds,
+        customerId: resolvedCustomerId,
         updatedBy: req.user._id,
         session,
       });
-    }
-    return createdATM;
-  }).catch(throwClientAtmIdDuplicateError);
+
+      if (assignedEmployeeIds.length > 0) {
+        return replaceATMEmployeeAssignmentsInTransaction({
+          atmId: createdATM._id,
+          employeeIds: assignedEmployeeIds,
+          updatedBy: req.user._id,
+          session,
+        });
+      }
+      return createdATM;
+    },
+  ).catch(translateATMGeographyFenceError);
 
   return res
     .status(201)
@@ -479,9 +495,8 @@ export const getAllATMs = asyncHandler(async (req, res) => {
       );
     }
 
-    const hasGeographicScope = Boolean(regionId || districtId);
     const query = {
-      isDeleted: hasGeographicScope ? { $ne: true } : false,
+      isDeleted: { $ne: true },
       ...(bankId ? { bankId: objectId(bankId) } : {}),
       ...(regionId ? { regionId: objectId(regionId) } : {}),
       ...(districtId ? { districtId: objectId(districtId) } : {}),
@@ -580,9 +595,7 @@ export const getAllATMs = asyncHandler(async (req, res) => {
                   {
                     $match: {
                       $expr: { $eq: ["$_id", "$$customerId"] },
-                      isDeleted: hasGeographicScope
-                        ? { $ne: true }
-                        : false,
+                      isDeleted: { $ne: true },
                     },
                   },
                 ],
@@ -750,8 +763,7 @@ export const updateATM = asyncHandler(async (req, res) => {
   );
   const hasGeographyUpdate = hasBankUpdate || hasDistrictUpdate || hasRegionUpdate;
   const destinationBankId = hasBankUpdate ? updatePayload.bankId : atm.bankId;
-  let geographyChanged = hasBankUpdate &&
-    idOrNull(updatePayload.bankId) !== idOrNull(atm.bankId);
+  let geographyChanged = false;
 
   if (hasGeographyUpdate) {
     const destinationDistrictId = hasDistrictUpdate
@@ -768,6 +780,7 @@ export const updateATM = asyncHandler(async (req, res) => {
     );
 
     geographyChanged =
+      idOrNull(destinationBankId) !== idOrNull(atm.bankId) ||
       idOrNull(destinationDistrictId) !== idOrNull(atm.districtId) ||
       idOrNull(destinationRegionId) !== idOrNull(atm.regionId);
 
@@ -799,6 +812,9 @@ export const updateATM = asyncHandler(async (req, res) => {
 
   let updatedATM;
   if (geographyChanged || hasCustomerUpdate) {
+    const bankIdsToFence = geographyChanged
+      ? [atm.bankId, destinationBankId]
+      : [];
     const districtsToFence = geographyChanged
       ? [atm.districtId, updatePayload.districtId ?? atm.districtId]
       : [];
@@ -809,6 +825,16 @@ export const updateATM = asyncHandler(async (req, res) => {
       }).session(session);
       if (!currentATM) throw new ApiError(404, "ATM not found");
       if (geographyChanged) {
+        if (
+          idOrNull(currentATM.bankId) !== idOrNull(atm.bankId) ||
+          idOrNull(currentATM.districtId) !== idOrNull(atm.districtId) ||
+          idOrNull(currentATM.regionId) !== idOrNull(atm.regionId)
+        ) {
+          throw new ApiError(
+            409,
+            "ATM geography changed during update; retry the operation",
+          );
+        }
         await validateActiveATMGeography(
           updatePayload.bankId ?? currentATM.bankId,
           updatePayload.districtId ?? currentATM.districtId,
@@ -833,9 +859,12 @@ export const updateATM = asyncHandler(async (req, res) => {
       return currentATM;
     };
     updatedATM = await (geographyChanged
-      ? withDistrictGeographyFence(districtsToFence, operation)
+      ? withGeographyFence(
+          { bankIds: bankIdsToFence, districtIds: districtsToFence },
+          operation,
+        )
       : withCustomerAssignmentTransaction(operation)
-    ).catch(throwClientAtmIdDuplicateError);
+    ).catch(translateATMGeographyFenceError);
   } else {
     updatedATM = await ATM.findByIdAndUpdate(
       req.params.id,

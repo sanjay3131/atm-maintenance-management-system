@@ -104,8 +104,18 @@ function createMocks({
   atmCreateError,
 } = {}) {
   const captured = {};
+  captured.fenceOrder = [];
   const sequenceState = { value: 0 };
   const overrides = [
+    [
+      Bank,
+      "updateOne",
+      async (filter, _update, options) => {
+        captured.fenceOrder.push(`bank:${filter._id}`);
+        captured.bankFenceSession = options.session;
+        return { matchedCount: 1 };
+      },
+    ],
     [
       Bank,
       "findById",
@@ -124,7 +134,11 @@ function createMocks({
     [
       District,
       "updateOne",
-      async () => ({ matchedCount: 1 }),
+      async (filter, _update, options) => {
+        captured.fenceOrder.push(`district:${filter._id}`);
+        captured.districtFenceSession = options.session;
+        return { matchedCount: 1 };
+      },
     ],
     [
       Customer,
@@ -445,6 +459,15 @@ test("creates an ATM with an active District and its active Region", async () =>
       captured.atmCreateOptions.session,
       captured.transactionSession,
     );
+    assert.deepEqual(captured.fenceOrder, [
+      `bank:${bankId}`,
+      `district:${districtId}`,
+    ]);
+    assert.strictEqual(captured.bankFenceSession, captured.transactionSession);
+    assert.strictEqual(
+      captured.districtFenceSession,
+      captured.transactionSession,
+    );
     assert.equal(sequenceState.value, 1);
   });
 });
@@ -684,6 +707,16 @@ test("geographic move preserves employee assignment and reciprocal relationship 
     assert.equal(captured.employeeUpdateMany, undefined);
     assert.equal(captured.employeeUpdateOne, undefined);
   });
+  assert.deepEqual(captured.fenceOrder, [
+    `bank:${bankId}`,
+    `district:${districtId}`,
+    `district:${otherDistrictId}`,
+  ]);
+  assert.strictEqual(captured.bankFenceSession, captured.transactionSession);
+  assert.strictEqual(
+    captured.districtFenceSession,
+    captured.transactionSession,
+  );
 });
 
 test("blocks moves with unresolved Jobs, AMC records, or active recurring plans", async (t) => {

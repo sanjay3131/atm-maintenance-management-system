@@ -9,6 +9,7 @@ import Customer from "../customers/customer.model.js";
 import District from "../districts/district.models.js";
 import Employee from "../employees/employee.model.js";
 import Region from "./region.model.js";
+import { withGeographyFence } from "../districts/districtGeography.service.js";
 
 const isDuplicateKey = (error) => error?.code === 11000;
 const isBankScopedRegionDuplicate = (error) => {
@@ -31,26 +32,56 @@ const throwRegionDuplicateError = (error) => {
   );
 };
 
+const findLinkedDistrict = async (regionId, session) =>
+  District.findOne({ regionId })
+    .select("_id")
+    .session(session)
+    .lean();
+
+const translateMissingRegionFence = (error, regionId) => {
+  if (error.message === `Geography fence region ${regionId} not found`) {
+    throw new ApiError(404, "Region not found");
+  }
+};
+const translateMissingBankFence = (error, bankId) => {
+  if (error.message === `Geography fence bank ${bankId} not found`) {
+    throw new ApiError(404, "Bank not found");
+  }
+};
+
 export const createRegion = asyncHandler(async (req, res) => {
   const { bankId, name, code, description, isActive = true } = req.body;
-  const bank = await Bank.findById(bankId).select("_id isActive");
-  if (!bank) throw new ApiError(404, "Bank not found");
-  if (!bank.isActive) throw new ApiError(400, "Cannot add a region to an inactive bank");
-
   try {
-    const region = await Region.create({
-      bankId,
-      geographyStatus: "MAPPED",
-      name,
-      code: code?.toUpperCase() || undefined,
-      description: description || "",
-      isActive,
-      createdBy: req.user._id,
+    const region = await withGeographyFence({ bankIds: [bankId] }, async (session) => {
+      const bank = await Bank.findById(bankId)
+        .select("_id isActive")
+        .session(session);
+      if (!bank) throw new ApiError(404, "Bank not found");
+      if (!bank.isActive) {
+        throw new ApiError(400, "Cannot add a region to an inactive bank");
+      }
+
+      const [createdRegion] = await Region.create(
+        [
+          {
+            bankId,
+            geographyStatus: "MAPPED",
+            name,
+            code: code?.toUpperCase() || undefined,
+            description: description || "",
+            isActive,
+            createdBy: req.user._id,
+          },
+        ],
+        { session },
+      );
+      return createdRegion;
     });
     return res
       .status(201)
       .json(new ApiResponse(201, region, "Region created successfully"));
   } catch (error) {
+    translateMissingBankFence(error, bankId);
     throwRegionDuplicateError(error);
   }
 });
@@ -255,22 +286,80 @@ export const getRegionById = asyncHandler(async (req, res) => {
 });
 
 export const updateRegion = asyncHandler(async (req, res) => {
-  const region = await Region.findById(req.params.id);
-  if (!region) throw new ApiError(404, "Region not found");
-  if (
-    req.body.isActive === true &&
-    (!region.bankId || region.geographyStatus !== "MAPPED")
-  ) {
-    throw new ApiError(409, "Map the region to a bank before activating it");
+  const { id } = req.params;
+  const activationSnapshot =
+    req.body.isActive === true
+      ? await Region.findById(id).select("bankId").lean()
+      : null;
+  if (req.body.isActive === true && !activationSnapshot) {
+    throw new ApiError(404, "Region not found");
   }
+  const update = async (session) => {
+    let query = Region.findById(id);
+    if (session) query = query.session(session);
+    const region = await query;
+    if (!region) throw new ApiError(404, "Region not found");
+    if (
+      req.body.isActive === true &&
+      (!region.bankId || region.geographyStatus !== "MAPPED")
+    ) {
+      throw new ApiError(409, "Map the region to a bank before activating it");
+    }
+    if (
+      req.body.isActive === true &&
+      String(region.bankId) !== String(activationSnapshot.bankId)
+    ) {
+      throw new ApiError(
+        409,
+        "Region Bank changed during activation; retry the operation",
+      );
+    }
+    if (req.body.isActive === true) {
+      const bank = await Bank.findById(region.bankId)
+        .select("_id isActive")
+        .session(session);
+      if (!bank) throw new ApiError(404, "Bank not found");
+      if (!bank.isActive) {
+        throw new ApiError(400, "Cannot activate a Region under an inactive Bank");
+      }
+    }
+    if (req.body.isActive === false) {
+      const linkedDistrict = await findLinkedDistrict(region._id, session);
+      if (linkedDistrict) {
+        throw new ApiError(
+          409,
+          "Cannot deactivate a Region while Districts are linked",
+        );
+      }
+    }
 
-  Object.assign(region, req.body);
-  if (req.body.code !== undefined) region.code = req.body.code.toUpperCase() || undefined;
-  region.updatedBy = req.user._id;
-
+    Object.assign(region, req.body);
+    if (req.body.code !== undefined) region.code = req.body.code.toUpperCase() || undefined;
+    region.updatedBy = req.user._id;
+    if (session) await region.save({ session });
+    else await region.save();
+    return region;
+  };
+  let region;
   try {
-    await region.save();
+    if (req.body.isActive === true) {
+      region = await withGeographyFence(
+        {
+          bankIds: [activationSnapshot.bankId],
+          regionIds: [id],
+        },
+        update,
+      );
+    } else {
+      region = req.body.isActive === false
+        ? await withGeographyFence({ regionIds: [id] }, update)
+        : await update();
+    }
   } catch (error) {
+    if (activationSnapshot?.bankId) {
+      translateMissingBankFence(error, activationSnapshot.bankId);
+    }
+    translateMissingRegionFence(error, id);
     throwRegionDuplicateError(error);
   }
   await region.populate("bankId", "bankName bankCode");
@@ -280,11 +369,30 @@ export const updateRegion = asyncHandler(async (req, res) => {
 });
 
 export const deactivateRegion = asyncHandler(async (req, res) => {
-  const region = await Region.findByIdAndUpdate(
-    req.params.id,
-    { $set: { isActive: false, updatedBy: req.user._id } },
-    { new: true, runValidators: true },
-  );
+  const { id } = req.params;
+  let region;
+  try {
+    region = await withGeographyFence({ regionIds: [id] }, async (session) => {
+      const currentRegion = await Region.findById(id).session(session);
+      if (!currentRegion) throw new ApiError(404, "Region not found");
+
+      const linkedDistrict = await findLinkedDistrict(currentRegion._id, session);
+      if (linkedDistrict) {
+        throw new ApiError(
+          409,
+          "Cannot deactivate a Region while Districts are linked",
+        );
+      }
+
+      currentRegion.isActive = false;
+      currentRegion.updatedBy = req.user._id;
+      await currentRegion.save({ session });
+      return currentRegion;
+    });
+  } catch (error) {
+    translateMissingRegionFence(error, id);
+    throw error;
+  }
   if (!region) throw new ApiError(404, "Region not found");
   return res
     .status(200)

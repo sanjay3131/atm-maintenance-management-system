@@ -124,10 +124,14 @@ export default function DistrictFormDialog({
   open,
   district,
   onOpenChange,
+  initialBankId = "",
+  initialRegionId = "",
 }: {
   open: boolean;
   district: District | null;
   onOpenChange: (open: boolean) => void;
+  initialBankId?: string;
+  initialRegionId?: string;
 }) {
   const createMutation = useCreateDistrict();
   const updateMutation = useUpdateDistrict();
@@ -158,15 +162,19 @@ export default function DistrictFormDialog({
       typeof district?.regionId === "string"
         ? district.regionId
         : district?.regionId?._id ?? "";
-    setSelectedRegionId(regionId);
-    setBankId(getRegionBankId(district));
+    setSelectedRegionId(
+      district ? regionId : initialRegionId,
+    );
+    setBankId(
+      district ? getRegionBankId(district) : initialBankId,
+    );
     reset({
       districtName: district?.districtName ?? "",
       pinCode: district?.pinCode ?? "",
       state: district?.state ?? "",
       isActive: district?.isActive ?? true,
     });
-  }, [district, open, reset]);
+  }, [district, initialBankId, initialRegionId, open, reset]);
 
   const onSubmit = async (values: DistrictFormSchemaValues) => {
     const data = {

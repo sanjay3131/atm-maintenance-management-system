@@ -38,6 +38,7 @@ const regionSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    geographyFence: { type: Number, default: 0, select: false },
 
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,

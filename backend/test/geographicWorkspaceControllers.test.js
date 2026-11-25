@@ -290,6 +290,60 @@ test("scoped ATM rows preserve ATMTable defaults after aggregation", async () =>
   }
 });
 
+test("bank-scoped ATM list includes legacy missing-isDeleted records across filters and summary facets", async () => {
+  const originalAggregate = ATM.aggregate;
+  const originalPopulate = ATM.populate;
+  let pipeline;
+  ATM.aggregate = async (value) => {
+    pipeline = value;
+    return [
+      {
+        atms: [],
+        total: [{ count: 1 }],
+        statusCounts: [{ _id: "ACTIVE", count: 1 }],
+        linkedCustomers: [{ count: 1 }],
+        linkedEmployees: [{ count: 1 }],
+      },
+    ];
+  };
+  ATM.populate = async (atms) => atms;
+
+  try {
+    const { body } = await invoke(getAllATMs, {
+      query: {
+        bankId,
+        status: "ACTIVE",
+        search: "ATM-1",
+        page: "1",
+        limit: "10",
+      },
+    });
+
+    const match = pipeline.find((stage) => stage.$match)?.$match;
+    assert.deepEqual(match.isDeleted, { $ne: true });
+    assert.equal(match.bankId.toString(), bankId);
+    assert.equal(match.status, "ACTIVE");
+    assert.equal(match.$or[0].clientAtmId.$regex, "ATM-1");
+
+    const linkedCustomerLookup = pipeline
+      .find((stage) => stage.$facet)
+      .$facet.linkedCustomers.find(
+        (stage) => stage.$lookup?.from === Customer.collection.name,
+      ).$lookup;
+    assert.deepEqual(linkedCustomerLookup.pipeline[0].$match.isDeleted, {
+      $ne: true,
+    });
+
+    assert.equal(body.data.pagination.total, 1);
+    assert.deepEqual(body.data.summary.statusCounts, { ACTIVE: 1 });
+    assert.equal(body.data.summary.linkedCustomers, 1);
+    assert.equal(body.data.summary.linkedEmployees, 1);
+  } finally {
+    ATM.aggregate = originalAggregate;
+    ATM.populate = originalPopulate;
+  }
+});
+
 test("ATM list rejects invalid bank, region, and district hierarchies", async () => {
   const originalAggregate = ATM.aggregate;
   const restoreGeography = stubGeography({
@@ -362,6 +416,7 @@ test("ATM list validates assignment filters and supports bank-only scope", async
   try {
     await invoke(getAllATMs, { query: { bankId } });
     const match = pipeline.find((stage) => stage.$match)?.$match;
+    assert.deepEqual(match.isDeleted, { $ne: true });
     assert.equal(match.bankId.toString(), bankId);
     assert.equal(match.regionId, undefined);
     assert.equal(match.districtId, undefined);
