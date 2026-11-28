@@ -35,6 +35,25 @@ const validateAcSubType = (job, context, { requireWorkType = false } = {}) => {
   }
 };
 
+const GPS_CAPTURE_MAX_AGE_MS = 2 * 60 * 1000;
+const GPS_CAPTURE_MAX_FUTURE_SKEW_MS = 30 * 1000;
+
+export const getGpsCaptureTimestampError = (
+  capturedAtMs,
+  nowMs = Date.now(),
+) => {
+  if (!Number.isSafeInteger(capturedAtMs) || capturedAtMs <= 0) {
+    return "GPS capture timestamp is invalid. Capture GPS again before completing the job.";
+  }
+  if (capturedAtMs - nowMs > GPS_CAPTURE_MAX_FUTURE_SKEW_MS) {
+    return "GPS capture timestamp is too far in the future. Capture GPS again before completing the job.";
+  }
+  if (nowMs - capturedAtMs > GPS_CAPTURE_MAX_AGE_MS) {
+    return "GPS location is older than 2 minutes. Capture GPS again before completing the job.";
+  }
+  return null;
+};
+
 export const createJobSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters").max(200),
   description: z.string().optional(),
@@ -82,14 +101,70 @@ export const updateStatusSchema = z.object({
   remarks: z.string().optional(),
 });
 
-export const completeJobSchema = z.object({
-  gps: z.object({
-    latitude: z.number().min(-90).max(90),
-    longitude: z.number().min(-180).max(180),
-    accuracy: z.number().optional(),
-  }),
-  remarks: z.string().optional(),
-});
+export const completeJobSchema = z
+  .object({
+    gps: z.object({
+      latitude: z.number().min(-90).max(90),
+      longitude: z.number().min(-180).max(180),
+      accuracy: z.number().optional(),
+      capturedAtMs: z
+        .number({
+          required_error:
+            "GPS capture timestamp is required. Capture GPS again before completing the job.",
+          invalid_type_error:
+            "GPS capture timestamp is invalid. Capture GPS again before completing the job.",
+        })
+        .int(
+          "GPS capture timestamp is invalid. Capture GPS again before completing the job.",
+        )
+        .positive(
+          "GPS capture timestamp is invalid. Capture GPS again before completing the job.",
+        )
+        .refine(Number.isSafeInteger, {
+          message:
+            "GPS capture timestamp is invalid. Capture GPS again before completing the job.",
+        }),
+    }),
+    remarks: z.string().optional(),
+    actualCleanerType: z.enum(["INTERNAL", "OUTSOURCED"]).optional(),
+    outsourcedCleanerName: z.string().trim().max(160).optional(),
+  })
+  .superRefine(
+    ({ gps, actualCleanerType, outsourcedCleanerName }, context) => {
+      const gpsCaptureError = getGpsCaptureTimestampError(gps.capturedAtMs);
+      if (gpsCaptureError) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["gps", "capturedAtMs"],
+          message: gpsCaptureError,
+        });
+      }
+
+      if (actualCleanerType === "OUTSOURCED" && !outsourcedCleanerName) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["outsourcedCleanerName"],
+          message: "An outsourced cleaner name is required",
+        });
+      }
+      if (actualCleanerType === "INTERNAL" && outsourcedCleanerName) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["outsourcedCleanerName"],
+          message:
+            "Outsourced cleaner name is only valid for outsourced cleaning",
+        });
+      }
+      if (!actualCleanerType && outsourcedCleanerName) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["actualCleanerType"],
+          message:
+            "Select a cleaner type when providing an outsourced cleaner name",
+        });
+      }
+    },
+  );
 
 export const reassignJobSchema = z.object({
   employeeId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid Employee ID"),

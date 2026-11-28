@@ -41,6 +41,14 @@ import {
   triggerRecurringJobGeneration,
   updateRecurringMaintenancePlanController,
 } from "./recurringMaintenance.controller.js";
+import { getCleaningMonitoring } from "../cleaningRecords/cleaningMonitoring.controller.js";
+import { getRecurringCleaningPlanCleaningHistory } from "../cleaningRecords/cleaningHistory.controller.js";
+import { exportRecurringCleaningXlsx } from "../cleaningRecords/cleaningExport.controller.js";
+import {
+  cleaningHistoryParamsSchema,
+  cleaningHistoryQuerySchema,
+} from "../cleaningRecords/cleaningHistory.validation.js";
+import { cleaningExportQuerySchema } from "../cleaningRecords/cleaningExport.validation.js";
 import {
   createJob,
   assignJob,
@@ -69,10 +77,31 @@ router.use("/:jobId/cost-report", jobCostReportRouter);
 
 // Recurring maintenance administration
 router.get(
+  "/recurring/cleaning-export.xlsx",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(cleaningExportQuerySchema, "query"),
+  exportRecurringCleaningXlsx,
+);
+router.get(
+  "/recurring/monitoring",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  getCleaningMonitoring,
+);
+router.get(
   "/recurring/plans",
   verifyAccessToken,
   authorizeRoles("admin", "superAdmin"),
   listRecurringMaintenancePlans,
+);
+router.get(
+  "/recurring/plans/:planId/cleaning-history",
+  verifyAccessToken,
+  authorizeRoles("admin", "superAdmin"),
+  validateRequest(cleaningHistoryParamsSchema, "params"),
+  validateRequest(cleaningHistoryQuerySchema, "query"),
+  getRecurringCleaningPlanCleaningHistory,
 );
 router.post(
   "/recurring/plans",

@@ -28,6 +28,7 @@ import ATMDetailsPage from "@/pages/admin/ATMDetailsPage";
 import EditATMPage from "@/pages/admin/EditATMPage";
 import JobDetailsPage from "@/pages/admin/JobDetailsPage";
 import RecurringMaintenancePage from "@/pages/admin/RecurringMaintenancePage";
+import RecurringCleaningDetailPage from "@/pages/admin/RecurringCleaningDetailPage";
 import EmployeeJobsPage from "@/pages/employee/EmployeeJobsPage";
 import EmployeeJobDetailsView from "@/pages/employee/EmployeeJobDetailsView";
 import EmployeeAMCsPage from "@/pages/employee/EmployeeAMCsPage";
@@ -150,6 +151,10 @@ export default function App() {
             <Route
               path="/admin/recurring-maintenance"
               element={<RecurringMaintenancePage />}
+            />
+            <Route
+              path="/admin/recurring-maintenance/:planId"
+              element={<RecurringCleaningDetailPage />}
             />
             <Route path="/admin/amc" element={<AmcPage />} />
             <Route path="/admin/amc/:amcId" element={<AdminAMCDetailsPage />} />

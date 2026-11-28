@@ -41,6 +41,10 @@ const recurringMaintenancePlanSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    monitoringActivatedAt: {
+      type: Date,
+      default: null,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

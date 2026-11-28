@@ -29,8 +29,11 @@ export interface CompleteJobData {
     latitude: number;
     longitude: number;
     accuracy?: number;
+    capturedAtMs: number;
   };
   remarks?: string;
+  actualCleanerType?: "INTERNAL" | "OUTSOURCED";
+  outsourcedCleanerName?: string;
 }
 
 export interface UploadJobPhotoResponse {

@@ -251,7 +251,14 @@ test("the recovered employee can accept and start, but must submit fresh evidenc
 
     let result = await call(completeJob, {
       ...employeeRequest,
-      body: { gps: { latitude: 0, longitude: 0, accuracy: 5 } },
+      body: {
+        gps: {
+          latitude: 0,
+          longitude: 0,
+          accuracy: 5,
+          capturedAtMs: Date.now(),
+        },
+      },
     });
     assert.equal(result.error.statusCode, 400);
     assert.match(result.error.message, /At least 3 before photos are required/);
@@ -261,14 +268,28 @@ test("the recovered employee can accept and start, but must submit fresh evidenc
     job.afterPhotos = ["new-after-1", "new-after-2", "new-after-3"];
     result = await call(completeJob, {
       ...employeeRequest,
-      body: { gps: { latitude: 0.01, longitude: 0, accuracy: 5 } },
+      body: {
+        gps: {
+          latitude: 0.01,
+          longitude: 0,
+          accuracy: 5,
+          capturedAtMs: Date.now(),
+        },
+      },
     });
     assert.equal(result.error.statusCode, 403);
     assert.equal(job.status, "IN_PROGRESS");
 
     result = await call(completeJob, {
       ...employeeRequest,
-      body: { gps: { latitude: 0, longitude: 0, accuracy: 5 } },
+      body: {
+        gps: {
+          latitude: 0,
+          longitude: 0,
+          accuracy: 5,
+          capturedAtMs: Date.now(),
+        },
+      },
     });
     assert.equal(result.error, undefined);
     assert.equal(job.status, "COMPLETED");

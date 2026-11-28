@@ -885,7 +885,11 @@ test("integrated ATM lifecycle runs through authenticated HTTP routes", async (t
     "PUT",
     `/api/v1/jobs/${jobId}/complete`,
     {
-      gps: { ...proposedGPS, accuracy: 381 },
+      gps: {
+        ...proposedGPS,
+        accuracy: 381,
+        capturedAtMs: Date.now(),
+      },
     },
   );
   assert.equal(evidenceFailure.status, 400);
@@ -910,7 +914,11 @@ test("integrated ATM lifecycle runs through authenticated HTTP routes", async (t
     "PUT",
     `/api/v1/jobs/${jobId}/complete`,
     {
-      gps: { ...proposedGPS, accuracy: 381 },
+      gps: {
+        ...proposedGPS,
+        accuracy: 381,
+        capturedAtMs: Date.now(),
+      },
     },
   );
   assert.equal(wrongEmployeeCompletion.status, 403);
@@ -925,6 +933,7 @@ test("integrated ATM lifecycle runs through authenticated HTTP routes", async (t
         latitude: proposedGPS.latitude + 0.01,
         longitude: proposedGPS.longitude,
         accuracy: 381,
+        capturedAtMs: Date.now(),
       },
     },
   );
@@ -936,7 +945,10 @@ test("integrated ATM lifecycle runs through authenticated HTTP routes", async (t
   const completionResponse = await employeeRequest(
     "PUT",
     `/api/v1/jobs/${jobId}/complete`,
-    { gps: proposedGPS, remarks: "Lifecycle test completed" },
+    {
+      gps: { ...proposedGPS, capturedAtMs: Date.now() },
+      remarks: "Lifecycle test completed",
+    },
   );
   assert.equal(completionResponse.status, 200);
   assert.equal(job.status, "COMPLETED");
@@ -1631,6 +1643,7 @@ test("integrated ATM lifecycle runs through authenticated HTTP routes", async (t
       latitude: proposedGPS.latitude,
       longitude: proposedGPS.longitude,
       accuracy: 381,
+      capturedAtMs: Date.now(),
     };
     const missingEvidence = await employeeRequest(
       "PUT",

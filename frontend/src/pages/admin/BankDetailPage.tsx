@@ -1136,7 +1136,7 @@ export default function BankDetailPage() {
           [
             ["overview", "Overview"],
             ["atms", "ATMs"],
-            ["districts", "Districts"],
+            ["districts", "Region/District"],
             ["customers", "Customers"],
             ["employees", "Employees"],
             ["jobs", "Jobs"],

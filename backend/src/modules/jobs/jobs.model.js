@@ -347,6 +347,19 @@ jobSchema.index(
     partialFilterExpression: { "recurringMaintenance.source": "RECURRING" },
   },
 );
+jobSchema.index(
+  {
+    "recurringMaintenance.planId": 1,
+    "recurringMaintenance.scheduledDate": -1,
+  },
+  {
+    name: "recurring_job_plan_scheduled",
+    partialFilterExpression: {
+      "recurringMaintenance.source": "RECURRING",
+      isDeleted: false,
+    },
+  },
+);
 
 const Job = mongoose.model("Job", jobSchema);
 

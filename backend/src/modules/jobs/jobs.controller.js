@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import asyncHandler from "../../utils/asyncHandler.js";
 import ApiResponse from "../../utils/ApiResponse.js";
 import ApiError from "../../utils/ApiError.js";
@@ -28,7 +29,10 @@ import {
   createJobWithComplaint,
   softDeleteJobAndUnlinkComplaint,
 } from "../complaints/complaintJobIntegrity.service.js";
-import { myJobPerformanceQuerySchema } from "./jobs.validation.js";
+import {
+  getGpsCaptureTimestampError,
+  myJobPerformanceQuerySchema,
+} from "./jobs.validation.js";
 import { getJobPerformanceForUser } from "./jobPerformance.service.js";
 import { captureATMGeographySnapshot } from "../../utils/geographySnapshot.js";
 import { withDistrictGeographyFence } from "../districts/districtGeography.service.js";
@@ -41,6 +45,10 @@ import {
   resolveJobRecipients,
 } from "../../realtime/recipient-resolver.js";
 import { createWorkflowNotificationsSafely } from "../notification/notification.service.js";
+import {
+  createOrUpdateEmployeeCleaningRecord,
+  isRecurringCleaningJob,
+} from "../cleaningRecords/cleaningRecord.service.js";
 
 // ============================================
 // HELPERS
@@ -88,22 +96,40 @@ const notifyAssignedJobEmployee = (job, action) =>
     dedupeKey: `job:${job._id}:${action}:${job.assignedAt?.getTime?.() ?? ""}`,
   });
 
-const assertCleaningEvidence = async (job) => {
+const inSession = (query, session) =>
+  session ? query.session(session) : query;
+
+const withMongoTransaction = async (operation) => {
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    await session.withTransaction(async () => {
+      result = await operation(session);
+    });
+    return result;
+  } finally {
+    await session.endSession();
+  }
+};
+
+const assertCleaningEvidence = async (job, session) => {
+  const beforePhotoCountQuery = JobPhoto.countDocuments({
+    _id: { $in: job.beforePhotos || [] },
+    jobId: job._id,
+    photoType: "before",
+    isExpired: false,
+    url: { $type: "string", $ne: "" },
+  });
+  const afterPhotoCountQuery = JobPhoto.countDocuments({
+    _id: { $in: job.afterPhotos || [] },
+    jobId: job._id,
+    photoType: "after",
+    isExpired: false,
+    url: { $type: "string", $ne: "" },
+  });
   const [beforeCount, afterCount] = await Promise.all([
-    JobPhoto.countDocuments({
-      _id: { $in: job.beforePhotos || [] },
-      jobId: job._id,
-      photoType: "before",
-      isExpired: false,
-      url: { $type: "string", $ne: "" },
-    }),
-    JobPhoto.countDocuments({
-      _id: { $in: job.afterPhotos || [] },
-      jobId: job._id,
-      photoType: "after",
-      isExpired: false,
-      url: { $type: "string", $ne: "" },
-    }),
+    inSession(beforePhotoCountQuery, session),
+    inSession(afterPhotoCountQuery, session),
   ]);
 
   const missingEvidence = [];
@@ -175,6 +201,50 @@ const findEmployeeEligibleForJob = async (job, employeeUserId) => {
 
 const assertEmployeeWorkEligible = (employeeUserId) =>
   findActiveEmployeeByUserId(employeeUserId);
+
+const validateEmployeeJobCompletion = async ({
+  job,
+  userId,
+  gps,
+  session,
+}) => {
+  if (!job || job.isDeleted) throw new ApiError(404, "Job not found");
+  if (job.assignedEmployeeId?.toString() !== userId.toString()) {
+    throw new ApiError(403, "This job is not assigned to you");
+  }
+  if (job.status !== JOB_STATUS.IN_PROGRESS) {
+    throw new ApiError(400, `Cannot complete job with status: ${job.status}`);
+  }
+
+  const employee = await assertEmployeeWorkEligible(userId);
+  await assertCleaningEvidence(job, session);
+
+  const atm = await inSession(ATM.findById(job.atmId), session);
+  if (!atm) throw new ApiError(404, "ATM not found");
+  if (!atm.locationConfigured || !atm.location?.coordinates) {
+    throw new ApiError(
+      400,
+      "ATM location is not configured. Please configure the ATM location before completing this job.",
+    );
+  }
+
+  const { latitude, longitude, accuracy } = gps;
+  const { isValid, distance } = validateGpsProximity(
+    latitude,
+    longitude,
+    atm.location.coordinates[1],
+    atm.location.coordinates[0],
+    20,
+  );
+  if (!isValid) {
+    throw new ApiError(
+      403,
+      `You are ${distance} meters away from the ATM. Must be within 20 meters.`,
+    );
+  }
+
+  return { employee, atm, distance, accuracy };
+};
 
 const rejectSubmissionForRework = async ({ job, req, remarks }) => {
   const rejectedFromStatus = job.status;
@@ -253,8 +323,9 @@ const logJobHistory = async ({
   performedBy,
   details = {},
   req,
+  session,
 }) => {
-  await JobHistory.create({
+  const historyEntry = {
     jobId,
     action,
     fromStatus,
@@ -263,7 +334,12 @@ const logJobHistory = async ({
     performedAt: new Date(),
     details,
     ipAddress: req?.ip || req?.headers["x-forwarded-for"] || null,
-  });
+  };
+  if (session) {
+    await JobHistory.create([historyEntry], { session });
+    return;
+  }
+  await JobHistory.create(historyEntry);
 };
 
 const addEmployeeCodes = async (job) => {
@@ -539,87 +615,164 @@ export const startJob = asyncHandler(async (req, res) => {
 // ============================================
 export const completeJob = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { gps, remarks } = req.body;
+  const {
+    gps,
+    remarks,
+    actualCleanerType,
+    outsourcedCleanerName,
+  } = req.body;
+
+  const assertFreshGpsCapture = () => {
+    const message = getGpsCaptureTimestampError(gps?.capturedAtMs);
+    if (message) throw new ApiError(400, message);
+  };
+  assertFreshGpsCapture();
 
   const job = await Job.findById(id);
   if (!job || job.isDeleted) throw new ApiError(404, "Job not found");
-  if (job.assignedEmployeeId?.toString() !== req.user._id.toString())
-    throw new ApiError(403, "This job is not assigned to you");
-  if (job.status !== JOB_STATUS.IN_PROGRESS)
-    throw new ApiError(400, `Cannot complete job with status: ${job.status}`);
+  let completedJob;
+  let completedAt;
+  let distance;
 
-  await assertEmployeeWorkEligible(req.user._id);
+  if (isRecurringCleaningJob(job)) {
+    if (!actualCleanerType) {
+      throw new ApiError(
+        400,
+        "actualCleanerType is required for recurring cleaning Jobs",
+      );
+    }
 
-  await assertCleaningEvidence(job);
+    const completion = await withMongoTransaction(async (session) => {
+      const currentJob = await Job.findById(id).session(session);
+      if (!currentJob || currentJob.isDeleted) {
+        throw new ApiError(404, "Job not found");
+      }
 
-  const atm = await ATM.findById(job.atmId);
-  if (!atm) throw new ApiError(404, "ATM not found");
+      const { employee, atm, distance: gpsDistance, accuracy } =
+        await validateEmployeeJobCompletion({
+          job: currentJob,
+          userId: req.user._id,
+          gps,
+          session,
+        });
+      assertFreshGpsCapture();
+      const previousStatus = currentJob.status;
+      const transactionCompletedAt = new Date();
+      currentJob.status = JOB_STATUS.COMPLETED;
+      currentJob.completedAt = transactionCompletedAt;
+      currentJob.employeeGpsAtCompletion = {
+        latitude: gps.latitude,
+        longitude: gps.longitude,
+        accuracy: accuracy || null,
+        timestamp: new Date(gps.capturedAtMs),
+      };
+      currentJob.gpsDistance = gpsDistance;
+      currentJob.gpsValidated = true;
+      currentJob.employeeRemarks = remarks || "";
+      currentJob.updatedBy = req.user._id;
+      await currentJob.save({ session });
 
-  if (!atm.locationConfigured || !atm.location?.coordinates) {
-    throw new ApiError(
-      400,
-      "ATM location is not configured. Please configure the ATM location before completing this job.",
-    );
-  }
-  const { latitude, longitude, accuracy } = gps;
-  const { isValid, distance } = validateGpsProximity(
-    latitude,
-    longitude,
-    atm.location.coordinates[1],
-    atm.location.coordinates[0],
-    20,
-  );
+      await logJobHistory({
+        jobId: currentJob._id,
+        action: "gps_validated",
+        fromStatus: previousStatus,
+        toStatus: JOB_STATUS.COMPLETED,
+        performedBy: req.user._id,
+        details: {
+          gpsDistance,
+          gpsAccuracy: accuracy,
+          completedAt: transactionCompletedAt,
+          employeeLocation: {
+            latitude: gps.latitude,
+            longitude: gps.longitude,
+          },
+          atmLocation: {
+            latitude: atm.location.coordinates[1],
+            longitude: atm.location.coordinates[0],
+          },
+        },
+        req,
+        session,
+      });
 
-  if (!isValid) {
-    throw new ApiError(
-      403,
-      `You are ${distance} meters away from the ATM. Must be within 20 meters.`,
-    );
-  }
+      await createOrUpdateEmployeeCleaningRecord({
+        job: currentJob,
+        responsibleEmployeeId: employee._id,
+        submittedBy: req.user._id,
+        actualCleanerType,
+        outsourcedCleanerName,
+        completedAt: transactionCompletedAt,
+        remarks,
+        evidencePhotoIds: [
+          ...(currentJob.beforePhotos || []),
+          ...(currentJob.afterPhotos || []),
+        ],
+        session,
+      });
 
-  const oldStatus = job.status;
-  job.status = JOB_STATUS.COMPLETED;
-  const completedAt = new Date();
-  job.completedAt = completedAt;
-  job.employeeGpsAtCompletion = {
-    latitude,
-    longitude,
-    accuracy: accuracy || null,
-    timestamp: new Date(),
-  };
-  job.gpsDistance = distance;
-  job.gpsValidated = true;
-  job.employeeRemarks = remarks || "";
-  job.updatedBy = req.user._id;
-  await job.save();
+      return {
+        job: currentJob,
+        completedAt: transactionCompletedAt,
+        distance: gpsDistance,
+      };
+    });
+    completedJob = completion.job;
+    completedAt = completion.completedAt;
+    distance = completion.distance;
+  } else {
+    const { atm, distance: gpsDistance, accuracy } =
+      await validateEmployeeJobCompletion({
+        job,
+        userId: req.user._id,
+        gps,
+      });
+    assertFreshGpsCapture();
+    const oldStatus = job.status;
+    completedAt = new Date();
+    job.status = JOB_STATUS.COMPLETED;
+    job.completedAt = completedAt;
+    job.employeeGpsAtCompletion = {
+      latitude: gps.latitude,
+      longitude: gps.longitude,
+      accuracy: accuracy || null,
+      timestamp: new Date(gps.capturedAtMs),
+    };
+    job.gpsDistance = gpsDistance;
+    job.gpsValidated = true;
+    job.employeeRemarks = remarks || "";
+    job.updatedBy = req.user._id;
+    await job.save();
 
-  await logJobHistory({
-    jobId: job._id,
-    action: "gps_validated",
-    fromStatus: oldStatus,
-    toStatus: JOB_STATUS.COMPLETED,
-    performedBy: req.user._id,
-    details: {
-      gpsDistance: distance,
-      gpsAccuracy: accuracy,
-      completedAt,
-      employeeLocation: { latitude, longitude },
-      atmLocation: {
-        latitude: atm.location.coordinates[1],
-        longitude: atm.location.coordinates[0],
+    await logJobHistory({
+      jobId: job._id,
+      action: "gps_validated",
+      fromStatus: oldStatus,
+      toStatus: JOB_STATUS.COMPLETED,
+      performedBy: req.user._id,
+      details: {
+        gpsDistance,
+        gpsAccuracy: accuracy,
+        completedAt,
+        employeeLocation: { latitude: gps.latitude, longitude: gps.longitude },
+        atmLocation: {
+          latitude: atm.location.coordinates[1],
+          longitude: atm.location.coordinates[0],
+        },
       },
-    },
-    req,
-  });
+      req,
+    });
+    completedJob = job;
+    distance = gpsDistance;
+  }
 
-  const populatedJob = await Job.findById(job._id)
+  const populatedJob = await Job.findById(completedJob._id)
     .populate("atmId", "atmId clientAtmId locationName bank address")
     .populate("assignedEmployeeId", "firstName lastName")
     .populate("complaintId", "complaintNumber title");
 
   await publishJobUpdated({ job: populatedJob, action: "completed" });
   await notifyJobAdmins({
-    job,
+    job: completedJob,
     action: "completed",
     actorId: req.user._id,
     dedupeKey: `job:${job._id}:completed:${completedAt.getTime()}`,

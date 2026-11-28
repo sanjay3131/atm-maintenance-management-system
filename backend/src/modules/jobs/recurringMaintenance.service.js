@@ -516,7 +516,15 @@ export const createRecurringMaintenancePlan = async (planData, createdBy) => {
       const fullATM = await ATM.findById(planData.atmId).session(session);
       const geographySnapshot = await captureATMGeographySnapshot(fullATM, session);
       const [plan] = await RecurringMaintenancePlan.create(
-        [{ ...planData, geographySnapshot, createdBy }],
+        [
+          {
+            ...planData,
+            geographySnapshot,
+            monitoringActivatedAt:
+              planData.isActive === false ? null : new Date(),
+            createdBy,
+          },
+        ],
         { session },
       );
       return plan;
@@ -577,6 +585,10 @@ export const updateRecurringMaintenancePlan = async (
         updates.assignedEmployeeId ?? currentPlan.assignedEmployeeId,
         session,
       );
+    }
+
+    if (currentPlan.isActive === false && updates.isActive === true) {
+      currentPlan.monitoringActivatedAt = new Date();
     }
 
     Object.assign(currentPlan, updates, { updatedBy });

@@ -700,6 +700,23 @@ export const employeeEnglish = {
   "Move within 20 m of the ATM and refresh your location to continue.":
     "Move within 20 m of the ATM and refresh your location to continue.",
   "Complete this job?": "Complete this job?",
+  "GPS capture timestamp is required. Capture GPS again before completing the job.":
+    "GPS capture timestamp is required. Capture GPS again before completing the job.",
+  "GPS capture timestamp is invalid. Capture GPS again before completing the job.":
+    "GPS capture timestamp is invalid. Capture GPS again before completing the job.",
+  "GPS capture timestamp is too far in the future. Capture GPS again before completing the job.":
+    "GPS capture timestamp is too far in the future. Capture GPS again before completing the job.",
+  "GPS location is older than 2 minutes. Capture GPS again before completing the job.":
+    "GPS location is older than 2 minutes. Capture GPS again before completing the job.",
+  "Cleaner type": "Cleaner type",
+  "Select a cleaner type": "Select a cleaner type",
+  "Internal employee": "Internal employee",
+  "Outsourced cleaner": "Outsourced cleaner",
+  "Outsourced cleaner name": "Outsourced cleaner name",
+  "Select a cleaner type to complete this cleaning job.":
+    "Select a cleaner type to complete this cleaning job.",
+  "Enter the outsourced cleaner's name.":
+    "Enter the outsourced cleaner's name.",
   "The server will validate your GPS coordinates. Once completed, you cannot continue working on this job unless an authorized user changes its status.":
     "The server will validate your GPS coordinates. Once completed, you cannot continue working on this job unless an authorized user changes its status.",
   Cancel: "Cancel",
@@ -1641,6 +1658,23 @@ const employeeTamil: Dictionary = {
   "Move within 20 m of the ATM and refresh your location to continue.":
     "தொடர ATM-இன் 20 மீட்டருக்குள் சென்று இடத்தைப் புதுப்பிக்கவும்.",
   "Complete this job?": "இந்த வேலையை முடிக்கவா?",
+  "GPS capture timestamp is required. Capture GPS again before completing the job.":
+    "GPS பதிவு நேரம் தேவை. வேலையை முடிப்பதற்கு முன் GPS-ஐ மீண்டும் பதிவு செய்யவும்.",
+  "GPS capture timestamp is invalid. Capture GPS again before completing the job.":
+    "GPS பதிவு நேரம் தவறானது. வேலையை முடிப்பதற்கு முன் GPS-ஐ மீண்டும் பதிவு செய்யவும்.",
+  "GPS capture timestamp is too far in the future. Capture GPS again before completing the job.":
+    "GPS பதிவு நேரம் எதிர்காலத்தில் அதிகமாக உள்ளது. வேலையை முடிப்பதற்கு முன் GPS-ஐ மீண்டும் பதிவு செய்யவும்.",
+  "GPS location is older than 2 minutes. Capture GPS again before completing the job.":
+    "GPS இருப்பிடம் 2 நிமிடங்களுக்கு மேல் பழையது. வேலையை முடிப்பதற்கு முன் GPS-ஐ மீண்டும் பதிவு செய்யவும்.",
+  "Cleaner type": "சுத்தம் செய்தவர் வகை",
+  "Select a cleaner type": "சுத்தம் செய்தவர் வகையைத் தேர்ந்தெடுக்கவும்",
+  "Internal employee": "நிறுவனப் பணியாளர்",
+  "Outsourced cleaner": "வெளிப்புறத் துப்புரவுப் பணியாளர்",
+  "Outsourced cleaner name": "வெளிப்புறத் துப்புரவுப் பணியாளர் பெயர்",
+  "Select a cleaner type to complete this cleaning job.":
+    "இந்தச் சுத்தம் செய்யும் வேலையை முடிக்க சுத்தம் செய்தவர் வகையைத் தேர்ந்தெடுக்கவும்.",
+  "Enter the outsourced cleaner's name.":
+    "வெளிப்புறத் துப்புரவுப் பணியாளரின் பெயரை உள்ளிடவும்.",
   "The server will validate your GPS coordinates. Once completed, you cannot continue working on this job unless an authorized user changes its status.":
     "உங்கள் GPS இடத்தைச் சரிபார்த்த பிறகு வேலை முடிக்கப்படும். அங்கீகரிக்கப்பட்டவர் நிலையை மாற்றினால் மட்டுமே மீண்டும் வேலை செய்ய முடியும்.",
   Cancel: "ரத்து செய்யவும்",

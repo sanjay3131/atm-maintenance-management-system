@@ -602,6 +602,7 @@ export default function EmployeeJobDetailsView() {
         <div id="employee-fieldwork" className="scroll-mt-4">
           <EmployeeFieldWorkPanel
             job={job}
+            resetCompletionContextOnJobChange
             onPendingSelectionChange={setHasPendingSelections}
             workDescription={
               job.description || complaint ? (

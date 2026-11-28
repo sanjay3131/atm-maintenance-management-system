@@ -607,7 +607,12 @@ test("request schema rejects invalid coordinates and accuracy", () => {
   }
   assert.equal(
     completeJobSchema.safeParse({
-      gps: { latitude: 12.5, longitude: 77.6, accuracy: 381 },
+      gps: {
+        latitude: 12.5,
+        longitude: 77.6,
+        accuracy: 381,
+        capturedAtMs: Date.now(),
+      },
     }).success,
     true,
   );

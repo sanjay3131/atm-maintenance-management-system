@@ -103,7 +103,7 @@ function DistrictNameCombobox({
               No districts found
             </Combobox.Empty>
             <Combobox.List>
-              {TAMIL_NADU_DISTRICTS.map((name) => (
+              {(name: string) => (
                 <Combobox.Item
                   key={name}
                   value={name}
@@ -111,7 +111,7 @@ function DistrictNameCombobox({
                 >
                   {name}
                 </Combobox.Item>
-              ))}
+              )}
             </Combobox.List>
           </Combobox.Popup>
         </Combobox.Positioner>

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import {
   useEffect,
+  useLayoutEffect,
   useCallback,
   useRef,
   useState,
@@ -29,6 +30,13 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useSubmitATMLocationRequest } from "@/features/atms/hooks/useATMLocationRequests";
 import {
   canSubmitEmployeeATMLocationRequest,
@@ -43,6 +51,7 @@ import {
 import type { Job, JobPhoto } from "../types/job.types";
 import {
   getPendingJobPhotoUploads,
+  type CompleteJobData,
   type JobPhotoType,
   type PendingJobPhotoUpload,
 } from "../services/jobs.service";
@@ -79,6 +88,7 @@ interface GpsPosition {
   latitude: number;
   longitude: number;
   accuracy: number;
+  capturedAtMs: number;
 }
 
 interface PendingPhoto {
@@ -93,6 +103,7 @@ type PhotoSelection = Record<JobPhotoType, PendingPhoto[]>;
 type PhotoCounts = Record<JobPhotoType, number>;
 type UploadStatus = "idle" | "uploading" | "uploaded" | "failed";
 type PendingUploadStatus = PhotoUploadQueueStatus;
+type ActualCleanerType = "INTERNAL" | "OUTSOURCED";
 
 const EMPTY_SELECTION: PhotoSelection = { before: [], after: [] };
 
@@ -284,6 +295,7 @@ function PendingPhotoCard({
 
 interface EmployeeFieldWorkPanelProps {
   job: Job;
+  resetCompletionContextOnJobChange?: boolean;
   workDescription?: ReactNode;
   materials?: ReactNode;
   onPendingSelectionChange?: (hasPendingSelection: boolean) => void;
@@ -291,6 +303,7 @@ interface EmployeeFieldWorkPanelProps {
 
 export default function EmployeeFieldWorkPanel({
   job,
+  resetCompletionContextOnJobChange = false,
   workDescription,
   materials,
   onPendingSelectionChange,
@@ -330,6 +343,14 @@ export default function EmployeeFieldWorkPanel({
   const preparationAbortRef = useRef<AbortController | null>(null);
   const isMountedRef = useRef(true);
   const [isCompleteDialogOpen, setIsCompleteDialogOpen] = useState(false);
+  const [actualCleanerType, setActualCleanerType] = useState<
+    ActualCleanerType | ""
+  >("");
+  const [outsourcedCleanerName, setOutsourcedCleanerName] = useState("");
+  const [cleanerValidationError, setCleanerValidationError] = useState<
+    "type" | "name" | null
+  >(null);
+  const gpsCaptureJobIdRef = useRef(job._id);
   const [expandedStep, setExpandedStep] = useState<
     "location" | "before" | "after" | "review" | null
   >("before");
@@ -370,6 +391,19 @@ export default function EmployeeFieldWorkPanel({
         onPendingSelectionChange?.(false);
     };
   }, [onPendingSelectionChange]);
+
+  useLayoutEffect(() => {
+    if (!resetCompletionContextOnJobChange) return;
+    if (gpsCaptureJobIdRef.current === job._id) return;
+    gpsCaptureJobIdRef.current = job._id;
+    setGps(null);
+    setGpsError("");
+    setIsLocating(false);
+    setIsCompleteDialogOpen(false);
+    setActualCleanerType("");
+    setOutsourcedCleanerName("");
+    setCleanerValidationError(null);
+  }, [job._id, resetCompletionContextOnJobChange]);
 
   useEffect(() => {
     let active = true;
@@ -468,6 +502,10 @@ export default function EmployeeFieldWorkPanel({
   }, [finalizePendingIntent, job._id, pendingIntentRecords]);
 
   const atm = typeof job.atmId === "object" && job.atmId ? job.atmId : null;
+  const isCleaningJob =
+    job.recurringMaintenance?.source === "RECURRING" &&
+    (job.recurringMaintenance.maintenanceType === "DAILY_CLEANING" ||
+      job.recurringMaintenance.maintenanceType === "WEEKLY_MOPPING");
   const coordinates = atm?.location?.coordinates;
   const hasAtmCoordinates = Boolean(
     atm?.locationConfigured &&
@@ -700,12 +738,15 @@ export default function EmployeeFieldWorkPanel({
     }
 
     setIsLocating(true);
+    const captureJobId = job._id;
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        if (gpsCaptureJobIdRef.current !== captureJobId) return;
         setGps({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           accuracy: position.coords.accuracy,
+          capturedAtMs: Date.now(),
         });
         setExpandedStep(
           persistedCounts.before < REQUIRED_PHOTOS_PER_TYPE
@@ -717,6 +758,7 @@ export default function EmployeeFieldWorkPanel({
         setIsLocating(false);
       },
       (error) => {
+        if (gpsCaptureJobIdRef.current !== captureJobId) return;
         setGpsError(getGeolocationError(error, t));
         setIsLocating(false);
       },
@@ -947,6 +989,31 @@ export default function EmployeeFieldWorkPanel({
 
   const completeJob = () => {
     if (!gps || !canComplete || completeMutation.isPending) return;
+    if (isCleaningJob && !actualCleanerType) {
+      setCleanerValidationError("type");
+      return;
+    }
+    if (
+      isCleaningJob &&
+      actualCleanerType === "OUTSOURCED" &&
+      !outsourcedCleanerName.trim()
+    ) {
+      setCleanerValidationError("name");
+      return;
+    }
+
+    const cleanerData: Pick<
+      CompleteJobData,
+      "actualCleanerType" | "outsourcedCleanerName"
+    > =
+      actualCleanerType === "INTERNAL"
+        ? { actualCleanerType }
+        : actualCleanerType === "OUTSOURCED"
+          ? {
+              actualCleanerType,
+              outsourcedCleanerName: outsourcedCleanerName.trim(),
+            }
+          : {};
     completeMutation.mutate(
       {
         jobId: job._id,
@@ -955,7 +1022,9 @@ export default function EmployeeFieldWorkPanel({
             latitude: gps.latitude,
             longitude: gps.longitude,
             accuracy: gps.accuracy,
+            capturedAtMs: gps.capturedAtMs,
           },
+          ...(isCleaningJob ? cleanerData : {}),
         },
       },
       {
@@ -1483,6 +1552,96 @@ export default function EmployeeFieldWorkPanel({
               "The server will validate your GPS coordinates. Once completed, you cannot continue working on this job unless an authorized user changes its status.",
             )}
           </DialogDescription>
+          {isCleaningJob && (
+            <div className="mt-5 space-y-4">
+              <div className="space-y-2">
+                <label
+                  className="text-sm font-medium"
+                  htmlFor="actual-cleaner-type"
+                >
+                  {t("Cleaner type")}
+                </label>
+                <Select
+                  value={actualCleanerType}
+                  onValueChange={(value) => {
+                    if (value !== "INTERNAL" && value !== "OUTSOURCED") return;
+                    setActualCleanerType(value);
+                    setCleanerValidationError(null);
+                    if (value === "INTERNAL") setOutsourcedCleanerName("");
+                  }}
+                >
+                  <SelectTrigger
+                    id="actual-cleaner-type"
+                    aria-required="true"
+                    aria-invalid={cleanerValidationError === "type"}
+                    aria-describedby={
+                      cleanerValidationError === "type"
+                        ? "actual-cleaner-type-error"
+                        : undefined
+                    }
+                  >
+                    <SelectValue placeholder={t("Select a cleaner type")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="INTERNAL">
+                      {t("Internal employee")}
+                    </SelectItem>
+                    <SelectItem value="OUTSOURCED">
+                      {t("Outsourced cleaner")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {cleanerValidationError === "type" && (
+                  <p
+                    id="actual-cleaner-type-error"
+                    className="text-sm text-destructive"
+                    role="alert"
+                  >
+                    {t("Select a cleaner type to complete this cleaning job.")}
+                  </p>
+                )}
+              </div>
+              {actualCleanerType === "OUTSOURCED" && (
+                <div className="space-y-2">
+                  <label
+                    className="text-sm font-medium"
+                    htmlFor="outsourced-cleaner-name"
+                  >
+                    {t("Outsourced cleaner name")}
+                  </label>
+                  <input
+                    id="outsourced-cleaner-name"
+                    type="text"
+                    maxLength={160}
+                    required
+                    value={outsourcedCleanerName}
+                    aria-invalid={cleanerValidationError === "name"}
+                    aria-describedby={
+                      cleanerValidationError === "name"
+                        ? "outsourced-cleaner-name-error"
+                        : undefined
+                    }
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onChange={(event) => {
+                      setOutsourcedCleanerName(event.target.value);
+                      if (event.target.value.trim()) {
+                        setCleanerValidationError(null);
+                      }
+                    }}
+                  />
+                  {cleanerValidationError === "name" && (
+                    <p
+                      id="outsourced-cleaner-name-error"
+                      className="text-sm text-destructive"
+                      role="alert"
+                    >
+                      {t("Enter the outsourced cleaner's name.")}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button
               type="button"

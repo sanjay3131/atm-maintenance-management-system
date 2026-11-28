@@ -108,7 +108,14 @@ async function withJobMocks(
 
 const completionRequest = () => ({
   params: { id: jobId },
-  body: { gps: { latitude: 0, longitude: 0, accuracy: 5 } },
+  body: {
+    gps: {
+      latitude: 0,
+      longitude: 0,
+      accuracy: 5,
+      capturedAtMs: Date.now(),
+    },
+  },
   user: { _id: employeeUserId, userType: "employee" },
   headers: {},
 });
